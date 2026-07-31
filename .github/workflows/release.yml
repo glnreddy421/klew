@@ -21,7 +21,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
           cache: npm
           cache-dependency-path: cmd/klew-desktop/frontend/package-lock.json
 
@@ -44,3 +44,9 @@ jobs:
         with:
           files: dist/*
           generate_release_notes: true
+
+      - name: Update Homebrew tap
+        run: ./scripts/update-homebrew-tap.sh
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
