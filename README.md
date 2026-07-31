@@ -12,6 +12,18 @@ Klew continuously combines Kubernetes workload state, events, and multi-pod logs
 
 Requires macOS and a kubeconfig for live investigations (`~/.kube/config`).
 
+### Download
+
+Get the latest macOS build from **[GitHub Releases](https://github.com/glnreddy421/klew/releases)**:
+
+1. Download `Klew-x.y.z-macos-arm64.dmg` (or `.zip`)
+2. Open the DMG and drag **Klew** to Applications
+3. Launch Klew
+
+> First launch: if macOS blocks an unsigned app, open **System Settings → Privacy & Security** and allow Klew, or right-click the app → **Open**.
+
+### Homebrew
+
 ```bash
 brew tap glnreddy421/klew
 brew trust glnreddy421/klew
