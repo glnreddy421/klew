@@ -23,6 +23,6 @@ curl -L "https://github.com/glnreddy421/klew/archive/refs/tags/vX.Y.Z.tar.gz" | 
 ## User install
 
 ```bash
-brew tap glnreddy421/klew-homebrew
+brew tap glnreddy421/klew https://github.com/glnreddy421/klew-homebrew
 brew install klew
 ```
