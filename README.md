@@ -31,20 +31,6 @@ brew install klew
 open "$(brew --prefix)/opt/klew/Klew.app"
 ```
 
-## Build from source
-
-Requires Go 1.22+, Node.js 18+, and [Wails v2](https://wails.io).
-
-```bash
-make install-desktop-tools   # once — installs wails to $(go env GOPATH)/bin
-export PATH="$(go env GOPATH)/bin:$PATH"   # add to ~/.zshrc if needed
-
-make desktop-dev   # hot reload
-make desktop       # Klew.app production build
-```
-
-See [cmd/klew-desktop/README.md](cmd/klew-desktop/README.md) and **[DEVELOPMENT.md](DEVELOPMENT.md)** for the full local workflow.
-
 ## Using Klew
 
 Open Klew and connect to a cluster via your kubeconfig. Pick a namespace, search for a workload, and start a live investigation.
