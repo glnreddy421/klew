@@ -8,7 +8,7 @@ import (
 )
 
 func TestFinalReportLayout(t *testing.T) {
-	st := engine.DemoState()
+	st := engine.FixtureState()
 	out := EvidenceView(st, "", 0, 28, 120)
 	for _, want := range []string{
 		"Summary",
@@ -31,10 +31,10 @@ func TestFinalReportLayout(t *testing.T) {
 }
 
 func TestFinalReportClaims(t *testing.T) {
-	st := engine.DemoState()
+	st := engine.FixtureState()
 	claims := buildFinalClaims(st)
 	if len(claims) == 0 {
-		t.Fatal("expected claims for demo OOM scenario")
+		t.Fatal("expected claims for OOM fixture")
 	}
 	if claims[0].confidence <= 0 {
 		t.Fatalf("primary claim should have confidence, got %v", claims[0].confidence)
@@ -42,7 +42,7 @@ func TestFinalReportClaims(t *testing.T) {
 }
 
 func TestFinalReportNoLogGroups(t *testing.T) {
-	st := engine.DemoState()
+	st := engine.FixtureState()
 	groups := collectEvidenceGroups(st)
 	if _, ok := groups["Log Findings"]; ok {
 		t.Fatal("final report should not have Log Findings group")
@@ -53,15 +53,15 @@ func TestFinalReportNoLogGroups(t *testing.T) {
 }
 
 func TestInvestigationGapsDeterministic(t *testing.T) {
-	st := engine.DemoState()
+	st := engine.FixtureState()
 	gaps := realInvestigationGaps(st)
 	if len(gaps) == 0 {
-		t.Fatalf("expected gaps in demo when permissions limited, got %v", gaps)
+		t.Fatalf("expected gaps in fixture when permissions limited, got %v", gaps)
 	}
 }
 
 func TestConfidenceTimelineMonotonic(t *testing.T) {
-	st := engine.DemoState()
+	st := engine.FixtureState()
 	steps := buildConfidenceTimeline(st)
 	if len(steps) < 2 {
 		t.Fatalf("expected timeline steps, got %d", len(steps))

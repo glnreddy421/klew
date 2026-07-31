@@ -15,7 +15,7 @@ var (
 	logoTagStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Italic(true)
 )
 
-// RenderLaunchBanner returns the large KLEW logo for startup / demo intro.
+// RenderLaunchBanner returns the large KLEW logo for startup.
 func RenderLaunchBanner(width int) string {
 	lines := []string{
 		padCenter(logoAccentStyle.Render("◈"), width),

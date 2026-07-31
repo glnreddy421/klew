@@ -6,9 +6,9 @@ import (
 	"github.com/glnreddy421/klew/internal/model"
 )
 
-// DemoState returns a rich, hand-crafted InvestigationState so the TUI can be
-// explored without a live cluster. It reproduces a payment-api OOM incident.
-func DemoState() model.InvestigationState {
+// FixtureState returns a rich hand-crafted InvestigationState for tests and
+// static TUI previews. It reproduces a payment-api OOM incident.
+func FixtureState() model.InvestigationState {
 	now := time.Now()
 	at := func(hh, mm, ss int) model.Timestamp {
 		return model.TimestampFrom(time.Date(now.Year(), now.Month(), now.Day(), hh, mm, ss, 0, time.Local))
@@ -74,12 +74,12 @@ func DemoState() model.InvestigationState {
 		},
 		ConfigRefs: []model.ResourceRef{{Kind: "ConfigMap", Name: "payment-config", Namespace: "payments", UsedBy: "payment-api"}},
 		SecretRefs: []model.ResourceRef{{Kind: "Secret", Name: "payment-secret", Namespace: "payments", UsedBy: "payment-api"}},
-		Events:     demoEvents(at),
+		Events:     fixtureEvents(at),
 		Metrics: model.MetricsSummary{
 			Available: true, CPURequestM: 1500, CPULimitM: 2500, CPUUsageM: 900,
 			MemRequestMi: 2560, MemLimitMi: 2560, MemUsageMi: 2410,
 		},
-		Permissions: demoPermissions(),
+		Permissions: fixturePermissions(),
 		Warnings:    []string{"nodes get: permission denied — node pressure details limited"},
 	}
 
@@ -92,8 +92,8 @@ func DemoState() model.InvestigationState {
 	st.MatchedObjects = []model.MatchedObject{{Ref: model.ObjectRef{Kind: "Deployment", Name: "payment-api", Namespace: "payments"}, MatchBy: "name", Score: 1}}
 	st.Permissions = bundle.Permissions
 	st.Warnings = bundle.Warnings
-	st.Timeline = demoTimeline(at)
-	st.LiveEvidence = demoStream(at)
+	st.Timeline = fixtureTimeline(at)
+	st.LiveEvidence = fixtureStream(at)
 	st.WorkloadGraph = model.WorkloadGraph{
 		Health: "critical",
 		PropagationPath: []string{
@@ -103,7 +103,7 @@ func DemoState() model.InvestigationState {
 			"Service/payment-api → endpoints dropped 5 → 2",
 		},
 	}
-	st.Verdict = demoVerdict()
+	st.Verdict = fixtureVerdict()
 	st.HypothesisLabel = "Memory regression after rollout"
 	st.HypothesisReasons = []string{"OOMKilled ×12", "Memory allocation failures ×18", "New ReplicaSet"}
 	st.HypothesisStatus = "Confirmed"
@@ -115,11 +115,11 @@ func DemoState() model.InvestigationState {
 	st.NextChecks = nextChecksFor("OOMKilled", bundle)
 	st.Correlation = []string{"✓ Rollout preceded failures", "✓ Memory logs precede OOM", "✓ Endpoint loss followed OOM"}
 	st.Counters = model.StreamCounters{EventsIngested: 27, LogsIngested: 143, ObjectChanges: 19, MetricSamples: 8, LastEventAt: at(9, 42, 10)}
-	st.ActiveWatches = demoWatches(at(9, 38, 0))
+	st.ActiveWatches = fixtureWatches(at(9, 38, 0))
 	return st
 }
 
-func demoEvents(at func(int, int, int) model.Timestamp) []model.EventRecord {
+func fixtureEvents(at func(int, int, int) model.Timestamp) []model.EventRecord {
 	obj := func(name string) model.ObjectRef { return model.ObjectRef{Kind: "Pod", Name: name, Namespace: "payments"} }
 	return []model.EventRecord{
 		{Timestamp: at(9, 40, 2), Type: "Normal", Reason: "Scheduled", Count: 3, Message: "assigned to ip-10-0-4-13", InvolvedObject: obj("payment-77c9-c3")},
@@ -130,7 +130,7 @@ func demoEvents(at func(int, int, int) model.Timestamp) []model.EventRecord {
 	}
 }
 
-func demoTimeline(at func(int, int, int) model.Timestamp) []model.TimelineEvent {
+func fixtureTimeline(at func(int, int, int) model.Timestamp) []model.TimelineEvent {
 	return []model.TimelineEvent{
 		{Timestamp: at(9, 38, 22), Type: "deploy", Severity: model.SeverityInfo, SourceKind: "Deployment", SourceName: "deployment/payment-api", Message: "revision 42 started"},
 		{Timestamp: at(9, 38, 31), Type: "rs", Severity: model.SeverityInfo, SourceKind: "ReplicaSet", SourceName: "replicaset/payment-77c9", Message: "created"},
@@ -145,7 +145,7 @@ func demoTimeline(at func(int, int, int) model.Timestamp) []model.TimelineEvent 
 	}
 }
 
-func demoStream(at func(int, int, int) model.Timestamp) []model.EvidenceEvent {
+func fixtureStream(at func(int, int, int) model.Timestamp) []model.EvidenceEvent {
 	return []model.EvidenceEvent{
 		{Timestamp: at(9, 42, 10), SourceType: model.SourceK8sEvent, SourceKind: "Pod", SourceName: "payment-77c9", Pod: "payment-77c9", Severity: model.SeverityCritical, Reason: "OOMKilled", Message: "container exceeded memory limit"},
 		{Timestamp: at(9, 42, 9), SourceType: model.SourceLog, SourceKind: "Pod", SourceName: "payment-77c9", Pod: "payment-77c9", Container: "app", Severity: model.SeverityCritical, Reason: "ERROR", Message: "redis connection timeout", Raw: "ERROR redis connection timeout"},
@@ -157,7 +157,7 @@ func demoStream(at func(int, int, int) model.Timestamp) []model.EvidenceEvent {
 	}
 }
 
-func demoVerdict() model.Verdict {
+func fixtureVerdict() model.Verdict {
 	return model.Verdict{
 		Status:        model.VerdictCritical,
 		LeadingSignal: "OOMKilled",
@@ -186,7 +186,7 @@ func demoVerdict() model.Verdict {
 	}
 }
 
-func demoPermissions() []model.PermissionCheck {
+func fixturePermissions() []model.PermissionCheck {
 	allow := func(res, verb string, ok bool) model.PermissionCheck {
 		return model.PermissionCheck{Resource: res, Verb: verb, Namespace: "payments", Allowed: ok}
 	}
@@ -201,7 +201,7 @@ func demoPermissions() []model.PermissionCheck {
 	return out
 }
 
-func demoWatches(start model.Timestamp) []model.ActiveWatch {
+func fixtureWatches(start model.Timestamp) []model.ActiveWatch {
 	names := []string{"pods", "deployments", "replicasets", "services", "endpointslices", "events", "logs:payment-77c9", "logs:payment-52aa"}
 	var out []model.ActiveWatch
 	for _, n := range names {

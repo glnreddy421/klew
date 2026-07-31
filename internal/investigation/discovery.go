@@ -6,7 +6,7 @@ import (
 )
 
 // Object is one namespace-scoped Kubernetes object as seen by the discovery
-// engine. Collectors (live client-go or demo) populate a Dataset of these;
+// engine. Collectors populate a Dataset of these;
 // discovery and scope building operate purely on this in-memory view so that
 // nothing downstream ever talks to Kubernetes directly.
 type Object struct {

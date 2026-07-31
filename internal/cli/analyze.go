@@ -21,7 +21,6 @@ var (
 	analyzeNoTUI bool
 	tailFlag     int
 	refreshFlag  string
-	demoFlag     bool
 )
 
 var analyzeCmd = &cobra.Command{
@@ -35,7 +34,6 @@ func addLiveFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&analyzeNoTUI, "no-tui", false, "print summary instead of TUI")
 	cmd.Flags().IntVar(&tailFlag, "tail", 200, "log tail lines per container")
 	cmd.Flags().StringVar(&refreshFlag, "refresh", "10s", "cluster snapshot auto-refresh interval (0 or off to disable)")
-	cmd.Flags().BoolVar(&demoFlag, "demo", false, "run a fully simulated investigation (no cluster)")
 }
 
 func init() {
@@ -75,10 +73,6 @@ func liveOpts(query, ns string, allNS bool, tail int) (engine.LiveOptions, error
 
 func runLiveInvestigation(cmd *cobra.Command, args []string) error {
 	query := args[0]
-
-	if demoFlag {
-		return demoCmd.RunE(cmd, args)
-	}
 
 	noTUI := analyzeNoTUI
 

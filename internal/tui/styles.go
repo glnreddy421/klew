@@ -17,7 +17,22 @@ var (
 	Warning     = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
 	Healthy     = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
 	Muted       = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+
+	okStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("114"))
+	headStyleTUI = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("252"))
+	selArrow     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("81"))
+	selRow       = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("81"))
 )
+
+var discoverySources = []string{
+	"Deployments", "ReplicaSets", "Pods", "Services", "Events",
+	"Logs", "EndpointSlices", "ConfigMaps", "Secrets", "Metrics",
+}
+
+var scopeBuildSteps = []string{
+	"Deployment", "ReplicaSets", "Pods", "Services", "EndpointSlices",
+	"Events", "Logs", "ConfigMaps", "Secrets", "Metrics",
+}
 
 // Tab IDs for investigation views (K8s-native, not log-analyzer tabs).
 type Tab int

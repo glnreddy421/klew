@@ -15,7 +15,7 @@ type appModel struct {
 	ctx     context.Context
 	st      invmodel.InvestigationState
 	ui      uiState
-	session liveSession // nil in bundle/demo mode
+	session liveSession // nil in bundle mode
 }
 
 func newLiveModel(ctx context.Context, session liveSession, mode invmodel.Mode) appModel {

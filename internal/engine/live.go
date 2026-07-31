@@ -126,7 +126,7 @@ func StartLive(ctx context.Context, client *kube.Client, opts LiveOptions) (*Liv
 
 func (s *LiveSession) State() model.InvestigationState { return s.Reducer.State() }
 
-// Client returns the live Kubernetes client (nil for demo/mock sessions).
+// Client returns the live Kubernetes client (nil when no cluster is attached).
 func (s *LiveSession) Client() *kube.Client {
 	if s == nil {
 		return nil
