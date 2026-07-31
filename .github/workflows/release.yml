@@ -29,7 +29,7 @@ jobs:
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
 
       - name: Build release packages
-        run: ./scripts/package-macos.sh
+        run: ./.github/scripts/package-macos.sh
         env:
           VERSION: ${{ github.ref_name }}
           APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
@@ -46,7 +46,7 @@ jobs:
           generate_release_notes: true
 
       - name: Update Homebrew tap
-        run: ./scripts/update-homebrew-tap.sh
+        run: ./.github/scripts/update-homebrew-tap.sh
         env:
           GITHUB_REF_NAME: ${{ github.ref_name }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}

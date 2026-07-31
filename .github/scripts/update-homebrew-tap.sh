@@ -2,7 +2,8 @@
 # Bump glnreddy421/homebrew-klew after a macOS release zip is built.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TAG="${GITHUB_REF_NAME:?GITHUB_REF_NAME is required (e.g. v0.1.4)}"
 VERSION="${TAG#v}"
 ARCH="${ARCH:-arm64}"
