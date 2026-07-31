@@ -1,4 +1,4 @@
-.PHONY: build install install-cli test tidy desktop desktop-dev install-desktop-tools run-ctx run-view
+.PHONY: build install install-cli test tidy desktop desktop-dev install-desktop-tools release-macos run-ctx run-view
 
 VERSION ?= 0.1.0
 COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
@@ -25,6 +25,9 @@ install-desktop-tools:
 
 desktop:
 	cd cmd/klew-desktop && npm install --prefix frontend && npm run build --prefix frontend && $(WAILS) build
+
+release-macos:
+	VERSION=$(VERSION) ./scripts/package-macos.sh
 
 desktop-dev:
 	@test -x "$(WAILS)" || (echo "Wails not found. Run: make install-desktop-tools" && exit 1)

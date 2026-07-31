@@ -26,3 +26,4 @@ cmd/klew-desktop/frontend/node_modules/
 coverage.out
 /tmp/
 /klew-desktop
+dist/
