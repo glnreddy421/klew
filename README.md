@@ -12,32 +12,11 @@ Klew continuously combines Kubernetes workload state, events, and multi-pod logs
 
 Requires macOS and a kubeconfig for live investigations (`~/.kube/config`).
 
-### Homebrew
-
 ```bash
 brew tap glnreddy421/klew
+brew trust glnreddy421/klew
 brew install klew
 open "$(brew --prefix)/opt/klew/Klew.app"
-```
-
-Before the tap is published, from a clone:
-
-```bash
-brew install ./packaging/homebrew/klew.rb
-open "$(brew --prefix)/opt/klew/Klew.app"
-```
-
-### Go install
-
-```bash
-go install github.com/glnreddy421/klew/cmd/klew-desktop@latest
-```
-
-Ensure `$(go env GOPATH)/bin` is on your `PATH` (add to `~/.zshrc` if needed):
-
-```bash
-export PATH="$(go env GOPATH)/bin:$PATH"
-klew-desktop
 ```
 
 ## Build from source
