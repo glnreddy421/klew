@@ -25,3 +25,4 @@ cmd/klew-desktop/frontend/node_modules/
 *.log
 coverage.out
 /tmp/
+/klew-desktop
