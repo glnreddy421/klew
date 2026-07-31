@@ -1,0 +1,113 @@
+{
+  "format": "klew.bundle.v1",
+  "bundle": {
+    "collectedAt": "2026-07-08T12:00:00Z",
+    "kubeContext": {
+      "context": "demo",
+      "cluster": "demo-cluster",
+      "user": "demo-user",
+      "namespace": "prod"
+    },
+    "namespace": "prod",
+    "query": "payment",
+    "matchedObjects": [
+      {
+        "ref": { "kind": "Deployment", "name": "payment", "namespace": "prod" },
+        "matchBy": "name",
+        "score": 1
+      }
+    ],
+    "workloads": [
+      {
+        "kind": "Deployment",
+        "name": "payment",
+        "namespace": "prod",
+        "replicas": 3,
+        "ready": 1,
+        "available": 1,
+        "updated": 3
+      }
+    ],
+    "pods": [
+      {
+        "name": "payment-7d8f9-abc",
+        "namespace": "prod",
+        "phase": "Running",
+        "ready": false,
+        "restartCount": 5,
+        "node": "node-1",
+        "createdAt": "2026-07-08T11:55:00Z",
+        "containers": [
+          {
+            "podName": "payment-7d8f9-abc",
+            "name": "payment",
+            "image": "payment:1.2.3",
+            "ready": false,
+            "restartCount": 5,
+            "state": "waiting",
+            "reason": "CrashLoopBackOff",
+            "lastState": "terminated",
+            "lastReason": "OOMKilled",
+            "lastExitCode": 137
+          }
+        ]
+      }
+    ],
+    "replicaSets": [
+      {
+        "name": "payment-7d8f9",
+        "namespace": "prod",
+        "replicas": 3,
+        "ready": 1,
+        "deploymentOwner": "payment",
+        "createdAt": "2026-07-08T11:50:00Z"
+      }
+    ],
+    "services": [
+      {
+        "name": "payment",
+        "namespace": "prod",
+        "type": "ClusterIP",
+        "clusterIP": "10.96.0.10",
+        "selector": "app=payment",
+        "readyEndpoints": 0,
+        "totalEndpoints": 0
+      }
+    ],
+    "events": [
+      {
+        "timestamp": "2026-07-08T11:58:00Z",
+        "type": "Warning",
+        "reason": "BackOff",
+        "message": "Back-off restarting failed container payment in pod payment-7d8f9-abc",
+        "count": 3,
+        "involvedObject": { "kind": "Pod", "name": "payment-7d8f9-abc", "namespace": "prod" }
+      },
+      {
+        "timestamp": "2026-07-08T11:57:30Z",
+        "type": "Warning",
+        "reason": "OOMKilling",
+        "message": "Memory cgroup out of memory: Killed process",
+        "count": 1,
+        "involvedObject": { "kind": "Pod", "name": "payment-7d8f9-abc", "namespace": "prod" }
+      }
+    ],
+    "logs": [],
+    "previousLogs": [],
+    "nodes": [
+      {
+        "name": "node-1",
+        "ready": true,
+        "memoryPressure": false,
+        "diskPressure": false,
+        "pidPressure": false
+      }
+    ],
+    "hpas": [],
+    "configRefs": [],
+    "secretRefs": [],
+    "pvcRefs": [],
+    "permissions": [],
+    "warnings": ["Missing permission: pods/log get"]
+  }
+}
