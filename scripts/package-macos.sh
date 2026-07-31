@@ -27,7 +27,14 @@ npm run build --prefix frontend
 wails build -clean -ldflags "$LDFLAGS"
 
 APP="build/bin/Klew.app"
-test -d "$APP"
+if [[ ! -d "$APP" ]]; then
+  APP="$(find build/bin -maxdepth 1 -name '*.app' -print -quit)"
+fi
+if [[ -z "${APP:-}" || ! -d "$APP" ]]; then
+  echo "wails build did not produce a .app bundle under build/bin" >&2
+  ls -la build/bin >&2 || true
+  exit 1
+fi
 
 DIST="$ROOT/dist"
 mkdir -p "$DIST"
@@ -36,13 +43,15 @@ ARCH="$(uname -m)"
 ZIP="$DIST/Klew-${VERSION}-macos-${ARCH}.zip"
 DMG="$DIST/Klew-${VERSION}-macos-${ARCH}.dmg"
 
-ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
-
-DMG_STAGING="$(mktemp -d)"
-cleanup() { rm -rf "$DMG_STAGING"; }
+PKG_STAGING="$(mktemp -d)"
+cleanup() { rm -rf "$PKG_STAGING" "$DMG_STAGING"; }
 trap cleanup EXIT
 
-cp -R "$APP" "$DMG_STAGING/"
+cp -R "$APP" "$PKG_STAGING/Klew.app"
+ditto -c -k --sequesterRsrc --keepParent "$PKG_STAGING/Klew.app" "$ZIP"
+
+DMG_STAGING="$(mktemp -d)"
+cp -R "$PKG_STAGING/Klew.app" "$DMG_STAGING/"
 ln -s /Applications "$DMG_STAGING/Applications"
 hdiutil create -volname "Klew" -srcfolder "$DMG_STAGING" -ov -format UDZO "$DMG"
 
