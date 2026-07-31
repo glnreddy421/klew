@@ -39,7 +39,7 @@ func (col *Collector) Collect(ctx context.Context, opts CollectOptions) (model.E
 		ns = col.Client.Namespace
 	}
 	bundle := model.EvidenceBundle{
-		CollectedAt: time.Now().UTC(),
+		CollectedAt: model.TimestampFrom(time.Now().UTC()),
 		Namespace:   ns,
 		Query:       opts.Query,
 		KubeContext: model.KubeContext{
@@ -238,7 +238,7 @@ func summarizeRS(rs appsv1.ReplicaSet) model.ReplicaSetSummary {
 		Replicas:        deref32(rs.Spec.Replicas),
 		Ready:           rs.Status.ReadyReplicas,
 		DeploymentOwner: owner,
-		CreatedAt:       rs.CreationTimestamp.Time,
+		CreatedAt:       model.TimestampFrom(rs.CreationTimestamp.Time),
 	}
 }
 
@@ -251,7 +251,7 @@ func summarizePod(pod corev1.Pod) model.PodSummary {
 		Phase:       string(pod.Status.Phase),
 		Labels:      pod.Labels,
 		Annotations: pod.Annotations,
-		CreatedAt:   pod.CreationTimestamp.Time,
+		CreatedAt:   model.TimestampFrom(pod.CreationTimestamp.Time),
 	}
 	for _, o := range pod.OwnerReferences {
 		ps.OwnerRefs = append(ps.OwnerRefs, model.ObjectRef{Kind: o.Kind, Name: o.Name, UID: string(o.UID)})
@@ -299,8 +299,7 @@ func containerFromStatus(podName string, cs corev1.ContainerStatus, pod corev1.P
 	}
 	if cs.State.Running != nil {
 		out.State = "running"
-		t := cs.State.Running.StartedAt.Time
-		out.StartedAt = &t
+		out.StartedAt = model.TimestampPtrFrom(&cs.State.Running.StartedAt.Time)
 	} else if cs.State.Waiting != nil {
 		out.State = "waiting"
 		out.Reason = cs.State.Waiting.Reason
@@ -308,8 +307,7 @@ func containerFromStatus(podName string, cs corev1.ContainerStatus, pod corev1.P
 		out.State = "terminated"
 		out.Reason = cs.State.Terminated.Reason
 		out.ExitCode = cs.State.Terminated.ExitCode
-		t := cs.State.Terminated.FinishedAt.Time
-		out.FinishedAt = &t
+		out.FinishedAt = model.TimestampPtrFrom(&cs.State.Terminated.FinishedAt.Time)
 	}
 	if cs.LastTerminationState.Terminated != nil {
 		out.LastState = "terminated"

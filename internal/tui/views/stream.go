@@ -168,7 +168,7 @@ func streamGroupKey(e model.EvidenceEvent, obj string) string {
 type streamRun struct {
 	ev    model.EvidenceEvent
 	count int
-	last  time.Time
+	last  model.Timestamp
 }
 
 func foldStreamRuns(evs []model.EvidenceEvent) []streamRun {
@@ -197,7 +197,7 @@ func streamFoldKey(e model.EvidenceEvent) string {
 }
 
 func renderStreamRow(e model.EvidenceEvent, typ, obj, msg string, width int, st model.InvestigationState) string {
-	ts := e.Timestamp.Format("15:04:05")
+	ts := e.Timestamp.Time().Format("15:04:05")
 	if isFreshEvidence(e, st) {
 		ts = freshStyle.Render(ts)
 	} else {
@@ -235,7 +235,7 @@ func isFreshEvidence(e model.EvidenceEvent, st model.InvestigationState) bool {
 	if ref.IsZero() {
 		return false
 	}
-	age := ref.Sub(e.Timestamp)
+	age := ref.Time().Sub(e.Timestamp.Time())
 	return age >= 0 && age <= 12*time.Second
 }
 

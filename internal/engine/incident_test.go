@@ -9,7 +9,7 @@ import (
 
 func applyMock(store *StateStore, e mockEmit) {
 	store.ApplyEvent(model.EvidenceEvent{
-		Timestamp: time.Now(), SourceType: e.sourceType, SourceKind: e.kind, SourceName: e.name,
+		Timestamp: model.TimestampFrom(time.Now()), SourceType: e.sourceType, SourceKind: e.kind, SourceName: e.name,
 		Namespace: "prod", Pod: e.pod, Container: e.ctr, Severity: e.severity,
 		Reason: e.reason, Message: e.message, Raw: e.message, Confidence: 0.8,
 	})

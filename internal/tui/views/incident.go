@@ -231,7 +231,7 @@ func recentChangeLines(st model.InvestigationState, cw int) []string {
 			add("Revision", rc.RevisionTo)
 		}
 		if !rc.DeployedAt.IsZero() {
-			add("Deployed", humanizeAgo(time.Since(rc.DeployedAt)))
+			add("Deployed", humanizeAgo(time.Since(rc.DeployedAt.Time())))
 		}
 		add("Image", rc.Image)
 		return out

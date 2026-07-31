@@ -1,8 +1,6 @@
 package api
 
 import (
-	"time"
-
 	"github.com/glnreddy421/klew/internal/engine"
 	"github.com/glnreddy421/klew/internal/model"
 	"github.com/glnreddy421/klew/internal/render"
@@ -28,7 +26,7 @@ type View struct {
 	WatchNote         string                 `json:"watchNote"`
 	HypothesisChanges int                    `json:"hypothesisChanges"`
 	Dropped           int64                  `json:"dropped"`
-	UpdatedAt         time.Time              `json:"updatedAt"`
+	UpdatedAt         model.Timestamp          `json:"updatedAt"`
 	State             model.InvestigationState `json:"state"`
 	Graph             render.GraphLayout     `json:"graph"`
 }
@@ -62,7 +60,7 @@ func Build(st model.InvestigationState) View {
 		WatchNote:         st.WatchNote,
 		HypothesisChanges: st.HypothesisChanges,
 		Dropped:           st.DroppedEvidence,
-		UpdatedAt:         st.LastUpdatedAt,
+		UpdatedAt:         model.TimestampFrom(st.LastUpdatedAt.Time()),
 		State:             CapState(st),
 		Graph:             render.LayoutGraph(st.WorkloadGraph),
 	}

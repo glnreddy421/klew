@@ -162,7 +162,7 @@ func TestMaxClustersBound(t *testing.T) {
 
 func logEv(pod, container, msg string, sev model.Severity, ts time.Time) model.EvidenceEvent {
 	return model.EvidenceEvent{
-		Timestamp:  ts,
+		Timestamp:  model.TimestampFrom(ts),
 		SourceType: model.SourceLog,
 		Pod:        pod,
 		Container:  container,

@@ -42,7 +42,7 @@ func (col *Collector) fetchLogs(ctx context.Context, ns, pod, container string, 
 		Previous:      previous,
 		Lines:         lines,
 		Truncated:     truncated,
-		CollectedAt:   time.Now().UTC(),
+		CollectedAt:   model.TimestampFrom(time.Now().UTC()),
 	}, sc.Err()
 }
 

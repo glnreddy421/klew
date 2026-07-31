@@ -151,9 +151,9 @@ func mineLogs(events []model.EvidenceEvent, opts Options) mineHalf {
 		if res != nil && res.Cluster != nil {
 			meta.Observe(res.Cluster.ClusterID, weight, e, raw)
 		}
-		wordDocs = append(wordDocs, tfDoc{tokens: tokenizeWords(raw), ts: e.Timestamp, weight: weight})
+		wordDocs = append(wordDocs, tfDoc{tokens: tokenizeWords(raw), ts: e.Timestamp.Time(), weight: weight})
 		if fields := extractAttributes(raw); len(fields) > 0 {
-			fieldDocs = append(fieldDocs, tfDoc{tokens: fields, ts: e.Timestamp, weight: weight})
+			fieldDocs = append(fieldDocs, tfDoc{tokens: fields, ts: e.Timestamp.Time(), weight: weight})
 		}
 	}
 
@@ -234,9 +234,9 @@ func mineEvents(events []model.EvidenceEvent, opts Options) mineHalf {
 		if res != nil && res.Cluster != nil {
 			meta.Observe(res.Cluster.ClusterID, weight, metaEv, line)
 		}
-		wordDocs = append(wordDocs, tfDoc{tokens: tokenizeWords(line), ts: e.Timestamp, weight: weight})
+		wordDocs = append(wordDocs, tfDoc{tokens: tokenizeWords(line), ts: e.Timestamp.Time(), weight: weight})
 		if reason := strings.TrimSpace(e.Reason); reason != "" {
-			reasonDocs = append(reasonDocs, tfDoc{tokens: []string{reason}, ts: e.Timestamp, weight: weight})
+			reasonDocs = append(reasonDocs, tfDoc{tokens: []string{reason}, ts: e.Timestamp.Time(), weight: weight})
 		}
 	}
 

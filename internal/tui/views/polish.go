@@ -152,11 +152,11 @@ func EvidenceCount(st model.InvestigationState) int {
 
 // InvestigationDuration formats elapsed investigation time.
 func InvestigationDuration(st model.InvestigationState) string {
-	start := st.CollectedAt
+	start := st.CollectedAt.Time()
 	if start.IsZero() {
-		start = st.Snapshot.CollectedAt
+		start = st.Snapshot.CollectedAt.Time()
 	}
-	end := st.LastUpdatedAt
+	end := st.LastUpdatedAt.Time()
 	if end.IsZero() {
 		end = time.Now()
 	}
@@ -177,7 +177,7 @@ func HeaderMetaLine(st model.InvestigationState) string {
 		fmt.Sprintf("evidence=%d", EvidenceCount(st)),
 	}
 	if st.Mode == model.ModeLive && !st.Snapshot.CollectedAt.IsZero() {
-		parts = append(parts, "snapshot="+formatAge(time.Since(st.Snapshot.CollectedAt)))
+		parts = append(parts, "snapshot="+formatAge(time.Since(st.Snapshot.CollectedAt.Time())))
 	}
 	if st.HypothesisChanges > 0 {
 		parts = append(parts, fmt.Sprintf("hypothesis_rev=%d", st.HypothesisChanges))

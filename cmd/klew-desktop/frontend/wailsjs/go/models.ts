@@ -19,8 +19,7 @@ export namespace api {
 	    watchNote: string;
 	    hypothesisChanges: number;
 	    dropped: number;
-	    // Go type: time
-	    updatedAt: any;
+	    updatedAt: string;
 	    state: model.InvestigationState;
 	    graph: render.GraphLayout;
 	
@@ -48,7 +47,7 @@ export namespace api {
 	        this.watchNote = source["watchNote"];
 	        this.hypothesisChanges = source["hypothesisChanges"];
 	        this.dropped = source["dropped"];
-	        this.updatedAt = this.convertValues(source["updatedAt"], null);
+	        this.updatedAt = source["updatedAt"];
 	        this.state = this.convertValues(source["state"], model.InvestigationState);
 	        this.graph = this.convertValues(source["graph"], render.GraphLayout);
 	    }
@@ -476,8 +475,7 @@ export namespace kube {
 	    user: string;
 	    contexts: ContextOption[];
 	    namespaces: string[];
-	    // Go type: time
-	    syncedAt: any;
+	    syncedAt: string;
 	    syncError?: string;
 	
 	    static createFrom(source: any = {}) {
@@ -494,7 +492,7 @@ export namespace kube {
 	        this.user = source["user"];
 	        this.contexts = this.convertValues(source["contexts"], ContextOption);
 	        this.namespaces = source["namespaces"];
-	        this.syncedAt = this.convertValues(source["syncedAt"], null);
+	        this.syncedAt = source["syncedAt"];
 	        this.syncError = source["syncError"];
 	    }
 	
@@ -596,8 +594,7 @@ export namespace model {
 	    name: string;
 	    resource: string;
 	    namespace?: string;
-	    // Go type: time
-	    startedAt: any;
+	    startedAt: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new ActiveWatch(source);
@@ -608,26 +605,8 @@ export namespace model {
 	        this.name = source["name"];
 	        this.resource = source["resource"];
 	        this.namespace = source["namespace"];
-	        this.startedAt = this.convertValues(source["startedAt"], null);
+	        this.startedAt = source["startedAt"];
 	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
 	}
 	export class ContainerStatus {
 	    podName: string;
@@ -638,10 +617,8 @@ export namespace model {
 	    state: string;
 	    reason?: string;
 	    exitCode?: number;
-	    // Go type: time
-	    startedAt?: any;
-	    // Go type: time
-	    finishedAt?: any;
+	    startedAt?: string;
+	    finishedAt?: string;
 	    lastState?: string;
 	    lastReason?: string;
 	    lastExitCode?: number;
@@ -666,8 +643,8 @@ export namespace model {
 	        this.state = source["state"];
 	        this.reason = source["reason"];
 	        this.exitCode = source["exitCode"];
-	        this.startedAt = this.convertValues(source["startedAt"], null);
-	        this.finishedAt = this.convertValues(source["finishedAt"], null);
+	        this.startedAt = source["startedAt"];
+	        this.finishedAt = source["finishedAt"];
 	        this.lastState = source["lastState"];
 	        this.lastReason = source["lastReason"];
 	        this.lastExitCode = source["lastExitCode"];
@@ -678,24 +655,6 @@ export namespace model {
 	        this.command = source["command"];
 	        this.args = source["args"];
 	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
 	}
 	export class ObjectRef {
 	    kind: string;
@@ -716,8 +675,7 @@ export namespace model {
 	    }
 	}
 	export class EventRecord {
-	    // Go type: time
-	    timestamp: any;
+	    timestamp: string;
 	    type: string;
 	    reason: string;
 	    message: string;
@@ -731,7 +689,7 @@ export namespace model {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.timestamp = this.convertValues(source["timestamp"], null);
+	        this.timestamp = source["timestamp"];
 	        this.type = source["type"];
 	        this.reason = source["reason"];
 	        this.message = source["message"];
@@ -786,8 +744,7 @@ export namespace model {
 	    message: string;
 	    pod: string;
 	    container: string;
-	    // Go type: time
-	    timestamp: any;
+	    timestamp: string;
 	    severity: string;
 	
 	    static createFrom(source: any = {}) {
@@ -799,27 +756,9 @@ export namespace model {
 	        this.message = source["message"];
 	        this.pod = source["pod"];
 	        this.container = source["container"];
-	        this.timestamp = this.convertValues(source["timestamp"], null);
+	        this.timestamp = source["timestamp"];
 	        this.severity = source["severity"];
 	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
 	}
 	export class LogTemplate {
 	    id: string;
@@ -1079,8 +1018,7 @@ export namespace model {
 	    previous: boolean;
 	    lines: string[];
 	    truncated: boolean;
-	    // Go type: time
-	    collectedAt: any;
+	    collectedAt: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new LogRecord(source);
@@ -1093,26 +1031,8 @@ export namespace model {
 	        this.previous = source["previous"];
 	        this.lines = source["lines"];
 	        this.truncated = source["truncated"];
-	        this.collectedAt = this.convertValues(source["collectedAt"], null);
+	        this.collectedAt = source["collectedAt"];
 	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
 	}
 	export class IngressSummary {
 	    name: string;
@@ -1164,8 +1084,7 @@ export namespace model {
 	    replicas: number;
 	    ready: number;
 	    deploymentOwner?: string;
-	    // Go type: time
-	    createdAt: any;
+	    createdAt: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new ReplicaSetSummary(source);
@@ -1178,26 +1097,8 @@ export namespace model {
 	        this.replicas = source["replicas"];
 	        this.ready = source["ready"];
 	        this.deploymentOwner = source["deploymentOwner"];
-	        this.createdAt = this.convertValues(source["createdAt"], null);
+	        this.createdAt = source["createdAt"];
 	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
 	}
 	export class PodSummary {
 	    name: string;
@@ -1211,8 +1112,7 @@ export namespace model {
 	    ownerRefs?: ObjectRef[];
 	    labels?: Record<string, string>;
 	    annotations?: Record<string, string>;
-	    // Go type: time
-	    createdAt: any;
+	    createdAt: string;
 	    configMapRefs?: string[];
 	    secretRefs?: string[];
 	    pvcRefs?: string[];
@@ -1235,7 +1135,7 @@ export namespace model {
 	        this.ownerRefs = this.convertValues(source["ownerRefs"], ObjectRef);
 	        this.labels = source["labels"];
 	        this.annotations = source["annotations"];
-	        this.createdAt = this.convertValues(source["createdAt"], null);
+	        this.createdAt = source["createdAt"];
 	        this.configMapRefs = source["configMapRefs"];
 	        this.secretRefs = source["secretRefs"];
 	        this.pvcRefs = source["pvcRefs"];
@@ -1371,8 +1271,7 @@ export namespace model {
 	    }
 	}
 	export class EvidenceBundle {
-	    // Go type: time
-	    collectedAt: any;
+	    collectedAt: string;
 	    kubeContext: KubeContext;
 	    namespace: string;
 	    query: string;
@@ -1402,7 +1301,7 @@ export namespace model {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.collectedAt = this.convertValues(source["collectedAt"], null);
+	        this.collectedAt = source["collectedAt"];
 	        this.kubeContext = this.convertValues(source["kubeContext"], KubeContext);
 	        this.namespace = source["namespace"];
 	        this.query = source["query"];
@@ -1448,8 +1347,7 @@ export namespace model {
 	
 	export class EvidenceEvent {
 	    id: string;
-	    // Go type: time
-	    timestamp: any;
+	    timestamp: string;
 	    sourceType: string;
 	    sourceKind?: string;
 	    sourceName?: string;
@@ -1475,7 +1373,7 @@ export namespace model {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
-	        this.timestamp = this.convertValues(source["timestamp"], null);
+	        this.timestamp = source["timestamp"];
 	        this.sourceType = source["sourceType"];
 	        this.sourceKind = source["sourceKind"];
 	        this.sourceName = source["sourceName"];
@@ -1716,8 +1614,7 @@ export namespace model {
 	    logsIngested: number;
 	    objectChanges: number;
 	    metricSamples: number;
-	    // Go type: time
-	    lastEventAt: any;
+	    lastEventAt: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new StreamCounters(source);
@@ -1729,26 +1626,8 @@ export namespace model {
 	        this.logsIngested = source["logsIngested"];
 	        this.objectChanges = source["objectChanges"];
 	        this.metricSamples = source["metricSamples"];
-	        this.lastEventAt = this.convertValues(source["lastEventAt"], null);
+	        this.lastEventAt = source["lastEventAt"];
 	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
 	}
 	export class Signal {
 	    id: string;
@@ -1853,8 +1732,7 @@ export namespace model {
 		}
 	}
 	export class TimelineEvent {
-	    // Go type: time
-	    timestamp: any;
+	    timestamp: string;
 	    type: string;
 	    severity: string;
 	    sourceKind: string;
@@ -1872,7 +1750,7 @@ export namespace model {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.timestamp = this.convertValues(source["timestamp"], null);
+	        this.timestamp = source["timestamp"];
 	        this.type = source["type"];
 	        this.severity = source["severity"];
 	        this.sourceKind = source["sourceKind"];
@@ -1944,8 +1822,7 @@ export namespace model {
 	export class RecentChange {
 	    revisionFrom?: string;
 	    revisionTo?: string;
-	    // Go type: time
-	    deployedAt?: any;
+	    deployedAt?: string;
 	    image?: string;
 	    helmRelease?: string;
 	    helmRevision?: string;
@@ -1961,7 +1838,7 @@ export namespace model {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.revisionFrom = source["revisionFrom"];
 	        this.revisionTo = source["revisionTo"];
-	        this.deployedAt = this.convertValues(source["deployedAt"], null);
+	        this.deployedAt = source["deployedAt"];
 	        this.image = source["image"];
 	        this.helmRelease = source["helmRelease"];
 	        this.helmRevision = source["helmRevision"];
@@ -1969,24 +1846,6 @@ export namespace model {
 	        this.syncState = source["syncState"];
 	        this.rolloutStatus = source["rolloutStatus"];
 	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
 	}
 	export class NamespaceScope {
 	    allNamespaces: boolean;
@@ -2005,10 +1864,8 @@ export namespace model {
 	    }
 	}
 	export class InvestigationState {
-	    // Go type: time
-	    collectedAt: any;
-	    // Go type: time
-	    lastUpdatedAt: any;
+	    collectedAt: string;
+	    lastUpdatedAt: string;
 	    mode: string;
 	    kubeContext: KubeContext;
 	    namespaceScope: NamespaceScope;
@@ -2051,8 +1908,8 @@ export namespace model {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.collectedAt = this.convertValues(source["collectedAt"], null);
-	        this.lastUpdatedAt = this.convertValues(source["lastUpdatedAt"], null);
+	        this.collectedAt = source["collectedAt"];
+	        this.lastUpdatedAt = source["lastUpdatedAt"];
 	        this.mode = source["mode"];
 	        this.kubeContext = this.convertValues(source["kubeContext"], KubeContext);
 	        this.namespaceScope = this.convertValues(source["namespaceScope"], NamespaceScope);

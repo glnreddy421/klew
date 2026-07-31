@@ -131,9 +131,9 @@ func containerReasonSeverity(reason string) model.Severity {
 	}
 }
 
-func timeOrNow(t *time.Time) time.Time {
+func timeOrNow(t *model.Timestamp) model.Timestamp {
 	if t == nil || t.IsZero() {
-		return time.Now().UTC()
+		return model.TimestampFrom(time.Now().UTC())
 	}
 	return *t
 }

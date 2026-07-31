@@ -42,7 +42,7 @@ func formatEventPattern(e model.EvidenceEvent) string {
 func EventRecordToEvidence(e model.EventRecord) model.EvidenceEvent {
 	ts := e.Timestamp
 	if ts.IsZero() {
-		ts = time.Now().UTC()
+		ts = model.TimestampFrom(time.Now().UTC())
 	}
 	sev := model.SeverityWarning
 	switch e.Reason {

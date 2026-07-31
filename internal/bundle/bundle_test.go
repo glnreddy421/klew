@@ -11,14 +11,14 @@ import (
 
 func TestBundleRoundTrip(t *testing.T) {
 	b := model.EvidenceBundle{
-		CollectedAt: time.Now().UTC(),
+		CollectedAt: model.TimestampFrom(time.Now().UTC()),
 		Namespace:   "prod",
 		Query:       "payment",
 		Workloads: []model.WorkloadSummary{{
 			Kind: "Deployment", Name: "payment", Namespace: "prod", Replicas: 3, Ready: 2,
 		}},
 		Events: []model.EventRecord{{
-			Timestamp: time.Now(), Reason: "BackOff", Message: "back-off restarting",
+			Timestamp: model.TimestampFrom(time.Now()), Reason: "BackOff", Message: "back-off restarting",
 			InvolvedObject: model.ObjectRef{Kind: "Pod", Name: "payment-abc"},
 		}},
 	}

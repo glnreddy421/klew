@@ -11,7 +11,7 @@ func TestReducerIngestsLiveEvidence(t *testing.T) {
 	st := model.NewInvestigationState("payment", model.ModeLive)
 	r := NewReducer(&st)
 	r.ApplyEvent(model.EvidenceEvent{
-		Timestamp:  time.Now().UTC(),
+		Timestamp:  model.TimestampFrom(time.Now().UTC()),
 		SourceType: model.SourceLog,
 		SourceKind: "Pod",
 		SourceName: "payment-abc",

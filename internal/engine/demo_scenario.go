@@ -88,7 +88,7 @@ func demoState(sc DemoScenario, target string) model.InvestigationState {
 	st.KubeContext = bundle.KubeContext
 	st.NamespaceScope = model.NamespaceScope{Primary: sc.Namespace}
 	st.Snapshot = bundle
-	st.Window = 15 * time.Minute
+	st.Window = model.DurationMS(15 * time.Minute)
 	st.TailLines = 200
 	st.ActiveWatches = demoWatchers(sc.Namespace)
 	st.ExpectedWatches = 10
@@ -100,7 +100,7 @@ func demoState(sc DemoScenario, target string) model.InvestigationState {
 	}
 	if sc.recent != nil {
 		rc := *sc.recent
-		rc.DeployedAt = time.Now().Add(-3 * time.Minute)
+		rc.DeployedAt = model.TimestampFrom(time.Now().Add(-3 * time.Minute))
 		st.RecentChange = &rc
 	}
 	return st
@@ -209,7 +209,7 @@ func demoWatchers(ns string) []model.ActiveWatch {
 	names := []string{"deployments", "replicasets", "pods", "services", "endpointslices", "events", "logs", "configmaps", "secrets", "metrics"}
 	out := make([]model.ActiveWatch, 0, len(names))
 	for _, n := range names {
-		out = append(out, model.ActiveWatch{Name: n, Resource: n, Namespace: ns, StartedAt: time.Now()})
+		out = append(out, model.ActiveWatch{Name: n, Resource: n, Namespace: ns, StartedAt: model.TimestampFrom(time.Now())})
 	}
 	return out
 }

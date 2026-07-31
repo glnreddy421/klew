@@ -512,7 +512,7 @@ func (ls *LogStreamer) followOnce(ctx context.Context, ns, pod, container string
 		line := stripANSI(sc.Text())
 		sev := classifyLogLine(line)
 		ls.Sink(model.EvidenceEvent{
-			Timestamp:  time.Now().UTC(),
+			Timestamp:  model.TimestampFrom(time.Now().UTC()),
 			SourceType: model.SourceLog,
 			SourceKind: "Pod",
 			SourceName: pod,

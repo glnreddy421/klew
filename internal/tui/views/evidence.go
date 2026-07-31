@@ -82,7 +82,7 @@ func finalSummaryBody(st model.InvestigationState, width int) string {
 	out = append(out, metaKV("Evidence", fmt.Sprintf("%d observations", obs)))
 	out = append(out, metaKV("Time Window", window))
 	if st.Mode == model.ModeLive && !st.Paused && !st.LastUpdatedAt.IsZero() {
-		out = append(out, metaKV("Last Updated", st.LastUpdatedAt.Format("15:04:05")))
+		out = append(out, metaKV("Last Updated", st.LastUpdatedAt.Time().Format("15:04:05")))
 	}
 	return strings.Join(out, "\n")
 }
@@ -128,7 +128,7 @@ func evidenceObservationCount(st model.InvestigationState) int {
 }
 
 func formatInvestigationWindow(st model.InvestigationState) string {
-	d := st.Window
+	d := model.DurationFromMS(st.Window)
 	if d <= 0 {
 		d = 15 * time.Minute
 	}
@@ -768,7 +768,7 @@ func buildConfidenceTimeline(st model.InvestigationState) []confStep {
 
 	// milestone labels from timeline — ordered by time
 	type milestone struct {
-		t     time.Time
+		t     model.Timestamp
 		label string
 		conf  float64
 	}

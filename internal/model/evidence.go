@@ -2,7 +2,6 @@ package model
 
 import (
 	"strings"
-	"time"
 )
 
 // VerdictStatus is the overall workload health classification.
@@ -88,7 +87,7 @@ type PodSummary struct {
 	OwnerRefs       []ObjectRef       `json:"ownerRefs,omitempty"`
 	Labels          map[string]string `json:"labels,omitempty"`
 	Annotations     map[string]string `json:"annotations,omitempty"`
-	CreatedAt       time.Time         `json:"createdAt"`
+	CreatedAt       Timestamp         `json:"createdAt"`
 	ConfigMapRefs   []string          `json:"configMapRefs,omitempty"`
 	SecretRefs      []string          `json:"secretRefs,omitempty"`
 	PVCRefs         []string          `json:"pvcRefs,omitempty"`
@@ -105,8 +104,8 @@ type ContainerStatus struct {
 	State        string     `json:"state"` // running, waiting, terminated
 	Reason       string     `json:"reason,omitempty"`
 	ExitCode     int32      `json:"exitCode,omitempty"`
-	StartedAt    *time.Time `json:"startedAt,omitempty"`
-	FinishedAt   *time.Time `json:"finishedAt,omitempty"`
+	StartedAt    *Timestamp `json:"startedAt,omitempty"`
+	FinishedAt   *Timestamp `json:"finishedAt,omitempty"`
 	LastState    string     `json:"lastState,omitempty"`
 	LastReason   string     `json:"lastReason,omitempty"`
 	LastExitCode int32      `json:"lastExitCode,omitempty"`
@@ -125,7 +124,7 @@ type ReplicaSetSummary struct {
 	Replicas        int32     `json:"replicas"`
 	Ready           int32     `json:"ready"`
 	DeploymentOwner string    `json:"deploymentOwner,omitempty"`
-	CreatedAt       time.Time `json:"createdAt"`
+	CreatedAt       Timestamp `json:"createdAt"`
 }
 
 // ServiceSummary includes endpoint readiness.
@@ -150,7 +149,7 @@ type IngressSummary struct {
 
 // EventRecord is a normalized Kubernetes event.
 type EventRecord struct {
-	Timestamp      time.Time `json:"timestamp"`
+	Timestamp      Timestamp `json:"timestamp"`
 	Type           string    `json:"type"`
 	Reason         string    `json:"reason"`
 	Message        string    `json:"message"`
@@ -166,7 +165,7 @@ type LogRecord struct {
 	Previous      bool      `json:"previous"`
 	Lines         []string  `json:"lines"`
 	Truncated     bool      `json:"truncated"`
-	CollectedAt   time.Time `json:"collectedAt"`
+	CollectedAt   Timestamp `json:"collectedAt"`
 }
 
 // NodeSummary is node pressure context for scheduled pods.
@@ -220,7 +219,7 @@ type MetricsSummary struct {
 
 // EvidenceBundle is the collected read-only investigation snapshot.
 type EvidenceBundle struct {
-	CollectedAt      time.Time           `json:"collectedAt"`
+	CollectedAt      Timestamp           `json:"collectedAt"`
 	KubeContext      KubeContext         `json:"kubeContext"`
 	Namespace        string              `json:"namespace"`
 	Query            string              `json:"query"`
@@ -247,7 +246,7 @@ type EvidenceBundle struct {
 
 // TimelineEvent is a correlated incident timeline entry.
 type TimelineEvent struct {
-	Timestamp      time.Time `json:"timestamp"`
+	Timestamp      Timestamp `json:"timestamp"`
 	Type           string    `json:"type"`
 	Severity       Severity  `json:"severity"`
 	SourceKind     string    `json:"sourceKind"`

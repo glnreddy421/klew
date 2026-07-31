@@ -954,14 +954,14 @@ func memorySpikeBeforeOOM(st model.InvestigationState) bool {
 	for _, e := range st.LiveEvidence {
 		if e.SourceType == model.SourceMetric {
 			if cpu, mem := parseMetricMessage(e.Message); cpu > 0 || mem > 0 {
-				metrics = append(metrics, metricSample{ts: e.Timestamp, memMi: mem, cpuM: cpu})
+				metrics = append(metrics, metricSample{ts: e.Timestamp.Time(), memMi: mem, cpuM: cpu})
 			}
 		}
 	}
 	for _, e := range st.Timeline {
 		if e.Type == "metric" {
 			if cpu, mem := parseMetricMessage(e.Message); cpu > 0 || mem > 0 {
-				metrics = append(metrics, metricSample{ts: e.Timestamp, memMi: mem, cpuM: cpu})
+				metrics = append(metrics, metricSample{ts: e.Timestamp.Time(), memMi: mem, cpuM: cpu})
 			}
 		}
 	}
@@ -1042,13 +1042,13 @@ func buildResourceTimeline(st model.InvestigationState, b model.EvidenceBundle, 
 		switch e.Reason {
 		case "OOMKilled", "OOMKilling":
 			steps = append(steps, resourceTimelineStep{
-				timeLabel: e.Timestamp.Format("15:04"),
+				timeLabel: e.Timestamp.Time().Format("15:04"),
 				event:     "OOMKilled",
 			})
 		case "BackOff", "CrashLoopBackOff":
 			if strings.Contains(strings.ToLower(e.Message), "restart") {
 				steps = append(steps, resourceTimelineStep{
-					timeLabel: e.Timestamp.Format("15:04"),
+					timeLabel: e.Timestamp.Time().Format("15:04"),
 					event:     "Restart",
 				})
 			}
@@ -1083,7 +1083,7 @@ func collectMetricSamples(st model.InvestigationState) []metricSample {
 		if cpu == 0 && mem == 0 {
 			continue
 		}
-		out = append(out, metricSample{ts: e.Timestamp, cpuM: cpu, memMi: mem})
+		out = append(out, metricSample{ts: e.Timestamp.Time(), cpuM: cpu, memMi: mem})
 	}
 	for _, e := range st.Timeline {
 		if e.Type != "metric" {
@@ -1093,7 +1093,7 @@ func collectMetricSamples(st model.InvestigationState) []metricSample {
 		if cpu == 0 && mem == 0 {
 			continue
 		}
-		out = append(out, metricSample{ts: e.Timestamp, cpuM: cpu, memMi: mem})
+		out = append(out, metricSample{ts: e.Timestamp.Time(), cpuM: cpu, memMi: mem})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ts.Before(out[j].ts) })
 	return out

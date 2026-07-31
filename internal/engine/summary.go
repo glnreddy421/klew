@@ -1,8 +1,6 @@
 package engine
 
 import (
-	"time"
-
 	"github.com/glnreddy421/klew/internal/model"
 )
 
@@ -21,7 +19,7 @@ type IncidentSummary struct {
 	Restarts       int                 `json:"restarts"`
 	EndpointsReady int                 `json:"endpointsReady"`
 	EndpointsTotal int                 `json:"endpointsTotal"`
-	Window         time.Duration       `json:"window"`
+	Window         int64               `json:"window"` // milliseconds
 	Live           bool                `json:"live"`
 }
 

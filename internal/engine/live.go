@@ -69,7 +69,7 @@ func StartLive(ctx context.Context, client *kube.Client, opts LiveOptions) (*Liv
 		return nil, err
 	}
 	state := BootstrapState(bundle, scope, opts.Query, model.ModeLive)
-	state.Window = opts.Window
+	state.Window = model.DurationMS(opts.Window)
 	state.TailLines = opts.Tail
 	reducer := NewReducer(state)
 
@@ -108,7 +108,7 @@ func StartLive(ctx context.Context, client *kube.Client, opts LiveOptions) (*Liv
 
 	if opts.DisableMetrics {
 		sink(model.EvidenceEvent{
-			Timestamp:  time.Now().UTC(),
+			Timestamp:  model.TimestampFrom(time.Now().UTC()),
 			SourceType: model.SourceSystem,
 			Severity:   model.SeverityInfo,
 			Reason:     "metrics_disabled",

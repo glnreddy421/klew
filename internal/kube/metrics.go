@@ -31,7 +31,7 @@ func (m *MetricsPoller) Start(ctx context.Context, pods []model.PodSummary, wg *
 		msg = "metrics-server not available — showing pod requests/limits only"
 	}
 	m.Sink(model.EvidenceEvent{
-		Timestamp: time.Now(), SourceType: model.SourceSystem,
+		Timestamp: model.TimestampFrom(time.Now()), SourceType: model.SourceSystem,
 		Severity: sev, Reason: "metrics_source", Message: msg, Confidence: 1,
 	})
 	_ = wg

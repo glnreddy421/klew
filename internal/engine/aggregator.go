@@ -21,7 +21,7 @@ func (a SignalAggregator) Aggregate(events []model.EvidenceEvent, now time.Time)
 	if window <= 0 {
 		window = 15 * time.Minute
 	}
-	cutoff := now.Add(-window)
+	cutoff := model.TimestampFrom(now.Add(-window))
 
 	type group struct {
 		label    string
@@ -44,7 +44,7 @@ func (a SignalAggregator) Aggregate(events []model.EvidenceEvent, now time.Time)
 		key := strings.ToLower(label)
 		g := groups[key]
 		if g == nil {
-			g = &group{label: label, source: sourceLabel(e.SourceType), severity: e.Severity, newest: e.Timestamp, evidence: plainEvidence(e), conf: e.Confidence}
+			g = &group{label: label, source: sourceLabel(e.SourceType), severity: e.Severity, newest: e.Timestamp.Time(), evidence: plainEvidence(e), conf: e.Confidence}
 			groups[key] = g
 		}
 		c := e.Count
@@ -57,8 +57,8 @@ func (a SignalAggregator) Aggregate(events []model.EvidenceEvent, now time.Time)
 			g.source = sourceLabel(e.SourceType)
 			g.evidence = plainEvidence(e)
 		}
-		if e.Timestamp.After(g.newest) {
-			g.newest = e.Timestamp
+		if e.Timestamp.After(model.TimestampFrom(g.newest)) {
+			g.newest = e.Timestamp.Time()
 		}
 		if e.Confidence > g.conf {
 			g.conf = e.Confidence

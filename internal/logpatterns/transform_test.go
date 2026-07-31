@@ -86,7 +86,7 @@ func TestSnapshotClusters_ConcurrentWithAdd(t *testing.T) {
 				res := miner.Add(msg)
 				if res != nil && res.Cluster != nil {
 					meta.Observe(res.Cluster.ClusterID, 1, model.EvidenceEvent{
-						Timestamp: time.Now().UTC(),
+						Timestamp: model.TimestampFrom(time.Now().UTC()),
 						Pod:       fmt.Sprintf("pod-%d", w),
 						Severity:  model.SeverityInfo,
 					}, msg)
@@ -128,7 +128,7 @@ func TestBuildLogTemplates_DeepCopyIsolatesMeta(t *testing.T) {
 		t.Fatal("expected cluster")
 	}
 	meta.Observe(res.Cluster.ClusterID, 3, model.EvidenceEvent{
-		Timestamp: ts0,
+		Timestamp: model.TimestampFrom(ts0),
 		Pod:       "payment-api-7db86bb96c-xzqpw",
 		Severity:  model.SeverityHigh,
 	}, "payment failed userId=u1")
@@ -150,7 +150,7 @@ func TestBuildLogTemplates_DeepCopyIsolatesMeta(t *testing.T) {
 
 	// Mutate live store after View build.
 	meta.Observe(res.Cluster.ClusterID, 1, model.EvidenceEvent{
-		Timestamp: ts0.Add(time.Hour),
+		Timestamp: model.TimestampFrom(ts0.Add(time.Hour)),
 		Pod:       "auth-service-7db86bb96c-abcde",
 		Severity:  model.SeverityCritical,
 	}, "LEAKED_SAMPLE")
@@ -202,9 +202,9 @@ func TestAttachTemplateKeywords_SparseNilAndOmitEmpty(t *testing.T) {
 func TestMinuteBucketsAndPurge(t *testing.T) {
 	store := NewMetaStore(15, 3)
 	now := time.Date(2026, 7, 22, 12, 30, 0, 0, time.UTC)
-	store.Observe(1, 2, model.EvidenceEvent{Timestamp: now, Pod: "p", Severity: model.SeverityInfo}, "a")
-	store.Observe(1, 1, model.EvidenceEvent{Timestamp: now.Add(-2 * time.Minute), Pod: "p", Severity: model.SeverityInfo}, "b")
-	store.Observe(1, 1, model.EvidenceEvent{Timestamp: now.Add(-20 * time.Minute), Pod: "p", Severity: model.SeverityInfo}, "old")
+	store.Observe(1, 2, model.EvidenceEvent{Timestamp: model.TimestampFrom(now), Pod: "p", Severity: model.SeverityInfo}, "a")
+	store.Observe(1, 1, model.EvidenceEvent{Timestamp: model.TimestampFrom(now.Add(-2 * time.Minute)), Pod: "p", Severity: model.SeverityInfo}, "b")
+	store.Observe(1, 1, model.EvidenceEvent{Timestamp: model.TimestampFrom(now.Add(-20 * time.Minute)), Pod: "p", Severity: model.SeverityInfo}, "old")
 
 	snap := store.Snapshot()[1]
 	if snap.MinuteBuckets[now.Truncate(time.Minute).Unix()] != 2 {
@@ -244,7 +244,7 @@ func TestMetaStorePurgeOrphansAndPodCap(t *testing.T) {
 	store := NewMetaStore(15, 3)
 	now := time.Now().UTC()
 	for i := 0; i < 3; i++ {
-		store.Observe(i, 1, model.EvidenceEvent{Timestamp: now, Pod: "p", Severity: model.SeverityInfo}, "x")
+		store.Observe(i, 1, model.EvidenceEvent{Timestamp: model.TimestampFrom(now), Pod: "p", Severity: model.SeverityInfo}, "x")
 	}
 	if store.Len() != 3 {
 		t.Fatalf("len=%d", store.Len())
@@ -258,7 +258,7 @@ func TestMetaStorePurgeOrphansAndPodCap(t *testing.T) {
 	store2 := NewMetaStore(15, 3)
 	for i := 0; i < maxPodsPerPattern+20; i++ {
 		store2.Observe(1, 1, model.EvidenceEvent{
-			Timestamp: now, Pod: fmt.Sprintf("pod-%d", i), Severity: model.SeverityInfo,
+			Timestamp: model.TimestampFrom(now), Pod: fmt.Sprintf("pod-%d", i), Severity: model.SeverityInfo,
 		}, "msg")
 	}
 	snap := store2.Snapshot()[1]
@@ -279,7 +279,7 @@ func TestTrackerGCAndCapture(t *testing.T) {
 
 	now := time.Now().UTC().Truncate(time.Minute)
 	tr.Ingest("payment failed timeout", 1, model.EvidenceEvent{
-		Timestamp: now, Pod: "p1", Severity: model.SeverityHigh,
+		Timestamp: model.TimestampFrom(now), Pod: "p1", Severity: model.SeverityHigh,
 	})
 	cap := tr.CaptureSnapshot(now)
 	if len(cap.Clusters) == 0 {
