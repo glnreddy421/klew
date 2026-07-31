@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/glnreddy421/klew/internal/model"
 )
@@ -157,8 +156,8 @@ func dominantFailureReason(pods []model.PodSummary) string {
 	return best
 }
 
-func latestPodFailureTime(st model.InvestigationState, pods []model.PodSummary) time.Time {
-	var latest time.Time
+func latestPodFailureTime(st model.InvestigationState, pods []model.PodSummary) model.Timestamp {
+	var latest model.Timestamp
 	names := podNameSet(pods)
 	for _, e := range st.Timeline {
 		if !timelineMatchesPod(e, names) {
@@ -182,11 +181,11 @@ func latestPodFailureTime(st model.InvestigationState, pods []model.PodSummary) 
 	return latest
 }
 
-func formatObservedTime(t time.Time) string {
+func formatObservedTime(t model.Timestamp) string {
 	if t.IsZero() {
 		return ""
 	}
-	return t.Format("15:04:05")
+	return t.Time().Format("15:04:05")
 }
 
 func podTriageList(pods []model.PodSummary, cursor, width, height int) string {
@@ -401,13 +400,13 @@ func isLatestCriticalPod(st model.InvestigationState, pod string) bool {
 
 func podUniqueEvidence(st model.InvestigationState, pod model.PodSummary) []string {
 	type item struct {
-		ts    time.Time
+		ts    model.Timestamp
 		label string
 		score int
 	}
 	var items []item
 	seen := map[string]bool{}
-	add := func(label string, ts time.Time, score int) {
+	add := func(label string, ts model.Timestamp, score int) {
 		label = strings.TrimSpace(label)
 		if label == "" || seen[strings.ToLower(label)] {
 			return
@@ -418,10 +417,10 @@ func podUniqueEvidence(st model.InvestigationState, pod model.PodSummary) []stri
 
 	c := worstContainer(pod)
 	if c.LastReason != "" {
-		add(c.LastReason, timeFromPtr(c.FinishedAt), 100)
+		add(c.LastReason, tsFromPtr(c.FinishedAt), 100)
 	}
 	if c.Reason != "" && c.Reason != c.LastReason {
-		add(c.Reason, timeFromPtr(c.FinishedAt), 90)
+		add(c.Reason, tsFromPtr(c.FinishedAt), 90)
 	}
 
 	for _, e := range st.LiveEvidence {
@@ -488,11 +487,18 @@ func evidenceSeverityScore(sev model.Severity) int {
 	}
 }
 
-func timeFromPtr(t *time.Time) time.Time {
+func tsFromPtr(t *model.Timestamp) model.Timestamp {
 	if t == nil {
-		return time.Time{}
+		return ""
 	}
 	return *t
+}
+
+func tsLabel(t *model.Timestamp) string {
+	if t == nil || t.IsZero() {
+		return "—"
+	}
+	return t.Time().Format("15:04:05")
 }
 
 func shortEvidenceMessage(msg string) string {
@@ -519,7 +525,7 @@ func shortEvidenceMessage(msg string) string {
 
 func podFailureTimeline(st model.InvestigationState, pod model.PodSummary) []string {
 	type step struct {
-		ts    time.Time
+		ts    model.Timestamp
 		label string
 	}
 	var steps []step
@@ -635,11 +641,4 @@ func containerHealthLabel(c model.ContainerStatus) string {
 		return "warning"
 	}
 	return "healthy"
-}
-
-func tsLabel(t *time.Time) string {
-	if t == nil || t.IsZero() {
-		return "—"
-	}
-	return t.Format("15:04:05")
 }

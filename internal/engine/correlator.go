@@ -29,7 +29,7 @@ func buildCausalChain(tl []model.TimelineEvent) []string {
 			continue
 		}
 		seen[lbl] = true
-		steps = append(steps, step{e.Timestamp, lbl})
+		steps = append(steps, step{e.Timestamp.Time(), lbl})
 	}
 	if len(steps) == 0 {
 		return nil

@@ -80,7 +80,7 @@ func TimelineView(st model.InvestigationState, width, scroll, height int, cat, s
 	}
 
 	curPhase := ""
-	var prevTs time.Time
+	var prevTs model.Timestamp
 	for i, r := range runs {
 		if lbl := phase.at(i); lbl != "" && lbl != curPhase {
 			// a hypothesis-change bookmark is more specific; don't stack a phase
@@ -144,8 +144,8 @@ func TimelineView(st model.InvestigationState, width, scroll, height int, cat, s
 type tlRun struct {
 	ev    model.TimelineEvent
 	count int
-	first time.Time
-	last  time.Time
+	first model.Timestamp
+	last  model.Timestamp
 	all   []model.TimelineEvent
 }
 
@@ -278,7 +278,7 @@ const tlSubIndent = 3 + 9 + 6 + 8 // connector+marker+space, time, delta, type
 
 func tlIndent() string { return strings.Repeat(" ", tlSubIndent) }
 
-func timelineRows(r tlRun, prevTs time.Time, expand bool, objW int, ann string, connected bool) []string {
+func timelineRows(r tlRun, prevTs model.Timestamp, expand bool, objW int, ann string, connected bool) []string {
 	// Klew's own reasoning events get an explanatory multi-line block.
 	if isKlewEvent(r.ev) {
 		return reasoningRows(r.ev, prevTs, objW, ann, connected)
@@ -304,7 +304,7 @@ func timelineRows(r tlRun, prevTs time.Time, expand bool, objW int, ann string, 
 }
 
 // tlRowMsg renders one aligned event row with a given message body.
-func tlRowMsg(e model.TimelineEvent, prevTs time.Time, msg string, objW int, ann string, connected bool) string {
+func tlRowMsg(e model.TimelineEvent, prevTs model.Timestamp, msg string, objW int, ann string, connected bool) string {
 	cat := tlCategory(e)
 
 	gutter := " "
@@ -313,11 +313,11 @@ func tlRowMsg(e model.TimelineEvent, prevTs time.Time, msg string, objW int, ann
 	}
 	delta := strings.Repeat(" ", 5)
 	if !prevTs.IsZero() {
-		if d := e.Timestamp.Sub(prevTs); d > 0 {
+		if d := e.Timestamp.Time().Sub(prevTs.Time()); d > 0 {
 			delta = dimStyle.Render(padRight("+"+timelineDur(d), 5))
 		}
 	}
-	ts := dimStyle.Render(e.Timestamp.Format("15:04:05"))
+	ts := dimStyle.Render(e.Timestamp.Time().Format("15:04:05"))
 	typeStyled := tlTypeStyle(cat, e.Severity).Render(padRight(tlTypeLabel(e, cat), 7))
 
 	obj := padRight(truncVisual(tlObject(e), objW), objW)
@@ -335,13 +335,13 @@ func tlRowMsg(e model.TimelineEvent, prevTs time.Time, msg string, objW int, ann
 // foldedDetail gives context for a collapsed run without expanding it.
 func foldedDetail(r tlRun) string {
 	txt := fmt.Sprintf("×%d occurrences · first %s · last %s · ⏎ expand",
-		r.count, r.first.Format("15:04:05"), r.last.Format("15:04:05"))
+		r.count, r.first.Time().Format("15:04:05"), r.last.Time().Format("15:04:05"))
 	return tlIndent() + dimStyle.Render(txt)
 }
 
 // reasoningRows renders a Klew reasoning event and, for hypothesis changes,
 // explains WHY it changed: the belief transition and the confidence shift.
-func reasoningRows(e model.TimelineEvent, prevTs time.Time, objW int, ann string, connected bool) []string {
+func reasoningRows(e model.TimelineEvent, prevTs model.Timestamp, objW int, ann string, connected bool) []string {
 	from, to, cf, ct, ok := parseHypoChange(e.Message)
 	label := e.Message
 	if ok {

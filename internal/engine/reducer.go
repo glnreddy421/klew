@@ -63,7 +63,7 @@ func (r *StateStore) ApplyEvent(e model.EvidenceEvent) {
 		e.ID = fmt.Sprintf("ev-%d", r.seq)
 	}
 	if e.Timestamp.IsZero() {
-		e.Timestamp = time.Now().UTC()
+		e.Timestamp = model.TimestampFrom(time.Now().UTC())
 	}
 	if e.Fingerprint == "" {
 		e.Fingerprint = Fingerprint(e)
@@ -92,7 +92,7 @@ func (r *StateStore) ApplyEvent(e model.EvidenceEvent) {
 	}
 
 	r.recompute()
-	r.state.LastUpdatedAt = time.Now().UTC()
+	r.state.LastUpdatedAt = model.TimestampFrom(time.Now().UTC())
 }
 
 // ApplySnapshot refreshes structural snapshot data and recomputes.
@@ -107,7 +107,7 @@ func (r *StateStore) ApplySnapshot(bundle model.EvidenceBundle, graph model.Work
 	r.recompute()
 	if wasActive && WorkloadNominal(bundle) && !IncidentActive(bundle) {
 		r.ring.Add(model.EvidenceEvent{
-			Timestamp:  time.Now().UTC(),
+			Timestamp:  model.TimestampFrom(time.Now().UTC()),
 			SourceType: model.SourceSystem,
 			Severity:   model.SeverityInfo,
 			Reason:     "Recovered",
@@ -115,14 +115,14 @@ func (r *StateStore) ApplySnapshot(bundle model.EvidenceBundle, graph model.Work
 			Confidence: 1,
 		})
 		r.state.Timeline = append(r.state.Timeline, model.TimelineEvent{
-			Timestamp: time.Now().UTC(),
+			Timestamp: model.TimestampFrom(time.Now().UTC()),
 			Type:      string(model.SourceSystem),
 			Severity:  model.SeverityInfo,
 			Reason:    "Recovered",
 			Message:   "Workload pods are ready — incident cleared",
 		})
 	}
-	r.state.LastUpdatedAt = time.Now().UTC()
+	r.state.LastUpdatedAt = model.TimestampFrom(time.Now().UTC())
 }
 
 func (r *StateStore) SetPaused(p bool) {
@@ -140,7 +140,7 @@ func (r *StateStore) SetWatches(w []model.ActiveWatch) {
 func (r *StateStore) recompute() {
 	now := time.Now().UTC()
 	events := r.ring.Snapshot()
-	agg := SignalAggregator{Window: r.state.Window}
+	agg := SignalAggregator{Window: model.DurationFromMS(r.state.Window)}
 	evSignals := agg.Aggregate(events, now)
 	corr := r.corr.Correlate(r.state.Snapshot, evSignals, events)
 
@@ -186,7 +186,7 @@ func (r *StateStore) recompute() {
 			From: r.prevLeading, To: corr.LeadingSignal, ConfDelta: corr.Confidence - r.prevConfidence,
 		}
 		r.ring.Add(model.EvidenceEvent{
-			Timestamp:  time.Now(),
+			Timestamp:  model.TimestampFrom(time.Now()),
 			SourceType: model.SourceSystem,
 			Severity:   model.SeverityWarning,
 			Reason:     "HypothesisChanged",

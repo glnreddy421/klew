@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"k8s.io/client-go/tools/clientcmd"
+
+	"github.com/glnreddy421/klew/internal/model"
 )
 
 // ContextOption is one kubeconfig context entry for UI pickers.
@@ -29,7 +31,7 @@ type ClusterState struct {
 	User              string          `json:"user"`
 	Contexts          []ContextOption `json:"contexts"`
 	Namespaces        []string        `json:"namespaces"`
-	SyncedAt          time.Time       `json:"syncedAt"`
+	SyncedAt          model.Timestamp       `json:"syncedAt"`
 	SyncError         string          `json:"syncError,omitempty"`
 }
 
@@ -81,7 +83,7 @@ func LoadKubeConfigSnapshot(kubeconfigPath string) (ClusterState, error) {
 		User:              ctxCfg.AuthInfo,
 		Contexts:          contexts,
 		Namespaces:        []string{ns},
-		SyncedAt:          time.Now().UTC(),
+		SyncedAt:          model.TimestampFrom(time.Now().UTC()),
 	}, nil
 }
 
@@ -95,7 +97,7 @@ func RefreshClusterState(ctx context.Context, kubeconfigPath, selectedContext, s
 		}
 		return ClusterState{
 			KubeconfigPath: path,
-			SyncedAt:       time.Now().UTC(),
+			SyncedAt:       model.TimestampFrom(time.Now().UTC()),
 			SyncError:      err.Error(),
 		}
 	}
@@ -121,7 +123,7 @@ func RefreshClusterState(ctx context.Context, kubeconfigPath, selectedContext, s
 	client, err := NewFromFlags(base.KubeconfigPath, base.SelectedContext, "")
 	if err != nil {
 		base.SyncError = err.Error()
-		base.SyncedAt = time.Now().UTC()
+		base.SyncedAt = model.TimestampFrom(time.Now().UTC())
 		return base
 	}
 
@@ -129,14 +131,14 @@ func RefreshClusterState(ctx context.Context, kubeconfigPath, selectedContext, s
 	if err != nil {
 		base.SyncError = fmt.Sprintf("list namespaces: %v", err)
 		base.Namespaces = fallbackNamespaces(base.SelectedNamespace)
-		base.SyncedAt = time.Now().UTC()
+		base.SyncedAt = model.TimestampFrom(time.Now().UTC())
 		return base
 	}
 	sort.Strings(nss)
 	base.Namespaces = nss
 	base.SelectedNamespace = pickNamespace(nss, base.SelectedNamespace)
 	base.SyncError = ""
-	base.SyncedAt = time.Now().UTC()
+	base.SyncedAt = model.TimestampFrom(time.Now().UTC())
 	return base
 }
 

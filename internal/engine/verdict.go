@@ -71,7 +71,7 @@ func detectTrigger(timeline []model.TimelineEvent) (string, float64) {
 	if best == nil {
 		return "No high-confidence trigger identified", 0.4
 	}
-	return fmt.Sprintf("%s %s/%s: %s (%s)", best.Timestamp.Format("15:04:05"), best.SourceKind, best.SourceName, best.Reason, best.Message), best.Confidence
+	return fmt.Sprintf("%s %s/%s: %s (%s)", best.Timestamp.Time().Format("15:04:05"), best.SourceKind, best.SourceName, best.Reason, best.Message), best.Confidence
 }
 
 func buildSummary(b model.EvidenceBundle, v model.Verdict) string {

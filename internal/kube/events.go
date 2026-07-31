@@ -44,7 +44,7 @@ func (col *Collector) collectEvents(ctx context.Context, namespace string, deplo
 			ts = e.FirstTimestamp.Time
 		}
 		out = append(out, model.EventRecord{
-			Timestamp: ts,
+			Timestamp: model.TimestampFrom(ts),
 			Type:      e.Type,
 			Reason:    e.Reason,
 			Message:   e.Message,
@@ -92,7 +92,7 @@ func NormalizeEvents(events []model.EventRecord) []model.EventRecord {
 	copy(out, events)
 	for i := range out {
 		if out[i].Timestamp.IsZero() {
-			out[i].Timestamp = time.Now().UTC()
+			out[i].Timestamp = model.TimestampFrom(time.Now().UTC())
 		}
 	}
 	sort.Slice(out, func(i, j int) bool {

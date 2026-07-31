@@ -47,7 +47,7 @@ func collectEventRows(req *Request) [][]string {
 		if !objectTouches(obj.Kind, obj.Name, kind, name) {
 			continue
 		}
-		push(e.Timestamp, e.Type, e.Reason, e.Message, e.Count)
+		push(e.Timestamp.Time(), e.Type, e.Reason, e.Message, e.Count)
 	}
 	for _, e := range req.State.LiveEvidence {
 		t := strings.ToLower(string(e.SourceType))
@@ -57,7 +57,7 @@ func collectEventRows(req *Request) [][]string {
 		if !evidenceTouches(e, kind, name) {
 			continue
 		}
-		push(e.Timestamp, string(e.SourceType), e.Reason, e.Message, int32(e.Count))
+		push(e.Timestamp.Time(), string(e.SourceType), e.Reason, e.Message, int32(e.Count))
 	}
 	if len(rows) > 40 {
 		rows = rows[:40]

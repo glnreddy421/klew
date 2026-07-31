@@ -13,7 +13,7 @@ func TestRingBufferKeepsDistinctLogLines(t *testing.T) {
 	now := time.Now()
 	for i := 0; i < 5; i++ {
 		rb.Add(model.EvidenceEvent{
-			Timestamp:  now.Add(time.Duration(i) * time.Millisecond),
+		Timestamp:  model.TimestampFrom(now.Add(time.Duration(i) * time.Millisecond)),
 			SourceType: model.SourceLog,
 			Severity:   model.SeverityInfo,
 			Pod:        "payment-api",

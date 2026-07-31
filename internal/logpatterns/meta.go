@@ -67,11 +67,9 @@ func (s *MetaStore) Observe(clusterID, weight int, e model.EvidenceEvent, raw st
 	if weight <= 0 {
 		weight = 1
 	}
-	ts := e.Timestamp
+	ts := e.Timestamp.Time()
 	if ts.IsZero() {
 		ts = time.Now().UTC()
-	} else {
-		ts = ts.UTC()
 	}
 	bucket := ts.Truncate(time.Minute).Unix()
 
@@ -122,7 +120,7 @@ func (s *MetaStore) Observe(clusterID, weight int, e model.EvidenceEvent, raw st
 			Message:   raw,
 			Pod:       e.Pod,
 			Container: e.Container,
-			Timestamp: ts,
+			Timestamp: model.TimestampFrom(ts),
 			Severity:  e.Severity,
 		})
 	}

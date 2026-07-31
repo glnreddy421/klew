@@ -68,7 +68,7 @@ func collectAllNamespaces(ctx context.Context, client *kube.Client, query string
 	}
 	if merged.Namespace == "" {
 		merged = model.EvidenceBundle{
-			CollectedAt: time.Now().UTC(),
+			CollectedAt: model.TimestampFrom(time.Now().UTC()),
 			Namespace:   "*",
 			Query:       query,
 			KubeContext: model.KubeContext{
@@ -91,7 +91,7 @@ func BootstrapState(bundle model.EvidenceBundle, scope model.NamespaceScope, que
 	st.Snapshot = bundle
 	st.Permissions = bundle.Permissions
 	st.Warnings = append(st.Warnings, bundle.Warnings...)
-	st.Window = 15 * time.Minute
+	st.Window = model.DurationMS(15 * time.Minute)
 	st.TailLines = 200
 	st.ExpectedWatches = 8
 	st.WorkloadGraph = BuildGraph(bundle)
@@ -148,7 +148,7 @@ func PublishSnapshotEvents(bus *Bus, bundle model.EvidenceBundle) {
 		}
 	}
 	bus.Publish(model.EvidenceEvent{
-		Timestamp:  time.Now().UTC(),
+		Timestamp:  model.TimestampFrom(time.Now().UTC()),
 		SourceType: model.SourceSystem,
 		Severity:   model.SeverityInfo,
 		Reason:     "snapshot_complete",

@@ -30,9 +30,9 @@ type LiveWatcher struct {
 func (w *LiveWatcher) Start(ctx context.Context, wg *sync.WaitGroup) []model.ActiveWatch {
 	now := time.Now().UTC()
 	watches := []model.ActiveWatch{
-		{Name: "pods", Resource: "pods", Namespace: w.Namespace, StartedAt: now},
-		{Name: "events", Resource: "events", Namespace: w.Namespace, StartedAt: now},
-		{Name: "deployments", Resource: "deployments", Namespace: w.Namespace, StartedAt: now},
+		{Name: "pods", Resource: "pods", Namespace: w.Namespace, StartedAt: model.TimestampFrom(now)},
+		{Name: "events", Resource: "events", Namespace: w.Namespace, StartedAt: model.TimestampFrom(now)},
+		{Name: "deployments", Resource: "deployments", Namespace: w.Namespace, StartedAt: model.TimestampFrom(now)},
 	}
 	if wg != nil {
 		wg.Add(3)
@@ -142,7 +142,7 @@ func (w *LiveWatcher) emitEvent(e *corev1.Event) {
 		ts = time.Now().UTC()
 	}
 	w.Sink(model.EvidenceEvent{
-		Timestamp:  ts,
+		Timestamp:  model.TimestampFrom(ts),
 		SourceType: model.SourceK8sEvent,
 		SourceKind: e.InvolvedObject.Kind,
 		SourceName: e.InvolvedObject.Name,
@@ -183,7 +183,7 @@ func (w *LiveWatcher) watchPods(ctx context.Context) {
 			continue
 		}
 		w.Sink(model.EvidenceEvent{
-			Timestamp:  time.Now().UTC(),
+			Timestamp:  model.TimestampFrom(time.Now().UTC()),
 			SourceType: model.SourceObjectChange,
 			SourceKind: "Pod",
 			SourceName: pod.Name,
@@ -198,7 +198,7 @@ func (w *LiveWatcher) watchPods(ctx context.Context) {
 		for _, cs := range pod.Status.ContainerStatuses {
 			if cs.State.Waiting != nil && cs.State.Waiting.Reason != "" {
 				w.Sink(model.EvidenceEvent{
-					Timestamp:  time.Now().UTC(),
+					Timestamp:  model.TimestampFrom(time.Now().UTC()),
 					SourceType: model.SourceObjectChange,
 					SourceKind: "Container",
 					SourceName: cs.Name,
@@ -259,7 +259,7 @@ func (w *LiveWatcher) emitDeploymentEvidence(dep *appsv1.Deployment, changeType 
 	scenario := dep.Labels["klew-lab/scenario"]
 	if scenario != "" {
 		w.Sink(model.EvidenceEvent{
-			Timestamp:  time.Now().UTC(),
+			Timestamp:  model.TimestampFrom(time.Now().UTC()),
 			SourceType: model.SourceObjectChange,
 			SourceKind: "Deployment",
 			SourceName: dep.Name,
@@ -272,7 +272,7 @@ func (w *LiveWatcher) emitDeploymentEvidence(dep *appsv1.Deployment, changeType 
 	}
 	if denial, ok := dep.Annotations["klew-lab/admission-denial"]; ok && strings.TrimSpace(denial) != "" {
 		w.Sink(model.EvidenceEvent{
-			Timestamp:  time.Now().UTC(),
+			Timestamp:  model.TimestampFrom(time.Now().UTC()),
 			SourceType: model.SourceObjectChange,
 			SourceKind: "Deployment",
 			SourceName: dep.Name,
@@ -289,7 +289,7 @@ func (w *LiveWatcher) emitDeploymentEvidence(dep *appsv1.Deployment, changeType 
 	}
 	if changeType != "" && image != "" {
 		w.Sink(model.EvidenceEvent{
-			Timestamp:  time.Now().UTC(),
+			Timestamp:  model.TimestampFrom(time.Now().UTC()),
 			SourceType: model.SourceObjectChange,
 			SourceKind: "Deployment",
 			SourceName: dep.Name,
@@ -304,7 +304,7 @@ func (w *LiveWatcher) emitDeploymentEvidence(dep *appsv1.Deployment, changeType 
 
 func systemEvent(reason, msg string, sev model.Severity) model.EvidenceEvent {
 	return model.EvidenceEvent{
-		Timestamp: time.Now().UTC(), SourceType: model.SourceSystem,
+		Timestamp: model.TimestampFrom(time.Now().UTC()), SourceType: model.SourceSystem,
 		Severity: sev, Reason: reason, Message: msg, Confidence: 1,
 	}
 }

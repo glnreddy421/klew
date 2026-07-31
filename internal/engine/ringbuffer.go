@@ -51,7 +51,7 @@ func (r *RingBuffer) Add(e model.EvidenceEvent) {
 		e.Count = 1
 	}
 	if e.Timestamp.IsZero() {
-		e.Timestamp = time.Now().UTC()
+		e.Timestamp = model.TimestampFrom(time.Now().UTC())
 	}
 
 	// Log lines are never collapsed — each tail line is distinct evidence.
@@ -204,7 +204,7 @@ func normalizeMsg(s string) string {
 
 // logLineFingerprint uniquely identifies one tailed log line (no digit normalization).
 func logLineFingerprint(e model.EvidenceEvent) string {
-	key := "logline|" + e.Pod + "|" + e.Container + "|" + strings.TrimSpace(e.Raw) + "|" + e.Timestamp.Format(time.RFC3339Nano)
+	key := "logline|" + e.Pod + "|" + e.Container + "|" + strings.TrimSpace(e.Raw) + "|" + e.Timestamp.Time().Format(time.RFC3339Nano)
 	sum := sha1.Sum([]byte(key))
 	return hex.EncodeToString(sum[:8])
 }

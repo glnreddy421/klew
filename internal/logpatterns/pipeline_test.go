@@ -27,16 +27,16 @@ func TestDualPipeline_EventGuardAndBoard(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		ts := now.Add(-time.Duration(i) * time.Minute)
 		p.IngestLog("dial tcp 10.0.0.1:5432: connection refused", 1, model.EvidenceEvent{
-			Timestamp: ts, Pod: "api-1", Severity: model.SeverityHigh, SourceType: model.SourceLog,
+			Timestamp: model.TimestampFrom(ts), Pod: "api-1", Severity: model.SeverityHigh, SourceType: model.SourceLog,
 		})
 		p.IngestEvent(model.EvidenceEvent{
-			Timestamp: ts, SourceType: model.SourceK8sEvent, SourceKind: "Pod", SourceName: "api-1",
+			Timestamp: model.TimestampFrom(ts), SourceType: model.SourceK8sEvent, SourceKind: "Pod", SourceName: "api-1",
 			Reason: "Failed", Message: "Failed to pull image", Severity: model.SeverityHigh, Count: 1,
 		})
 	}
 	// Deployment noise must be discarded by EventMiner guard.
 	p.IngestEvent(model.EvidenceEvent{
-		Timestamp: now, SourceType: model.SourceK8sEvent, SourceKind: "Deployment", SourceName: "api",
+		Timestamp: model.TimestampFrom(now), SourceType: model.SourceK8sEvent, SourceKind: "Deployment", SourceName: "api",
 		Reason: "ScalingReplicaSet", Message: "Scaled up", Severity: model.SeverityInfo, Count: 1,
 	})
 

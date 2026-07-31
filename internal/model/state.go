@@ -35,7 +35,7 @@ type NamespaceScope struct {
 // EvidenceEvent is a single piece of live or snapshot evidence.
 type EvidenceEvent struct {
 	ID                string            `json:"id"`
-	Timestamp         time.Time         `json:"timestamp"`
+	Timestamp         Timestamp         `json:"timestamp"`
 	SourceType        SourceType        `json:"sourceType"`
 	SourceKind        string            `json:"sourceKind,omitempty"`
 	SourceName        string            `json:"sourceName,omitempty"`
@@ -60,7 +60,7 @@ type ActiveWatch struct {
 	Name      string    `json:"name"`
 	Resource  string    `json:"resource"`
 	Namespace string    `json:"namespace,omitempty"`
-	StartedAt time.Time `json:"startedAt"`
+	StartedAt Timestamp `json:"startedAt"`
 }
 
 // StreamCounters tracks live collection stats.
@@ -69,7 +69,7 @@ type StreamCounters struct {
 	LogsIngested   int64     `json:"logsIngested"`
 	ObjectChanges  int64     `json:"objectChanges"`
 	MetricSamples  int64     `json:"metricSamples"`
-	LastEventAt    time.Time `json:"lastEventAt"`
+	LastEventAt    Timestamp `json:"lastEventAt"`
 }
 
 // RecentChange captures automatic enrichment about what recently changed for a
@@ -78,7 +78,7 @@ type StreamCounters struct {
 type RecentChange struct {
 	RevisionFrom  string    `json:"revisionFrom,omitempty"`
 	RevisionTo    string    `json:"revisionTo,omitempty"`
-	DeployedAt    time.Time `json:"deployedAt,omitempty"`
+	DeployedAt    Timestamp `json:"deployedAt,omitempty"`
 	Image         string    `json:"image,omitempty"`
 	HelmRelease   string    `json:"helmRelease,omitempty"`
 	HelmRevision  string    `json:"helmRevision,omitempty"`
@@ -107,13 +107,13 @@ type HypothesisTransition struct {
 
 // InvestigationState is the central mutable investigation snapshot.
 type InvestigationState struct {
-	CollectedAt       time.Time         `json:"collectedAt"`
-	LastUpdatedAt     time.Time         `json:"lastUpdatedAt"`
+	CollectedAt       Timestamp         `json:"collectedAt"`
+	LastUpdatedAt     Timestamp         `json:"lastUpdatedAt"`
 	Mode              Mode              `json:"mode"`
 	KubeContext       KubeContext       `json:"kubeContext"`
 	NamespaceScope    NamespaceScope    `json:"namespaceScope"`
 	Query             string            `json:"query"`
-	Window            time.Duration     `json:"window"`
+	Window            int64             `json:"window"` // milliseconds
 	TailLines         int               `json:"tailLines"`
 	MatchedObjects    []MatchedObject   `json:"matchedObjects"`
 	Scope             *investigation.InvestigationScope `json:"scope,omitempty"`
@@ -190,8 +190,8 @@ func (s InvestigationState) ToBundle() EvidenceBundle {
 func NewInvestigationState(query string, mode Mode) InvestigationState {
 	now := time.Now().UTC()
 	return InvestigationState{
-		CollectedAt:   now,
-		LastUpdatedAt: now,
+		CollectedAt:   TimestampFrom(now),
+		LastUpdatedAt: TimestampFrom(now),
 		Mode:          mode,
 		Query:         query,
 		Verdict: Verdict{

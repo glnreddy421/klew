@@ -122,7 +122,7 @@ func (s *Service) Watch(ctx context.Context, fn func(model.InvestigationState)) 
 	}
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
-	var last time.Time
+	var last model.Timestamp
 	emit := func() {
 		st := s.State()
 		if st.LastUpdatedAt.Equal(last) && !last.IsZero() {

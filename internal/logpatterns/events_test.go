@@ -13,23 +13,23 @@ func TestExtractEventPatternsAllowlist(t *testing.T) {
 	now := time.Now().UTC()
 	ev := []model.EvidenceEvent{
 		{
-			Timestamp: now, SourceType: model.SourceK8sEvent, SourceKind: "Pod", SourceName: "api-1",
+			Timestamp: model.TimestampFrom(now), SourceType: model.SourceK8sEvent, SourceKind: "Pod", SourceName: "api-1",
 			Reason: "Failed", Message: "Failed to pull image nginx:latest", Severity: model.SeverityHigh, Count: 1,
 		},
 		{
-			Timestamp: now, SourceType: model.SourceK8sEvent, SourceKind: "Deployment", SourceName: "api",
+			Timestamp: model.TimestampFrom(now), SourceType: model.SourceK8sEvent, SourceKind: "Deployment", SourceName: "api",
 			Reason: "ScalingReplicaSet", Message: "Scaled up replica set", Severity: model.SeverityInfo, Count: 1,
 		},
 		{
-			Timestamp: now, SourceType: model.SourceK8sEvent, SourceKind: "Node", SourceName: "node-1",
+			Timestamp: model.TimestampFrom(now), SourceType: model.SourceK8sEvent, SourceKind: "Node", SourceName: "node-1",
 			Reason: "NodeNotReady", Message: "Node is not ready", Severity: model.SeverityCritical, Count: 1,
 		},
 		{
-			Timestamp: now, SourceType: model.SourceK8sEvent, SourceKind: "PersistentVolumeClaim", SourceName: "data",
+			Timestamp: model.TimestampFrom(now), SourceType: model.SourceK8sEvent, SourceKind: "PersistentVolumeClaim", SourceName: "data",
 			Reason: "FailedBinding", Message: "no persistent volumes available", Severity: model.SeverityHigh, Count: 1,
 		},
 		{
-			Timestamp: now, SourceType: model.SourceLog, Pod: "api-1", Container: "app",
+			Timestamp: model.TimestampFrom(now), SourceType: model.SourceLog, Pod: "api-1", Container: "app",
 			Message: "api-1/app: dial tcp 10.0.0.1:5432: connection refused", Severity: model.SeverityHigh, Count: 1,
 		},
 	}
@@ -63,14 +63,14 @@ func TestMergeSnapshotEventsFeedsExtract(t *testing.T) {
 	now := time.Now().UTC()
 	// Live ring has only logs — snapshot carries the infra events.
 	live := []model.EvidenceEvent{{
-		Timestamp: now, SourceType: model.SourceLog, Pod: "p",
+		Timestamp: model.TimestampFrom(now), SourceType: model.SourceLog, Pod: "p",
 		Message: "p/c: hello", Severity: model.SeverityInfo, Count: 1,
 	}}
 	snap := []model.EventRecord{{
-		Timestamp: now, Reason: "FailedMount", Message: "mount volume failed", Count: 2,
+		Timestamp: model.TimestampFrom(now), Reason: "FailedMount", Message: "mount volume failed", Count: 2,
 		InvolvedObject: model.ObjectRef{Kind: "Pod", Name: "p", Namespace: "ns"},
 	}, {
-		Timestamp: now, Reason: "ScalingReplicaSet", Message: "scaled", Count: 1,
+		Timestamp: model.TimestampFrom(now), Reason: "ScalingReplicaSet", Message: "scaled", Count: 1,
 		InvolvedObject: model.ObjectRef{Kind: "Deployment", Name: "api", Namespace: "ns"},
 	}}
 	merged := logpatterns.MergeSnapshotEvents(live, snap)
@@ -87,7 +87,7 @@ func TestFormatEventPatternCompound(t *testing.T) {
 	// Exercised via Extract: compound [Reason] Message must appear in samples/templates.
 	now := time.Now().UTC()
 	ev := []model.EvidenceEvent{{
-		Timestamp: now, SourceType: model.SourceK8sEvent, SourceKind: "Pod", SourceName: "p",
+		Timestamp: model.TimestampFrom(now), SourceType: model.SourceK8sEvent, SourceKind: "Pod", SourceName: "p",
 		Reason: "BackOff", Message: "Back-off restarting failed container", Severity: model.SeverityHigh, Count: 1,
 	}}
 	out := logpatterns.Extract(ev, logpatterns.Options{})

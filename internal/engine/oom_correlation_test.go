@@ -51,7 +51,7 @@ func TestCorrelateOOMLeadsOverBackOff(t *testing.T) {
 		{SourceType: model.SourceK8sEvent, Reason: "BackOff", Message: "back-off restarting", Severity: model.SeverityHigh, Count: 50},
 		{SourceType: model.SourceLog, Reason: "Memory allocation", Raw: "allocating memory until OOM", Severity: model.SeverityCritical},
 	}
-	signals := SignalAggregator{Window: 0}.Aggregate(events, events[0].Timestamp)
+	signals := SignalAggregator{Window: 0}.Aggregate(events, events[0].Timestamp.Time())
 	corr := CorrelationEngine{}.Correlate(b, signals, events)
 	if corr.LeadingSignal != "OOMKilled" {
 		t.Fatalf("leading=%q want OOMKilled", corr.LeadingSignal)

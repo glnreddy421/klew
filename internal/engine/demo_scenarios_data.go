@@ -32,7 +32,7 @@ func paymentScenario() DemoScenario {
 				demoPod(ns, target+"-a4", "ip-10-0-2-12", true, 0, img),
 			}
 			return model.EvidenceBundle{
-				CollectedAt: time.Now(),
+				CollectedAt: model.TimestampFrom(time.Now()),
 				Workloads: []model.WorkloadSummary{{Kind: "Deployment", Name: target, Namespace: ns,
 					Replicas: 4, Ready: 4, Available: 4, Updated: 4, Generation: 42, Selector: "app=" + target}},
 				ReplicaSets: []model.ReplicaSetSummary{
@@ -140,7 +140,7 @@ func vaultScenario() DemoScenario {
 			img := "hashicorp/vault-k8s:1.3.1"
 			pods := []model.PodSummary{demoPod(ns, target+"-0", "ip-10-0-3-9", true, 0, img)}
 			return model.EvidenceBundle{
-				CollectedAt: time.Now(),
+				CollectedAt: model.TimestampFrom(time.Now()),
 				Workloads:   []model.WorkloadSummary{{Kind: "Deployment", Name: target, Namespace: ns, Replicas: 1, Ready: 1, Available: 1, Generation: 12, Selector: "app=" + target}},
 				ReplicaSets: []model.ReplicaSetSummary{{Name: target + "-r12", Namespace: ns, Replicas: 1, Ready: 1, DeploymentOwner: target}},
 				Pods:        pods,
@@ -206,7 +206,7 @@ func checkoutScenario() DemoScenario {
 			}
 			pods[0].Phase, pods[1].Phase = "Pending", "Pending"
 			return model.EvidenceBundle{
-				CollectedAt: time.Now(),
+				CollectedAt: model.TimestampFrom(time.Now()),
 				Workloads:   []model.WorkloadSummary{{Kind: "Deployment", Name: target, Namespace: ns, Replicas: 3, Ready: 0, Available: 0, Generation: 9, Selector: "app=" + target}},
 				ReplicaSets: []model.ReplicaSetSummary{{Name: target + "-r9", Namespace: ns, Replicas: 3, Ready: 0, DeploymentOwner: target}},
 				Pods:        pods,

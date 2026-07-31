@@ -34,7 +34,7 @@ func TestRecoveredPodsClearCriticalVerdict(t *testing.T) {
 	st.Snapshot = b
 	store := NewReducer(&st)
 	store.ApplyEvent(model.EvidenceEvent{
-		Timestamp: time.Now(), SourceType: model.SourceK8sEvent,
+		Timestamp: model.TimestampFrom(time.Now()), SourceType: model.SourceK8sEvent,
 		Severity: model.SeverityCritical, Reason: "OOMKilled", Message: "exceeded memory limit",
 	})
 	out := store.State()

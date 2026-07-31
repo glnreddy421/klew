@@ -10,13 +10,13 @@ import (
 // explored without a live cluster. It reproduces a payment-api OOM incident.
 func DemoState() model.InvestigationState {
 	now := time.Now()
-	at := func(hh, mm, ss int) time.Time {
-		return time.Date(now.Year(), now.Month(), now.Day(), hh, mm, ss, 0, time.Local)
+	at := func(hh, mm, ss int) model.Timestamp {
+		return model.TimestampFrom(time.Date(now.Year(), now.Month(), now.Day(), hh, mm, ss, 0, time.Local))
 	}
-	tp := func(t time.Time) *time.Time { return &t }
+	tp := func(t model.Timestamp) *model.Timestamp { return &t }
 
 	labels := map[string]string{"app": "payment-api"}
-	oomContainer := func(image string, restarts int32, started, finished time.Time) model.ContainerStatus {
+	oomContainer := func(image string, restarts int32, started, finished model.Timestamp) model.ContainerStatus {
 		return model.ContainerStatus{
 			Name: "app", Image: image, Ready: false, RestartCount: restarts,
 			State: "running", LastState: "terminated", LastReason: "OOMKilled", LastExitCode: 137,
@@ -119,7 +119,7 @@ func DemoState() model.InvestigationState {
 	return st
 }
 
-func demoEvents(at func(int, int, int) time.Time) []model.EventRecord {
+func demoEvents(at func(int, int, int) model.Timestamp) []model.EventRecord {
 	obj := func(name string) model.ObjectRef { return model.ObjectRef{Kind: "Pod", Name: name, Namespace: "payments"} }
 	return []model.EventRecord{
 		{Timestamp: at(9, 40, 2), Type: "Normal", Reason: "Scheduled", Count: 3, Message: "assigned to ip-10-0-4-13", InvolvedObject: obj("payment-77c9-c3")},
@@ -130,7 +130,7 @@ func demoEvents(at func(int, int, int) time.Time) []model.EventRecord {
 	}
 }
 
-func demoTimeline(at func(int, int, int) time.Time) []model.TimelineEvent {
+func demoTimeline(at func(int, int, int) model.Timestamp) []model.TimelineEvent {
 	return []model.TimelineEvent{
 		{Timestamp: at(9, 38, 22), Type: "deploy", Severity: model.SeverityInfo, SourceKind: "Deployment", SourceName: "deployment/payment-api", Message: "revision 42 started"},
 		{Timestamp: at(9, 38, 31), Type: "rs", Severity: model.SeverityInfo, SourceKind: "ReplicaSet", SourceName: "replicaset/payment-77c9", Message: "created"},
@@ -145,7 +145,7 @@ func demoTimeline(at func(int, int, int) time.Time) []model.TimelineEvent {
 	}
 }
 
-func demoStream(at func(int, int, int) time.Time) []model.EvidenceEvent {
+func demoStream(at func(int, int, int) model.Timestamp) []model.EvidenceEvent {
 	return []model.EvidenceEvent{
 		{Timestamp: at(9, 42, 10), SourceType: model.SourceK8sEvent, SourceKind: "Pod", SourceName: "payment-77c9", Pod: "payment-77c9", Severity: model.SeverityCritical, Reason: "OOMKilled", Message: "container exceeded memory limit"},
 		{Timestamp: at(9, 42, 9), SourceType: model.SourceLog, SourceKind: "Pod", SourceName: "payment-77c9", Pod: "payment-77c9", Container: "app", Severity: model.SeverityCritical, Reason: "ERROR", Message: "redis connection timeout", Raw: "ERROR redis connection timeout"},
@@ -201,7 +201,7 @@ func demoPermissions() []model.PermissionCheck {
 	return out
 }
 
-func demoWatches(start time.Time) []model.ActiveWatch {
+func demoWatches(start model.Timestamp) []model.ActiveWatch {
 	names := []string{"pods", "deployments", "replicasets", "services", "endpointslices", "events", "logs:payment-77c9", "logs:payment-52aa"}
 	var out []model.ActiveWatch
 	for _, n := range names {

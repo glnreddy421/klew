@@ -1,7 +1,5 @@
 package model
 
-import "time"
-
 // LogPatterns is the Patterns dashboard payload.
 // Log* fields feed Live Tail → Patterns; Event* fields feed Infrastructure Patterns.
 type LogPatterns struct {
@@ -66,7 +64,7 @@ type LogSample struct {
 	Message   string    `json:"message"`
 	Pod       string    `json:"pod"`
 	Container string    `json:"container"`
-	Timestamp time.Time `json:"timestamp"`
+	Timestamp Timestamp `json:"timestamp"`
 	Severity  Severity  `json:"severity"`
 }
 

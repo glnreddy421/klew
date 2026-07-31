@@ -19,8 +19,8 @@ func TestServiceSelectsPod(t *testing.T) {
 func TestSortTimeline(t *testing.T) {
 	now := time.Now()
 	events := []model.TimelineEvent{
-		{Timestamp: now.Add(2 * time.Minute), Severity: model.SeverityInfo},
-		{Timestamp: now, Severity: model.SeverityCritical},
+		{Timestamp: model.TimestampFrom(now.Add(2 * time.Minute)), Severity: model.SeverityInfo},
+		{Timestamp: model.TimestampFrom(now), Severity: model.SeverityCritical},
 	}
 	sorted := SortTimeline(events)
 	if sorted[0].Timestamp.After(sorted[1].Timestamp) {
@@ -63,8 +63,8 @@ func TestGenerateVerdictCritical(t *testing.T) {
 func TestDetectTrigger(t *testing.T) {
 	now := time.Now()
 	timeline := []model.TimelineEvent{
-		{Timestamp: now, Severity: model.SeverityInfo, SourceKind: "Pod", SourceName: "a", Message: "started"},
-		{Timestamp: now.Add(time.Minute), Severity: model.SeverityCritical, Reason: "OOMKilled", SourceKind: "Pod", SourceName: "b", Message: "oom", Confidence: 0.9},
+		{Timestamp: model.TimestampFrom(now), Severity: model.SeverityInfo, SourceKind: "Pod", SourceName: "a", Message: "started"},
+		{Timestamp: model.TimestampFrom(now.Add(time.Minute)), Severity: model.SeverityCritical, Reason: "OOMKilled", SourceKind: "Pod", SourceName: "b", Message: "oom", Confidence: 0.9},
 	}
 	trigger, conf := detectTrigger(timeline)
 	if trigger == "" || conf < 0.5 {
