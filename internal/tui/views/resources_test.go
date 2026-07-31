@@ -8,7 +8,7 @@ import (
 )
 
 func TestResourcesViewInvestigationLayout(t *testing.T) {
-	st := engine.DemoState()
+	st := engine.FixtureState()
 	out := ResourcesView(st, 120, 28)
 	for _, want := range []string{
 		"Workload Capacity",
@@ -26,10 +26,10 @@ func TestResourcesViewInvestigationLayout(t *testing.T) {
 }
 
 func TestGenerateResourceFindingsOOM(t *testing.T) {
-	st := engine.DemoState()
+	st := engine.FixtureState()
 	findings := generateResourceFindings(st, st.Snapshot, st.Snapshot.Metrics)
 	if len(findings) == 0 {
-		t.Fatal("expected findings for OOM demo")
+		t.Fatal("expected findings for OOM fixture")
 	}
 	foundOOM := false
 	for _, f := range findings {
@@ -43,7 +43,7 @@ func TestGenerateResourceFindingsOOM(t *testing.T) {
 }
 
 func TestGenerateResourceRecommendationsEvidenceBacked(t *testing.T) {
-	st := engine.DemoState()
+	st := engine.FixtureState()
 	findings := generateResourceFindings(st, st.Snapshot, st.Snapshot.Metrics)
 	recs := generateResourceRecommendations(st, st.Snapshot, st.Snapshot.Metrics, findings)
 	if len(recs) == 0 {
@@ -52,7 +52,7 @@ func TestGenerateResourceRecommendationsEvidenceBacked(t *testing.T) {
 }
 
 func TestResourcesViewNoMetricsOOM(t *testing.T) {
-	st := engine.DemoState()
+	st := engine.FixtureState()
 	st.Snapshot.Metrics.Available = false
 	st.Snapshot.Metrics.MemUsageMi = 0
 	out := ResourcesView(st, 120, 28)

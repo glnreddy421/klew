@@ -16,7 +16,6 @@ import (
 
 var (
 	graphWidth int
-	graphDemo  bool
 )
 
 var graphCmd = &cobra.Command{
@@ -34,7 +33,6 @@ Example:
 
 func init() {
 	graphCmd.Flags().IntVar(&graphWidth, "width", 0, "output width in columns (default: terminal width)")
-	graphCmd.Flags().BoolVar(&graphDemo, "demo", false, "use simulated demo data (no cluster)")
 }
 
 func runGraph(cmd *cobra.Command, args []string) error {
@@ -42,13 +40,6 @@ func runGraph(cmd *cobra.Command, args []string) error {
 	width := graphWidth
 	if width <= 0 {
 		width = terminalWidth()
-	}
-
-	if graphDemo {
-		st := engine.DemoState()
-		st.Query = query
-		printGraphReport(st, width)
-		return nil
 	}
 
 	client, err := kube.NewFromFlags(kubeconfig, contextName, namespace)

@@ -26,7 +26,7 @@ func Start(ctx context.Context, client *kube.Client, opts engine.LiveOptions) (*
 	return &Service{session: session}, nil
 }
 
-// Wrap returns a Service around an existing live session (demo, tests).
+// Wrap returns a Service around an existing live session (tests).
 func Wrap(session *engine.LiveSession) *Service {
 	if session == nil {
 		return nil

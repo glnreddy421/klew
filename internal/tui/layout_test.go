@@ -34,7 +34,7 @@ func TestSplitPanelHeights(t *testing.T) {
 }
 
 func TestStreamFocusScroll(t *testing.T) {
-	m := newStaticModel(engine.DemoState())
+	m := newStaticModel(engine.FixtureState())
 	m.ui.width = 120
 	m.ui.height = 40
 	m.ui.streamFocused = true

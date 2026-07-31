@@ -35,8 +35,6 @@ open "$(brew --prefix)/opt/klew/Klew.app"
 
 Open Klew and connect to a cluster via your kubeconfig. Pick a namespace, search for a workload, and start a live investigation.
 
-**Demo mode** (no cluster required): use the built-in demo scenarios to explore a fully simulated live investigation — payment (OOMKilled), vault (FailedMount), or checkout (ImagePullBackOff).
-
 Namespace scope: **namespace is the investigation boundary**. Select or pin a namespace before searching; the query targets workloads inside that boundary only.
 
 ## Investigation views

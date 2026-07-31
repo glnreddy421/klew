@@ -15,7 +15,7 @@ func TestRenderAllTabs(t *testing.T) {
 		TabIncident, TabTimeline, TabGraph, TabFailures, TabResources, TabEvidence,
 	}
 	for _, tab := range tabs {
-		m := newStaticModel(engine.DemoState())
+		m := newStaticModel(engine.FixtureState())
 		m.ui.width = 120
 		m.ui.height = 40
 		m.ui.tab = tab
@@ -57,7 +57,7 @@ func TestViewFitsTerminalHeight(t *testing.T) {
 	}
 	for _, h := range []int{24, 32, 40, 48} {
 		for _, tab := range tabs {
-			m := newStaticModel(engine.DemoState())
+			m := newStaticModel(engine.FixtureState())
 			m.ui.width = 120
 			m.ui.height = h
 			m.ui.tab = tab
@@ -72,7 +72,7 @@ func TestViewFitsTerminalHeight(t *testing.T) {
 }
 
 func TestStreamModeToggle(t *testing.T) {
-	m := newStaticModel(engine.DemoState())
+	m := newStaticModel(engine.FixtureState())
 	m.ui.width = 120
 	m.ui.height = 40
 	start := m.ui.streamMode

@@ -37,7 +37,6 @@ func init() {
 	rootCmd.AddCommand(watchCmd)
 	rootCmd.AddCommand(collectCmd)
 	rootCmd.AddCommand(viewCmd)
-	rootCmd.AddCommand(demoCmd)
 }
 
 func exitErr(err error) error {
