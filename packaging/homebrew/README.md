@@ -1,11 +1,11 @@
 # Homebrew
 
-Formula for local development and for copying into the separate **[klew-homebrew](https://github.com/glnreddy421/klew-homebrew)** tap repo on release.
+Formula for local development and for copying into the separate **[homebrew-klew](https://github.com/glnreddy421/homebrew-klew)** tap repo on release.
 
 ## Local install
 
 ```bash
-brew install --HEAD ./packaging/homebrew/klew.rb
+brew install ./packaging/homebrew/klew.rb
 open "$(brew --prefix)/opt/klew/Klew.app"
 ```
 
@@ -18,11 +18,11 @@ open "$(brew --prefix)/opt/klew/Klew.app"
 curl -L "https://github.com/glnreddy421/klew/archive/refs/tags/vX.Y.Z.tar.gz" | shasum -a 256
 ```
 
-3. Copy `packaging/homebrew/klew.rb` → `Formula/klew.rb` in **klew-homebrew** and push.
+3. Copy `packaging/homebrew/klew.rb` → `Formula/klew.rb` in **homebrew-klew** and push.
 
 ## User install
 
 ```bash
-brew tap glnreddy421/klew https://github.com/glnreddy421/klew-homebrew
+brew tap glnreddy421/klew
 brew install klew
 ```

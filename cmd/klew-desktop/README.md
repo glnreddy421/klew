@@ -44,4 +44,4 @@ make desktop
 
 - `internal/service` — live investigation backend
 - `internal/api` — JSON view consumed by React
-- `cmd/klew-desktop` — desktop shell (`brew tap glnreddy421/klew https://github.com/glnreddy421/klew-homebrew && brew install klew`)
+- `cmd/klew-desktop` — desktop shell (`brew tap glnreddy421/klew && brew install klew`)
