@@ -11,7 +11,7 @@ class Klew < Formula
     url "https://github.com/glnreddy421/klew.git", branch: "main"
   else
     url "https://github.com/glnreddy421/klew/archive/refs/tags/v0.1.0.tar.gz"
-    sha256 "UPDATE_ON_RELEASE"
+    sha256 "98e17b6b487803e42aada592bcf1ec15f7fbb47523746a5a99908a753809f191"
     version "0.1.0"
   end
 

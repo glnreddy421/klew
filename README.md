@@ -23,7 +23,7 @@ open "$(brew --prefix)/opt/klew/Klew.app"
 Before the tap is published, from a clone:
 
 ```bash
-brew install --HEAD ./packaging/homebrew/klew.rb
+brew install ./packaging/homebrew/klew.rb
 open "$(brew --prefix)/opt/klew/Klew.app"
 ```
 
