@@ -17,7 +17,7 @@ LDFLAGS="-s -w \
 export PATH="$(go env GOPATH)/bin:${PATH:-}"
 
 if ! command -v wails >/dev/null; then
-  echo "wails not found; run: make install-desktop-tools" >&2
+  echo "wails not found; run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0" >&2
   exit 1
 fi
 
