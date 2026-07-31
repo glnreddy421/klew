@@ -2,32 +2,19 @@ class Klew < Formula
   desc "Klew — live Kubernetes incident investigation (desktop app)"
   homepage "https://github.com/glnreddy421/klew"
   license "Apache-2.0"
+  version "0.1.4"
 
-  depends_on "go" => :build
-  depends_on "node" => :build
   depends_on :macos
 
-  if build.head?
-    url "https://github.com/glnreddy421/klew.git", branch: "main"
-  else
-    url "https://github.com/glnreddy421/klew/archive/refs/tags/v0.1.0.tar.gz"
-    sha256 "98e17b6b487803e42aada592bcf1ec15f7fbb47523746a5a99908a753809f191"
-    version "0.1.0"
+  on_macos do
+    on_arm do
+      url "https://github.com/glnreddy421/klew/releases/download/v0.1.4/Klew-0.1.4-macos-arm64.zip"
+      sha256 "1116cb39b811e1a755e9712743d857b402e22c6083823ce749afa929ae05ac19"
+    end
   end
 
   def install
-    wails_bin = buildpath/"wails-bin"
-    wails_bin.mkpath
-    ENV["GOBIN"] = wails_bin
-    system "go", "install", "github.com/wailsapp/wails/v2/cmd/wails@v2.13.0"
-    ENV.prepend_path "PATH", wails_bin.to_s
-
-    cd "cmd/klew-desktop" do
-      system "npm", "install", "--prefix", "frontend"
-      system "npm", "run", "build", "--prefix", "frontend"
-      system "wails", "build", "-clean"
-      prefix.install "build/bin/Klew.app"
-    end
+    prefix.install "Klew.app"
   end
 
   def caveats
