@@ -21,6 +21,9 @@ if ! command -v wails >/dev/null; then
   exit 1
 fi
 
+# shellcheck source=macos-signing.sh
+source "$ROOT/scripts/macos-signing.sh"
+
 cd cmd/klew-desktop
 npm ci --prefix frontend
 npm run build --prefix frontend
@@ -36,6 +39,23 @@ if [[ -z "${APP:-}" || ! -d "$APP" ]]; then
   exit 1
 fi
 
+ENTITLEMENTS="$ROOT/packaging/macos/Klew.entitlements"
+PKG_STAGING="$(mktemp -d)"
+DMG_STAGING=""
+cleanup() {
+  rm -rf "$PKG_STAGING" "${DMG_STAGING:-}"
+}
+trap cleanup EXIT
+
+cp -R "$APP" "$PKG_STAGING/Klew.app"
+
+if macos_signing_ready; then
+  echo "Signing and notarizing Klew.app with Developer ID..."
+  macos_sign_and_notarize_app "$PKG_STAGING/Klew.app" "$ENTITLEMENTS"
+else
+  echo "Skipping code signing (Apple secrets not configured)."
+fi
+
 DIST="$ROOT/dist"
 mkdir -p "$DIST"
 
@@ -43,17 +63,17 @@ ARCH="$(uname -m)"
 ZIP="$DIST/Klew-${VERSION}-macos-${ARCH}.zip"
 DMG="$DIST/Klew-${VERSION}-macos-${ARCH}.dmg"
 
-PKG_STAGING="$(mktemp -d)"
-cleanup() { rm -rf "$PKG_STAGING" "$DMG_STAGING"; }
-trap cleanup EXIT
-
-cp -R "$APP" "$PKG_STAGING/Klew.app"
 ditto -c -k --sequesterRsrc --keepParent "$PKG_STAGING/Klew.app" "$ZIP"
 
 DMG_STAGING="$(mktemp -d)"
 cp -R "$PKG_STAGING/Klew.app" "$DMG_STAGING/"
 ln -s /Applications "$DMG_STAGING/Applications"
 hdiutil create -volname "Klew" -srcfolder "$DMG_STAGING" -ov -format UDZO "$DMG"
+
+if macos_signing_ready; then
+  echo "Signing and notarizing DMG..."
+  macos_sign_and_notarize_dmg "$DMG"
+fi
 
 echo "Release artifacts:"
 echo "  $ZIP"
