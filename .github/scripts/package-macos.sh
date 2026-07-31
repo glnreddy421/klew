@@ -2,7 +2,8 @@
 # Build Klew.app and package macOS release artifacts (zip + dmg).
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$ROOT"
 
 VERSION="${VERSION#v}"
@@ -22,7 +23,7 @@ if ! command -v wails >/dev/null; then
 fi
 
 # shellcheck source=macos-signing.sh
-source "$ROOT/scripts/macos-signing.sh"
+source "$SCRIPT_DIR/macos-signing.sh"
 
 cd cmd/klew-desktop
 npm ci --prefix frontend
