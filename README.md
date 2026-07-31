@@ -43,7 +43,7 @@ make desktop-dev   # hot reload
 make desktop       # Klew.app production build
 ```
 
-See [cmd/klew-desktop/README.md](cmd/klew-desktop/README.md).
+See [cmd/klew-desktop/README.md](cmd/klew-desktop/README.md) and **[DEVELOPMENT.md](DEVELOPMENT.md)** for the full local workflow.
 
 ## Using Klew
 
