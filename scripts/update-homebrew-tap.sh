@@ -50,7 +50,16 @@ class Klew < Formula
   end
 
   def install
-    prefix.install "Klew.app"
+    app = if (buildpath/"Contents/MacOS").directory?
+      buildpath
+    elsif (buildpath/"Klew.app").directory?
+      buildpath/"Klew.app"
+    else
+      buildpath.glob("*.app").first
+    end
+    odie "Klew.app not found under #{buildpath}" unless app&.directory?
+
+    cp_r app, prefix/"Klew.app"
   end
 
   def caveats
