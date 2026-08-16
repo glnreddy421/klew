@@ -11,15 +11,6 @@ macos_signing_ready() {
     [[ -n "${APPLE_TEAM_ID:-}" ]]
 }
 
-macos_decode_certificate() {
-  local dest="$1"
-  if base64 --help 2>&1 | grep -q GNU; then
-    echo "$APPLE_CERTIFICATE_BASE64" | base64 -d > "$dest"
-  else
-    echo "$APPLE_CERTIFICATE_BASE64" | base64 -D > "$dest"
-  fi
-}
-
 macos_setup_signing_keychain() {
   KEYCHAIN_PATH="${RUNNER_TEMP:-/tmp}/klew-signing.keychain-db"
   KEYCHAIN_PASSWORD="${KEYCHAIN_PASSWORD:-$(openssl rand -base64 32)}"
@@ -29,42 +20,25 @@ macos_setup_signing_keychain() {
   security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
   CERT_PATH="${RUNNER_TEMP:-/tmp}/klew-cert.p12"
-  macos_decode_certificate "$CERT_PATH"
-  security import "$CERT_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+  echo "$APPLE_CERTIFICATE_BASE64" | base64 -D > "$CERT_PATH"
+  security import "$CERT_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 \
+    -k "$KEYCHAIN_PATH" -T /usr/bin/codesign -T /usr/bin/security
   security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
   security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
   security default-keychain -s "$KEYCHAIN_PATH"
+  security find-identity -v -p codesigning "$KEYCHAIN_PATH" || true
 }
 
 macos_sign_app() {
   local app="$1"
   local entitlements="$2"
-  local binary="$app/Contents/MacOS/Klew"
-  local frameworks_dir="$app/Contents/Frameworks"
 
-  # Sign nested libraries/frameworks first (if present), then the binary, then the bundle.
-  if [[ -d "$frameworks_dir" ]]; then
-    while IFS= read -r -d '' item; do
-      codesign --force --options runtime --timestamp \
-        --sign "$APPLE_SIGNING_IDENTITY" \
-        "$item"
-    done < <(find "$frameworks_dir" -depth \( -type f -name "*.dylib" -o -type d -name "*.framework" \) -print0)
-  fi
-
-  if [[ -f "$binary" ]]; then
-    codesign --force --options runtime --timestamp \
-      --entitlements "$entitlements" \
-      --sign "$APPLE_SIGNING_IDENTITY" \
-      "$binary"
-  fi
-
-  codesign --force --options runtime --timestamp \
+  codesign --force --deep --options runtime --timestamp \
     --entitlements "$entitlements" \
     --sign "$APPLE_SIGNING_IDENTITY" \
     "$app"
-
-  codesign --verify --verbose=2 "$app"
+  codesign --verify --deep --strict --verbose=2 "$app"
 }
 
 macos_notarize_and_staple() {
@@ -78,11 +52,18 @@ macos_notarize_and_staple() {
   fi
 
   echo "Submitting ${label} for notarization..."
-  xcrun notarytool submit "$submit_path" \
+  if ! xcrun notarytool submit "$submit_path" \
     --apple-id "$APPLE_ID" \
     --password "$APPLE_APP_PASSWORD" \
     --team-id "$APPLE_TEAM_ID" \
-    --wait
+    --wait; then
+    echo "Notarization failed for ${label}. Recent submissions:" >&2
+    xcrun notarytool history \
+      --apple-id "$APPLE_ID" \
+      --password "$APPLE_APP_PASSWORD" \
+      --team-id "$APPLE_TEAM_ID" 2>&1 | head -20 >&2 || true
+    exit 1
+  fi
 
   if [[ -d "$artifact" ]]; then
     xcrun stapler staple "$artifact"
