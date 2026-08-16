@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { WindowIsMaximised, WindowToggleMaximise } from '../../wailsjs/runtime/runtime'
+import { WindowIsMaximised, WindowToggleMaximise, Environment, EventsOn } from '../../wailsjs/runtime/runtime'
 import {
   isBlankInvestigationQuery,
   normalizeInvestigationQuery,
@@ -25,10 +25,10 @@ export function TopBar({
   const contexts = cluster.contexts || []
   const namespaces = cluster.namespaces || []
   const syncedLabel = cluster.syncedAt
-    ? new Date(cluster.syncedAt).toLocaleTimeString()
-    : '—'
-  const contextLabel = cluster.selectedContext || cluster.currentContext || '—'
+    ? new Date(cluster.syncedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    : null
   const [windowMaximized, setWindowMaximized] = useState(false)
+  const [isMac, setIsMac] = useState(false)
 
   const q = normalizeInvestigationQuery(query)
   const canInvestigate = Boolean(cluster.selectedNamespace) && !starting
@@ -47,6 +47,15 @@ export function TopBar({
 
   useEffect(() => {
     WindowIsMaximised().then(setWindowMaximized).catch(() => {})
+    Environment().then((env) => setIsMac(env.platform === 'darwin')).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    const off = EventsOn('menu:focus-search', () => {
+      inputRef.current?.focus()
+      inputRef.current?.select()
+    })
+    return () => off?.()
   }, [])
 
   async function onToggleWindowMaximize() {
@@ -74,10 +83,12 @@ export function TopBar({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [onNewWindow])
 
+  const connectionTitle = cluster.syncError || cluster.kubeconfigPath || 'Cluster connection'
+
   return (
     <header className="topbar">
-      <div className="topbar-cluster">
-        <SelectChip
+      <div className="topbar-scope">
+        <ScopeSelect
           label="Context"
           value={cluster.selectedContext || cluster.currentContext || ''}
           options={contexts.map((c) => ({
@@ -89,7 +100,7 @@ export function TopBar({
           title={contextHint}
           onChange={onContextChange}
         />
-        <SelectChip
+        <ScopeSelect
           label="Namespace"
           value={cluster.selectedNamespace || ''}
           options={namespaces.map((ns) => ({ value: ns, label: ns }))}
@@ -98,132 +109,161 @@ export function TopBar({
         />
         <button
           type="button"
-          className="btn btn-window"
+          className="topbar-icon-btn"
           onClick={() => onNewWindow?.()}
-          title="Open a new window for another cluster (⌘N)"
+          title="New window (⌘N)"
           aria-label="Open new window"
         >
           <WindowIconClone />
         </button>
       </div>
 
-      <form className="topbar-search" onSubmit={onStart}>
-        <div className="search-field">
-          <svg className="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <form className="topbar-command" onSubmit={onStart}>
+        <div className="command-input">
+          <svg className="command-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
             <circle cx="11" cy="11" r="7" /><path d="M20 20l-3-3" />
           </svg>
           <input
             ref={inputRef}
-            className="search-input"
+            className="command-input-field"
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
-            placeholder="Search (empty = all in namespace)"
+            placeholder="Search workloads"
             disabled={starting}
             aria-label="Search workloads"
+            spellCheck={false}
+            autoComplete="off"
           />
-          <div className="search-field-end">
+          <div className="command-input-trail">
             {query && !starting && !isBlankInvestigationQuery(query) ? (
-              <button type="button" className="search-clear" onClick={onQueryClear} aria-label="Clear search">
-                ×
+              <button type="button" className="command-input-clear" onClick={onQueryClear} aria-label="Clear search">
+                <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
+                </svg>
               </button>
             ) : (
-              <kbd className="search-kbd" aria-hidden="true">⌘K</kbd>
+              <kbd className="command-input-kbd" aria-hidden="true">⌘K</kbd>
             )}
           </div>
         </div>
-        <button
-          type="submit"
-          className="btn btn-primary btn-investigate"
-          disabled={!canInvestigate}
-          aria-busy={starting}
-        >
-          {investigateLabel}
-        </button>
-        {running && (
+        <div className="command-actions">
           <button
-            type="button"
-            className="btn btn-ghost btn-investigate"
-            onClick={onStop}
-            disabled={starting}
+            type="submit"
+            className="btn btn-primary btn-command"
+            disabled={!canInvestigate}
+            aria-busy={starting}
           >
-            Stop
+            {investigateLabel}
           </button>
-        )}
+          {running && (
+            <button
+              type="button"
+              className="btn btn-quiet btn-command"
+              onClick={onStop}
+              disabled={starting}
+            >
+              Stop
+            </button>
+          )}
+        </div>
       </form>
 
-      <div className="topbar-status">
+      <div className="topbar-meta">
+        {!isMac && (
+          <button
+            type="button"
+            className="topbar-icon-btn"
+            onClick={onToggleWindowMaximize}
+            title={windowMaximized ? 'Restore window' : 'Maximize window'}
+            aria-label={windowMaximized ? 'Restore window' : 'Maximize window'}
+          >
+            {windowMaximized ? <WindowIconRestore /> : <WindowIconMaximize />}
+          </button>
+        )}
         <button
           type="button"
-          className="btn btn-window"
-          onClick={onToggleWindowMaximize}
-          title={windowMaximized ? 'Restore window' : 'Maximize window'}
-          aria-label={windowMaximized ? 'Restore window' : 'Maximize window'}
-        >
-          {windowMaximized ? <WindowIconRestore /> : <WindowIconMaximize />}
-        </button>
-        <button
-          type="button"
-          className="btn btn-sync"
+          className="topbar-icon-btn"
           onClick={onSync}
           disabled={syncing || running || starting}
-          title="Reload kubeconfig and refresh namespaces (⌘R)"
+          title="Sync kubeconfig (⌘R)"
+          aria-label={syncing ? 'Syncing' : 'Sync kubeconfig'}
         >
           <SyncIcon spinning={syncing} />
-          {syncing ? 'Syncing…' : 'Sync now'}
         </button>
-        <span className={`status-dot ${cluster.syncError ? 'warn' : 'ok'}`} title={cluster.syncError || 'Connected'} />
-        <span className="status-context">{contextLabel}</span>
-        <span className="status-sync" title={cluster.syncError || cluster.kubeconfigPath}>
-          {cluster.syncError ? 'Sync failed' : `Synced ${syncedLabel}`}
-        </span>
+        <div className="topbar-connection" title={connectionTitle}>
+          <span className={`connection-dot ${cluster.syncError ? 'warn' : 'ok'}`} aria-hidden="true" />
+          <span className="connection-copy">
+            {cluster.syncError ? (
+              <span className="connection-status connection-status--warn">Sync failed</span>
+            ) : (
+              <>
+                <span className="connection-status">Connected</span>
+                {syncedLabel && (
+                  <span className="connection-time">{syncedLabel}</span>
+                )}
+              </>
+            )}
+          </span>
+        </div>
       </div>
     </header>
   )
 }
 
-function SelectChip({ label, value, options, disabled, onChange, title }) {
+function ScopeSelect({ label, value, options, disabled, onChange, title }) {
   return (
-    <div className={`select-chip ${disabled ? 'disabled' : ''}`} title={title}>
-      <span className="chip-label">{label}</span>
-      <select
-        key={value || label}
-        className="chip-select"
-        value={value}
-        disabled={disabled || options.length === 0}
-        onChange={(e) => onChange(e.target.value)}
-      >
-        {options.length === 0 && <option value="">—</option>}
-        {options.map((o) => (
-          <option key={o.value} value={o.value} title={o.hint || o.label}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-    </div>
+    <label className={`scope-field ${disabled ? 'is-disabled' : ''}`} title={title}>
+      <span className="scope-field-label">{label}</span>
+      <span className="scope-field-control">
+        <select
+          key={value || label}
+          className="scope-field-input"
+          value={value}
+          disabled={disabled || options.length === 0}
+          onChange={(e) => onChange(e.target.value)}
+        >
+          {options.length === 0 && <option value="">—</option>}
+          {options.map((o) => (
+            <option key={o.value} value={o.value} title={o.hint || o.label}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        <ChevronIcon />
+      </span>
+    </label>
+  )
+}
+
+function ChevronIcon() {
+  return (
+    <svg className="scope-field-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+      <path d="M4 6l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   )
 }
 
 function SyncIcon({ spinning }) {
   return (
-    <svg className={`sync-icon ${spinning ? 'spin' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M21 12a9 9 0 11-2.64-6.36" />
-      <path d="M21 3v6h-6" />
+    <svg className={`sync-icon ${spinning ? 'spin' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <path d="M21 12a9 9 0 11-2.64-6.36" strokeLinecap="round" />
+      <path d="M21 3v6h-6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }
 
 function WindowIconClone() {
   return (
-    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+    <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
       <rect x="4.5" y="4.5" width="9" height="9" rx="1.5" />
-      <path d="M2.5 11.5V3.5A1 1 0 013.5 2.5h8" />
+      <path d="M2.5 11.5V3.5A1 1 0 013.5 2.5h8" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }
 
 function WindowIconMaximize() {
   return (
-    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+    <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
       <rect x="2.5" y="2.5" width="11" height="11" rx="1.5" />
     </svg>
   )
@@ -231,9 +271,9 @@ function WindowIconMaximize() {
 
 function WindowIconRestore() {
   return (
-    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+    <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
       <rect x="5" y="2" width="8.5" height="8.5" rx="1" />
-      <path d="M2.5 5.5v8H10.5" />
+      <path d="M2.5 5.5v8H10.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }

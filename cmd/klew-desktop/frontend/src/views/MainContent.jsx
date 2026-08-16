@@ -26,6 +26,7 @@ const META = {
   resources: { title: 'Resources', subtitle: 'CPU, memory, nodes, and pressure' },
   evidence: { title: 'Evidence', subtitle: 'Correlated signals, claims, and next checks' },
   settings: { title: 'Settings', subtitle: 'General, appearance, investigation, and Kubernetes' },
+  'settings-help': { title: 'Help', subtitle: 'Keyboard shortcuts and documentation' },
 }
 
 export function MainContent({
@@ -43,6 +44,8 @@ export function MainContent({
   prefs,
   onPrefsChange,
   onClusterRefresh,
+  settingsSection = 'general',
+  onSettingsSectionChange,
   focusKey,
   focusPinned,
   drillDown,
@@ -50,7 +53,8 @@ export function MainContent({
   onClearFocus,
   onFilterLogsFromPatterns,
 }) {
-  const meta = META[tab] || META.incident
+  const metaKey = tab === 'settings' && settingsSection === 'help' ? 'settings-help' : tab
+  const meta = META[metaKey] || META.incident
   const matchCount = getMatchedObjects(view).length
   const viewQuery = normalizeInvestigationQuery(view?.summary?.query ?? '')
   const expectedQuery = normalizeInvestigationQuery(activeQuery)
@@ -142,6 +146,8 @@ export function MainContent({
             prefs={prefs}
             onPrefsChange={onPrefsChange}
             onClusterRefresh={onClusterRefresh}
+            section={settingsSection}
+            onSectionChange={onSettingsSectionChange}
           />
         )}
       </div>
@@ -155,7 +161,7 @@ function WelcomePanel({ onOpenSettings }) {
       <CollectingMatchesSplash variant="idle" />
       <div className="welcome-actions">
         <p className="welcome-sub">
-          Leave search empty to browse the whole namespace. Klew streams pods, events, and logs.
+          Klew streams pods, events, and logs for the selected namespace.
         </p>
         <button type="button" className="btn btn-outline" onClick={onOpenSettings}>
           Open Settings

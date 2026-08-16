@@ -1,6 +1,9 @@
 import { NAV_ITEMS } from '../lib/constants'
+import { LogoMark } from './Logo'
 
-export function Sidebar({ active, onSelect, onSettings, collapsed, onToggle }) {
+export function Sidebar({ active, onSelect, onSettings, onHelp, settingsSection, collapsed, onToggle }) {
+  const settingsActive = active === 'settings' && settingsSection !== 'help'
+  const helpActive = active === 'settings' && settingsSection === 'help'
   return (
     <aside className={`sidebar rail ${collapsed ? 'collapsed' : ''}`}>
       <button
@@ -14,8 +17,8 @@ export function Sidebar({ active, onSelect, onSettings, collapsed, onToggle }) {
       </button>
 
       <div className="sidebar-brand">
-        <div className="brand-mark" aria-hidden="true">K</div>
-        {!collapsed && <span className="brand-name">Klew</span>}
+        <LogoMark />
+        {!collapsed && <span className="brand-name">klew</span>}
       </div>
 
       <nav className="sidebar-nav" aria-label="Primary">
@@ -40,19 +43,20 @@ export function Sidebar({ active, onSelect, onSettings, collapsed, onToggle }) {
       <div className="sidebar-footer">
         <button
           type="button"
-          className={`nav-item ${active === 'settings' ? 'active' : ''}`}
+          className={`nav-item ${settingsActive ? 'active' : ''}`}
           onClick={onSettings}
           title="Settings"
-          aria-current={active === 'settings' ? 'page' : undefined}
+          aria-current={settingsActive ? 'page' : undefined}
         >
           <NavIcon id="settings" />
           {!collapsed && <span className="nav-label">Settings</span>}
         </button>
         <button
           type="button"
-          className="nav-item help-btn"
-          onClick={onSettings}
-          title="Help & settings"
+          className={`nav-item help-btn ${helpActive ? 'active' : ''}`}
+          onClick={onHelp}
+          title="Keyboard shortcuts and documentation"
+          aria-current={helpActive ? 'page' : undefined}
         >
           <NavIcon id="help" />
           {!collapsed && <span className="nav-label">Help</span>}
@@ -116,8 +120,8 @@ function NavIcon({ id }) {
     ),
     settings: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="3" />
-        <path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+        <path d="M12 15a3 3 0 100-6 3 3 0 000 6z" />
+        <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
       </svg>
     ),
     help: (

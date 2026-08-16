@@ -11,6 +11,7 @@ export const SETTINGS_SECTIONS = [
   { id: 'investigation', label: 'Investigation', hint: 'Windows & refresh' },
   { id: 'concurrency', label: 'Concurrency', hint: 'Log stream limits' },
   { id: 'kubernetes', label: 'Kubernetes', hint: 'Kubeconfig & metrics' },
+  { id: 'help', label: 'Help', hint: 'Shortcuts & links' },
 ]
 
 /** @typedef {ReturnType<typeof defaultPreferences>} Preferences */

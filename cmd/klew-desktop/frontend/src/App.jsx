@@ -35,6 +35,7 @@ import {
 export default function App() {
   const [view, setView] = useState(emptyView())
   const [tab, setTab] = useState('incident')
+  const [settingsSection, setSettingsSection] = useState('general')
   const [query, setQuery] = useState('')
   const [running, setRunning] = useState(false)
   const [starting, setStarting] = useState(false)
@@ -111,6 +112,21 @@ export default function App() {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [syncNow, syncing, running])
+
+  useEffect(() => {
+    const offSettings = EventsOn('menu:settings', () => {
+      setSettingsSection('general')
+      setTab('settings')
+    })
+    const offHelp = EventsOn('menu:help', () => {
+      setSettingsSection('help')
+      setTab('settings')
+    })
+    return () => {
+      offSettings?.()
+      offHelp?.()
+    }
+  }, [])
 
   const matchRows = useMemo(
     () => deriveMatchRows(view, getMatchedObjects(view)),
@@ -351,7 +367,15 @@ export default function App() {
       <Sidebar
         active={tab}
         onSelect={setTab}
-        onSettings={() => setTab('settings')}
+        onSettings={() => {
+          setSettingsSection('general')
+          setTab('settings')
+        }}
+        onHelp={() => {
+          setSettingsSection('help')
+          setTab('settings')
+        }}
+        settingsSection={settingsSection}
         collapsed={sidebar.collapsed}
         onToggle={sidebar.toggle}
       />
@@ -388,11 +412,16 @@ export default function App() {
               cluster={cluster}
               themeId={themeId}
               onThemeChange={setTheme}
-              onOpenSettings={() => setTab('settings')}
+              onOpenSettings={() => {
+                setSettingsSection('general')
+                setTab('settings')
+              }}
               onOpenEvidence={() => setTab('evidence')}
               prefs={prefs}
               onPrefsChange={setPreferences}
               onClusterRefresh={syncNow}
+              settingsSection={settingsSection}
+              onSettingsSectionChange={setSettingsSection}
               focusKey={focusKey}
               focusPinned={focusPinned}
               drillDown={drillDown}
