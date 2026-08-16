@@ -13,6 +13,10 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 - Enable the green maximize traffic-light button by configuring Wails macOS options.
 - Remove redundant “empty search” helper copy from the search field and welcome screens.
 
+### Release
+
+- Harden macOS CI signing (avoid brittle `--deep --strict` codesign) and pin Node 22 for release builds.
+
 ### Other
 
 - Remove demo mode and simulated investigation paths.
