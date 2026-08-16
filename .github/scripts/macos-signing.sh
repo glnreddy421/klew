@@ -1,42 +1,47 @@
 #!/usr/bin/env bash
-# Import Developer ID cert, sign, notarize, and staple Klew.app (and DMG when provided).
+# Sign, notarize, and staple Klew.app (and DMG when provided).
 set -euo pipefail
 
 macos_signing_ready() {
-  [[ -n "${APPLE_CERTIFICATE_BASE64:-}" ]] &&
+  [[ -n "${APPLE_CERTIFICATE_BASE64:-}" || -n "${APPLE_SIGNING_IDENTITY:-}" ]] &&
     [[ -n "${APPLE_CERTIFICATE_PASSWORD:-}" ]] &&
-    [[ -n "${APPLE_SIGNING_IDENTITY:-}" ]] &&
     [[ -n "${APPLE_ID:-}" ]] &&
     [[ -n "${APPLE_APP_PASSWORD:-}" ]] &&
     [[ -n "${APPLE_TEAM_ID:-}" ]]
 }
 
-macos_setup_signing_keychain() {
-  KEYCHAIN_PATH="${RUNNER_TEMP:-/tmp}/klew-signing.keychain-db"
-  KEYCHAIN_PASSWORD="${KEYCHAIN_PASSWORD:-$(openssl rand -base64 32)}"
+macos_resolve_signing_identity() {
+  if [[ -n "${APPLE_SIGNING_IDENTITY:-}" ]]; then
+    if security find-identity -v -p codesigning 2>/dev/null | grep -Fq "$APPLE_SIGNING_IDENTITY"; then
+      echo "$APPLE_SIGNING_IDENTITY"
+      return 0
+    fi
+    echo "Configured APPLE_SIGNING_IDENTITY not found; auto-detecting..." >&2
+  fi
 
-  security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-  security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-  security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-
-  CERT_PATH="${RUNNER_TEMP:-/tmp}/klew-cert.p12"
-  echo "$APPLE_CERTIFICATE_BASE64" | base64 -D > "$CERT_PATH"
-  security import "$CERT_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 \
-    -k "$KEYCHAIN_PATH" -T /usr/bin/codesign -T /usr/bin/security
-  security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-
-  security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
-  security default-keychain -s "$KEYCHAIN_PATH"
-  security find-identity -v -p codesigning "$KEYCHAIN_PATH" || true
+  local identity
+  identity="$(
+    security find-identity -v -p codesigning 2>/dev/null |
+      awk -F'"' '/Developer ID Application/ { print $2; exit }'
+  )"
+  if [[ -z "$identity" ]]; then
+    echo "No Developer ID Application identity found in keychain:" >&2
+    security find-identity -v -p codesigning >&2 || true
+    exit 1
+  fi
+  echo "$identity"
 }
 
 macos_sign_app() {
   local app="$1"
   local entitlements="$2"
+  local identity
+  identity="$(macos_resolve_signing_identity)"
+  echo "Signing with identity: $identity"
 
   codesign --force --deep --options runtime --timestamp \
     --entitlements "$entitlements" \
-    --sign "$APPLE_SIGNING_IDENTITY" \
+    --sign "$identity" \
     "$app"
   codesign --verify --deep --strict --verbose=2 "$app"
 }
@@ -78,14 +83,15 @@ macos_sign_and_notarize_app() {
   local app="$1"
   local entitlements="$2"
 
-  macos_setup_signing_keychain
   macos_sign_app "$app" "$entitlements"
   macos_notarize_and_staple "$app" "app"
 }
 
 macos_sign_and_notarize_dmg() {
   local dmg="$1"
+  local identity
+  identity="$(macos_resolve_signing_identity)"
 
-  codesign --force --timestamp --sign "$APPLE_SIGNING_IDENTITY" "$dmg"
+  codesign --force --timestamp --sign "$identity" "$dmg"
   macos_notarize_and_staple "$dmg" "dmg"
 }

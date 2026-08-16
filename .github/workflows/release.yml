@@ -34,6 +34,12 @@ jobs:
         env:
           VERSION: ${{ github.ref_name }}
 
+      - name: Import signing certificate
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+
       - name: Sign, notarize, and package
         run: ./.github/scripts/sign-macos.sh
         env:
