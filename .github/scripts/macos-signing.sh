@@ -9,6 +9,12 @@ macos_signing_ready() {
     security find-identity -v -p codesigning 2>/dev/null | grep -q "Developer ID Application"
 }
 
+macos_notarization_ready() {
+  [[ -n "${APPLE_ID:-}" ]] &&
+    [[ -n "${APPLE_APP_PASSWORD:-}" ]] &&
+    [[ -n "${APPLE_TEAM_ID:-}" ]]
+}
+
 macos_resolve_signing_identity() {
   local identity
   identity="$(
