@@ -12,6 +12,11 @@ jobs:
   macos:
     runs-on: macos-latest
     timeout-minutes: 45
+    env:
+      VERSION: ${{ github.ref_name }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     steps:
       - uses: actions/checkout@v4
 
@@ -31,8 +36,6 @@ jobs:
 
       - name: Build Klew.app
         run: ./.github/scripts/build-macos.sh
-        env:
-          VERSION: ${{ github.ref_name }}
 
       - name: Import signing certificate
         uses: apple-actions/import-codesign-certs@v3
@@ -49,16 +52,14 @@ jobs:
             exit 1
           fi
 
-      - name: Sign, notarize, and package
-        run: ./.github/scripts/sign-macos.sh
-        env:
-          VERSION: ${{ github.ref_name }}
-          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      - name: Sign Klew.app
+        run: ./.github/scripts/sign-app.sh
+
+      - name: Notarize Klew.app
+        run: ./.github/scripts/notarize-app.sh
+
+      - name: Package release artifacts
+        run: ./.github/scripts/package-dist.sh
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
