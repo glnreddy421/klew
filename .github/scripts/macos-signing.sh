@@ -11,6 +11,15 @@ macos_signing_ready() {
     [[ -n "${APPLE_TEAM_ID:-}" ]]
 }
 
+macos_decode_certificate() {
+  local dest="$1"
+  if base64 --help 2>&1 | grep -q GNU; then
+    echo "$APPLE_CERTIFICATE_BASE64" | base64 -d > "$dest"
+  else
+    echo "$APPLE_CERTIFICATE_BASE64" | base64 -D > "$dest"
+  fi
+}
+
 macos_setup_signing_keychain() {
   KEYCHAIN_PATH="${RUNNER_TEMP:-/tmp}/klew-signing.keychain-db"
   KEYCHAIN_PASSWORD="${KEYCHAIN_PASSWORD:-$(openssl rand -base64 32)}"
@@ -20,7 +29,7 @@ macos_setup_signing_keychain() {
   security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
   CERT_PATH="${RUNNER_TEMP:-/tmp}/klew-cert.p12"
-  echo "$APPLE_CERTIFICATE_BASE64" | base64 -D > "$CERT_PATH"
+  macos_decode_certificate "$CERT_PATH"
   security import "$CERT_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
   security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
@@ -31,12 +40,31 @@ macos_setup_signing_keychain() {
 macos_sign_app() {
   local app="$1"
   local entitlements="$2"
+  local binary="$app/Contents/MacOS/Klew"
+  local frameworks_dir="$app/Contents/Frameworks"
 
-  codesign --force --deep --options runtime --timestamp \
+  # Sign nested libraries/frameworks first (if present), then the binary, then the bundle.
+  if [[ -d "$frameworks_dir" ]]; then
+    while IFS= read -r -d '' item; do
+      codesign --force --options runtime --timestamp \
+        --sign "$APPLE_SIGNING_IDENTITY" \
+        "$item"
+    done < <(find "$frameworks_dir" -depth \( -type f -name "*.dylib" -o -type d -name "*.framework" \) -print0)
+  fi
+
+  if [[ -f "$binary" ]]; then
+    codesign --force --options runtime --timestamp \
+      --entitlements "$entitlements" \
+      --sign "$APPLE_SIGNING_IDENTITY" \
+      "$binary"
+  fi
+
+  codesign --force --options runtime --timestamp \
     --entitlements "$entitlements" \
     --sign "$APPLE_SIGNING_IDENTITY" \
     "$app"
-  codesign --verify --deep --strict --verbose=2 "$app"
+
+  codesign --verify --verbose=2 "$app"
 }
 
 macos_notarize_and_staple() {

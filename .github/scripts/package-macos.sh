@@ -35,6 +35,11 @@ npm ci --prefix frontend
 npm run build --prefix frontend
 wails build -clean -ldflags "$LDFLAGS"
 
+# Wails may wipe build/ during -clean; restore icon for packaging if needed.
+if [[ -f "$ROOT/packaging/macos/appicon.png" && ! -f build/appicon.png ]]; then
+  cp "$ROOT/packaging/macos/appicon.png" build/appicon.png
+fi
+
 APP="build/bin/Klew.app"
 if [[ ! -d "$APP" ]]; then
   APP="$(find build/bin -maxdepth 1 -name '*.app' -print -quit)"
