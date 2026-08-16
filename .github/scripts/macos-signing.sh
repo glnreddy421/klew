@@ -15,6 +15,15 @@ macos_notarization_ready() {
     [[ -n "${APPLE_TEAM_ID:-}" ]]
 }
 
+macos_normalize_apple_credentials() {
+  APPLE_ID="${APPLE_ID//$'\n'/}"
+  APPLE_ID="${APPLE_ID//$'\r'/}"
+  APPLE_APP_PASSWORD="${APPLE_APP_PASSWORD//$'\n'/}"
+  APPLE_APP_PASSWORD="${APPLE_APP_PASSWORD//$'\r'/}"
+  APPLE_TEAM_ID="${APPLE_TEAM_ID//$'\r'/}"
+  APPLE_TEAM_ID="${APPLE_TEAM_ID//$'\n'/}"
+}
+
 macos_resolve_signing_identity() {
   local identity
   identity="$(
@@ -74,6 +83,7 @@ macos_notarize_and_staple() {
   fi
 
   echo "Submitting ${label} for notarization..."
+  macos_normalize_apple_credentials
   if ! xcrun notarytool submit "$submit_path" \
     --apple-id "$APPLE_ID" \
     --password "$APPLE_APP_PASSWORD" \
