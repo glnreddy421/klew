@@ -40,6 +40,15 @@ jobs:
           p12-file-base64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
           p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
 
+      - name: Verify signing certificate
+        run: |
+          echo "Available signing identities:"
+          security find-identity -v -p codesigning
+          if ! security find-identity -v -p codesigning | grep -q "Developer ID Application"; then
+            echo "::error::No Developer ID Application certificate found after import."
+            exit 1
+          fi
+
       - name: Sign, notarize, and package
         run: ./.github/scripts/sign-macos.sh
         env:

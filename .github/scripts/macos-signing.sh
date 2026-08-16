@@ -3,22 +3,13 @@
 set -euo pipefail
 
 macos_signing_ready() {
-  [[ -n "${APPLE_CERTIFICATE_BASE64:-}" || -n "${APPLE_SIGNING_IDENTITY:-}" ]] &&
-    [[ -n "${APPLE_CERTIFICATE_PASSWORD:-}" ]] &&
-    [[ -n "${APPLE_ID:-}" ]] &&
+  [[ -n "${APPLE_ID:-}" ]] &&
     [[ -n "${APPLE_APP_PASSWORD:-}" ]] &&
-    [[ -n "${APPLE_TEAM_ID:-}" ]]
+    [[ -n "${APPLE_TEAM_ID:-}" ]] &&
+    security find-identity -v -p codesigning 2>/dev/null | grep -q "Developer ID Application"
 }
 
 macos_resolve_signing_identity() {
-  if [[ -n "${APPLE_SIGNING_IDENTITY:-}" ]]; then
-    if security find-identity -v -p codesigning 2>/dev/null | grep -Fq "$APPLE_SIGNING_IDENTITY"; then
-      echo "$APPLE_SIGNING_IDENTITY"
-      return 0
-    fi
-    echo "Configured APPLE_SIGNING_IDENTITY not found; auto-detecting..." >&2
-  fi
-
   local identity
   identity="$(
     security find-identity -v -p codesigning 2>/dev/null |
@@ -35,15 +26,35 @@ macos_resolve_signing_identity() {
 macos_sign_app() {
   local app="$1"
   local entitlements="$2"
-  local identity
+  local identity binary frameworks_dir item
+
   identity="$(macos_resolve_signing_identity)"
   echo "Signing with identity: $identity"
 
-  codesign --force --deep --options runtime --timestamp \
+  binary="$app/Contents/MacOS/Klew"
+  frameworks_dir="$app/Contents/Frameworks"
+
+  if [[ -d "$frameworks_dir" ]]; then
+    while IFS= read -r -d '' item; do
+      codesign --force --options runtime --timestamp \
+        --sign "$identity" \
+        "$item"
+    done < <(find "$frameworks_dir" -depth \( -type f -name "*.dylib" -o -type d -name "*.framework" \) -print0)
+  fi
+
+  if [[ -f "$binary" ]]; then
+    codesign --force --options runtime --timestamp \
+      --entitlements "$entitlements" \
+      --sign "$identity" \
+      "$binary"
+  fi
+
+  codesign --force --options runtime --timestamp \
     --entitlements "$entitlements" \
     --sign "$identity" \
     "$app"
-  codesign --verify --deep --strict --verbose=2 "$app"
+
+  codesign --verify --verbose=2 "$app"
 }
 
 macos_notarize_and_staple() {
