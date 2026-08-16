@@ -25,6 +25,11 @@ fi
 # shellcheck source=macos-signing.sh
 source "$SCRIPT_DIR/macos-signing.sh"
 
+mkdir -p cmd/klew-desktop/build
+if [[ -f "$ROOT/packaging/macos/appicon.png" ]]; then
+  cp "$ROOT/packaging/macos/appicon.png" cmd/klew-desktop/build/appicon.png
+fi
+
 cd cmd/klew-desktop
 npm ci --prefix frontend
 npm run build --prefix frontend

@@ -1,7 +1,21 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ThemePicker } from '../components/ThemePicker'
 import { SETTINGS_SECTIONS } from '../lib/preferences'
 import { OpenKubeconfigDir, SetKubeconfigPath } from '../../wailsjs/go/main/App'
+import { BrowserOpenURL } from '../../wailsjs/runtime/runtime'
+
+const HELP_LINKS = [
+  { label: 'Documentation & blog', url: 'https://klew.dev/blog' },
+  { label: 'GitHub repository', url: 'https://github.com/glnreddy421/klew' },
+  { label: 'Releases & downloads', url: 'https://github.com/glnreddy421/klew/releases' },
+]
+
+const KEYBOARD_SHORTCUTS = [
+  { keys: '⌘K', action: 'Focus search' },
+  { keys: '⌘N', action: 'Open a new window for another cluster' },
+  { keys: '⌘R', action: 'Sync kubeconfig and refresh namespaces' },
+  { keys: '⌘C', action: 'Toggle sidebar labels' },
+]
 
 /**
  * Docker Desktop–style settings: section nav + form controls.
@@ -13,11 +27,18 @@ export function SettingsView({
   prefs,
   onPrefsChange,
   onClusterRefresh,
+  section = 'general',
+  onSectionChange,
 }) {
-  const [section, setSection] = useState('general')
   const [kubeDraft, setKubeDraft] = useState(prefs.kubeconfigPath || cluster?.kubeconfigPath || '')
   const [kubeBusy, setKubeBusy] = useState(false)
   const [kubeMsg, setKubeMsg] = useState('')
+
+  useEffect(() => {
+    setKubeDraft(prefs.kubeconfigPath || cluster?.kubeconfigPath || '')
+  }, [prefs.kubeconfigPath, cluster?.kubeconfigPath])
+
+  const setSection = (id) => onSectionChange?.(id)
 
   const set = (patch) => onPrefsChange?.(patch)
 
@@ -224,6 +245,42 @@ export function SettingsView({
                 Custom endpoints require a metrics-server (or compatible) install in-cluster.
               </span>
             </label>
+          </SettingsSection>
+        )}
+
+        {section === 'help' && (
+          <SettingsSection title="Help" subtitle="Shortcuts and where to learn more.">
+            <h4 className="settings-subhead">Keyboard shortcuts</h4>
+            <dl className="help-shortcuts">
+              {KEYBOARD_SHORTCUTS.map((row) => (
+                <div key={row.keys} className="help-shortcut-row">
+                  <dt><kbd>{row.keys}</kbd></dt>
+                  <dd>{row.action}</dd>
+                </div>
+              ))}
+            </dl>
+
+            <h4 className="settings-subhead">Links</h4>
+            <ul className="help-links">
+              {HELP_LINKS.map((link) => (
+                <li key={link.url}>
+                  <button
+                    type="button"
+                    className="help-link"
+                    onClick={() => BrowserOpenURL(link.url)}
+                  >
+                    {link.label}
+                  </button>
+                </li>
+              ))}
+            </ul>
+
+            <div className="settings-about">
+              <h4>Getting started</h4>
+              <p className="muted">
+                Pick a context and namespace in the top bar, then click Investigate.
+              </p>
+            </div>
           </SettingsSection>
         )}
       </div>

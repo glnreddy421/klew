@@ -97,11 +97,11 @@ export function ScopePickerModal({
           )}
         </div>
 
-        <p className="scope-picker-hint muted">
-          {isBlankInvestigationQuery(query)
-            ? 'Empty search lists everything in the namespace — pick a subset or investigate all'
-            : 'Tip: use deploy/name to target one kind'}
-        </p>
+        {!isBlankInvestigationQuery(query) && (
+          <p className="scope-picker-hint muted">
+            Tip: use deploy/name to target one kind
+          </p>
+        )}
 
         <footer className="scope-picker-actions">
           <button
