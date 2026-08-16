@@ -18,12 +18,14 @@ if [[ -z "${APP:-}" || ! -d "$APP" ]]; then
   exit 1
 fi
 
-if ! macos_notarization_ready; then
-  echo "Notarization credentials not configured; skipping." >&2
-  exit 1
-fi
+  if ! macos_notarization_ready; then
+    echo "Notarization credentials not configured; skipping." >&2
+    exit 1
+  fi
 
-echo "Checking notarization credentials..."
+  macos_normalize_apple_credentials
+
+  echo "Checking notarization credentials..."
 if ! xcrun notarytool history \
   --apple-id "$APPLE_ID" \
   --password "$APPLE_APP_PASSWORD" \
