@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
+import { LogoMark } from './Logo'
 import { WindowIsMaximised, WindowToggleMaximise, Environment, EventsOn } from '../../wailsjs/runtime/runtime'
 import {
   isBlankInvestigationQuery,
   normalizeInvestigationQuery,
 } from '../lib/investigationQuery'
+import { ContextPopover, NamespacePopover } from './shell/ClusterNamespacePopover.jsx'
+import { TimeWindowPopover } from './shell/TimeWindowPopover.jsx'
 
 export function TopBar({
   cluster,
@@ -11,7 +14,6 @@ export function TopBar({
   onSync,
   onContextChange,
   onNamespaceChange,
-  onNewWindow,
   query,
   onQueryChange,
   onQueryClear,
@@ -20,30 +22,26 @@ export function TopBar({
   activeQuery = '',
   onStart,
   onStop,
+  onOpenSettings,
+  onOpenHelp,
+  onNavBack,
+  onNavForward,
+  onNavHome,
+  canNavBack = false,
+  canNavForward = false,
+  prefs,
+  onPrefsChange,
+  live,
 }) {
   const inputRef = useRef(null)
-  const contexts = cluster.contexts || []
-  const namespaces = cluster.namespaces || []
-  const syncedLabel = cluster.syncedAt
-    ? new Date(cluster.syncedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-    : null
   const [windowMaximized, setWindowMaximized] = useState(false)
   const [isMac, setIsMac] = useState(false)
+  const [searchExpanded, setSearchExpanded] = useState(false)
 
   const q = normalizeInvestigationQuery(query)
   const canInvestigate = Boolean(cluster.selectedNamespace) && !starting
   const queryChanged = running && !isBlankInvestigationQuery(q) && q !== normalizeInvestigationQuery(activeQuery)
-  const investigateLabel = starting
-    ? 'Starting…'
-    : queryChanged
-      ? 'Re-investigate'
-      : running
-        ? 'Restart'
-        : 'Investigate'
   const contextLocked = running || starting
-  const contextHint = contextLocked
-    ? 'This window stays on the current cluster. Pick another context to open it in a new window.'
-    : 'Kubernetes context for this window'
 
   useEffect(() => {
     WindowIsMaximised().then(setWindowMaximized).catch(() => {})
@@ -52,10 +50,24 @@ export function TopBar({
 
   useEffect(() => {
     const off = EventsOn('menu:focus-search', () => {
+      setSearchExpanded(true)
       inputRef.current?.focus()
       inputRef.current?.select()
     })
     return () => off?.()
+  }, [])
+
+  useEffect(() => {
+    function onKeyDown(e) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setSearchExpanded(true)
+        inputRef.current?.focus()
+        inputRef.current?.select()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
 
   async function onToggleWindowMaximize() {
@@ -67,178 +79,203 @@ export function TopBar({
     }
   }
 
-  useEffect(() => {
-    function onKeyDown(e) {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault()
-        inputRef.current?.focus()
-        inputRef.current?.select()
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n') {
-        e.preventDefault()
-        onNewWindow?.()
-      }
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [onNewWindow])
-
-  const connectionTitle = cluster.syncError || cluster.kubeconfigPath || 'Cluster connection'
-
   return (
-    <header className="topbar">
-      <div className="topbar-scope">
-        <ScopeSelect
-          label="Context"
-          value={cluster.selectedContext || cluster.currentContext || ''}
-          options={contexts.map((c) => ({
-            value: c.name,
-            label: c.name,
-            hint: c.cluster,
-          }))}
-          disabled={starting}
-          title={contextHint}
-          onChange={onContextChange}
-        />
-        <ScopeSelect
-          label="Namespace"
-          value={cluster.selectedNamespace || ''}
-          options={namespaces.map((ns) => ({ value: ns, label: ns }))}
-          disabled={running || starting || namespaces.length === 0}
-          onChange={onNamespaceChange}
-        />
-        <button
-          type="button"
-          className="topbar-icon-btn"
-          onClick={() => onNewWindow?.()}
-          title="New window (⌘N)"
-          aria-label="Open new window"
-        >
-          <WindowIconClone />
-        </button>
+    <header className="topbar topbar-compact">
+      <div className="topbar-left">
+        <div className="topbar-brand">
+          <LogoMark />
+          <span className="topbar-brand-name">KLEW</span>
+        </div>
+        <div className="topbar-nav-history" role="navigation" aria-label="History">
+          <button
+            type="button"
+            className="topbar-nav-btn"
+            onClick={() => onNavBack?.()}
+            disabled={!canNavBack}
+            title="Back"
+            aria-label="Back"
+          >
+            <ChevronLeftIcon />
+          </button>
+          <button
+            type="button"
+            className="topbar-nav-btn"
+            onClick={() => onNavForward?.()}
+            disabled={!canNavForward}
+            title="Forward"
+            aria-label="Forward"
+          >
+            <ChevronRightIcon />
+          </button>
+          <button
+            type="button"
+            className="topbar-nav-btn"
+            onClick={() => onNavHome?.()}
+            title="Home — Overview"
+            aria-label="Home — Overview"
+          >
+            <HomeIcon />
+          </button>
+        </div>
+        <div className="topbar-scope">
+          <ContextPopover
+            cluster={cluster}
+            disabled={starting}
+            contextLocked={contextLocked}
+            onContextChange={onContextChange}
+          />
+          <NamespacePopover
+            cluster={cluster}
+            disabled={running || starting}
+            onNamespaceChange={onNamespaceChange}
+          />
+        </div>
       </div>
 
-      <form className="topbar-command" onSubmit={onStart}>
-        <div className="command-input">
-          <svg className="command-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-            <circle cx="11" cy="11" r="7" /><path d="M20 20l-3-3" />
-          </svg>
+      <div className="topbar-center">
+        <form
+          className={`topbar-search ${searchExpanded || query ? 'expanded' : ''}`}
+          onSubmit={(e) => {
+            e.preventDefault()
+            onStart?.(e)
+          }}
+        >
+          <button
+            type="button"
+            className="topbar-search-toggle"
+            onClick={() => {
+              setSearchExpanded(true)
+              inputRef.current?.focus()
+            }}
+            aria-label="Search"
+            title="Search (⌘K)"
+          >
+            <SearchIcon />
+          </button>
           <input
             ref={inputRef}
-            className="command-input-field"
+            className="topbar-search-input"
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
-            placeholder="Search workloads"
+            onBlur={() => { if (!query) setSearchExpanded(false) }}
+            placeholder="Search resources, signals…"
             disabled={starting}
-            aria-label="Search workloads"
+            aria-label="Search"
             spellCheck={false}
             autoComplete="off"
           />
-          <div className="command-input-trail">
-            {query && !starting && !isBlankInvestigationQuery(query) ? (
-              <button type="button" className="command-input-clear" onClick={onQueryClear} aria-label="Clear search">
-                <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                  <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
-                </svg>
-              </button>
-            ) : (
-              <kbd className="command-input-kbd" aria-hidden="true">⌘K</kbd>
-            )}
-          </div>
-        </div>
-        <div className="command-actions">
-          <button
-            type="submit"
-            className="btn btn-primary btn-command"
-            disabled={!canInvestigate}
-            aria-busy={starting}
-          >
-            {investigateLabel}
-          </button>
-          {running && (
-            <button
-              type="button"
-              className="btn btn-quiet btn-command"
-              onClick={onStop}
-              disabled={starting}
-            >
-              Stop
+          {!query && <kbd className="topbar-search-kbd" aria-hidden="true">⌘K</kbd>}
+          {query && !starting && (
+            <button type="button" className="topbar-search-clear" onClick={onQueryClear} aria-label="Clear">
+              ×
             </button>
           )}
-        </div>
-      </form>
+          <div className="topbar-search-actions">
+            <button
+              type="submit"
+              className="topbar-search-investigate"
+              disabled={!canInvestigate}
+              title={investigateTitle({ running, starting, queryChanged })}
+            >
+              {investigateLabel({ running, starting, queryChanged })}
+            </button>
+            {running && (
+              <button
+                type="button"
+                className="topbar-search-stop-icon"
+                onClick={onStop}
+                disabled={starting}
+                title="Stop investigation"
+                aria-label="Stop investigation"
+              >
+                <StopIcon />
+              </button>
+            )}
+          </div>
+        </form>
+      </div>
 
-      <div className="topbar-meta">
-        {!isMac && (
-          <button
-            type="button"
-            className="topbar-icon-btn"
-            onClick={onToggleWindowMaximize}
-            title={windowMaximized ? 'Restore window' : 'Maximize window'}
-            aria-label={windowMaximized ? 'Restore window' : 'Maximize window'}
-          >
-            {windowMaximized ? <WindowIconRestore /> : <WindowIconMaximize />}
-          </button>
+      <div className="topbar-right">
+        {running && (
+          <TimeWindowPopover
+            live={live}
+            windowMin={prefs?.windowMin || 15}
+            autoRefresh={prefs?.autoRefresh}
+            running={running}
+            onWindowChange={(m) => onPrefsChange?.({ windowMin: m })}
+            onAutoRefreshChange={(v) => onPrefsChange?.({ autoRefresh: v })}
+          />
         )}
         <button
           type="button"
           className="topbar-icon-btn"
           onClick={onSync}
           disabled={syncing || running || starting}
-          title="Sync kubeconfig (⌘R)"
-          aria-label={syncing ? 'Syncing' : 'Sync kubeconfig'}
+          title="Refresh investigation"
+          aria-label="Refresh investigation"
         >
           <SyncIcon spinning={syncing} />
         </button>
-        <div className="topbar-connection" title={connectionTitle}>
-          <span className={`connection-dot ${cluster.syncError ? 'warn' : 'ok'}`} aria-hidden="true" />
-          <span className="connection-copy">
-            {cluster.syncError ? (
-              <span className="connection-status connection-status--warn">Sync failed</span>
-            ) : (
-              <>
-                <span className="connection-status">Connected</span>
-                {syncedLabel && (
-                  <span className="connection-time">{syncedLabel}</span>
-                )}
-              </>
-            )}
-          </span>
-        </div>
+        <button
+          type="button"
+          className="topbar-icon-btn"
+          onClick={() => onOpenSettings?.()}
+          title="Settings"
+          aria-label="Settings"
+        >
+          <SettingsIcon />
+        </button>
+        <button
+          type="button"
+          className="topbar-icon-btn"
+          onClick={() => onOpenHelp?.()}
+          title="Help"
+          aria-label="Help"
+        >
+          <HelpIcon />
+        </button>
+        {!isMac && (
+          <button
+            type="button"
+            className="topbar-icon-btn"
+            onClick={onToggleWindowMaximize}
+            title={windowMaximized ? 'Restore' : 'Maximize'}
+            aria-label={windowMaximized ? 'Restore window' : 'Maximize window'}
+          >
+            {windowMaximized ? <WindowIconRestore /> : <WindowIconMaximize />}
+          </button>
+        )}
       </div>
     </header>
   )
 }
 
-function ScopeSelect({ label, value, options, disabled, onChange, title }) {
+function investigateLabel({ running, starting, queryChanged }) {
+  if (starting) return '…'
+  if (running && queryChanged) return 'Re-run'
+  if (running) return 'Restart'
+  return 'Investigate'
+}
+
+function investigateTitle({ running, starting, queryChanged }) {
+  if (starting) return 'Starting investigation…'
+  if (running && queryChanged) return 'Re-run with updated query'
+  if (running) return 'Restart investigation'
+  return 'Start investigation'
+}
+
+function StopIcon() {
   return (
-    <label className={`scope-field ${disabled ? 'is-disabled' : ''}`} title={title}>
-      <span className="scope-field-label">{label}</span>
-      <span className="scope-field-control">
-        <select
-          key={value || label}
-          className="scope-field-input"
-          value={value}
-          disabled={disabled || options.length === 0}
-          onChange={(e) => onChange(e.target.value)}
-        >
-          {options.length === 0 && <option value="">—</option>}
-          {options.map((o) => (
-            <option key={o.value} value={o.value} title={o.hint || o.label}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-        <ChevronIcon />
-      </span>
-    </label>
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true">
+      <rect x="3" y="3" width="10" height="10" rx="1" />
+    </svg>
   )
 }
 
-function ChevronIcon() {
+function SearchIcon() {
   return (
-    <svg className="scope-field-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
-      <path d="M4 6l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <circle cx="11" cy="11" r="7" /><path d="M20 20l-3-3" />
     </svg>
   )
 }
@@ -252,18 +289,28 @@ function SyncIcon({ spinning }) {
   )
 }
 
-function WindowIconClone() {
+function SettingsIcon() {
   return (
-    <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-      <rect x="4.5" y="4.5" width="9" height="9" rx="1.5" />
-      <path d="M2.5 11.5V3.5A1 1 0 013.5 2.5h8" strokeLinecap="round" strokeLinejoin="round" />
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+      <path d="M12 15a3 3 0 100-6 3 3 0 000 6z" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function HelpIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9.1 9a3 3 0 015.8 1c0 2-3 2-3 4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M12 17h.01" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }
 
 function WindowIconMaximize() {
   return (
-    <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
       <rect x="2.5" y="2.5" width="11" height="11" rx="1.5" />
     </svg>
   )
@@ -271,9 +318,34 @@ function WindowIconMaximize() {
 
 function WindowIconRestore() {
   return (
-    <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
       <rect x="5" y="2" width="8.5" height="8.5" rx="1" />
       <path d="M2.5 5.5v8H10.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function ChevronLeftIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+      <path d="M10 3L5 8l5 5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function ChevronRightIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+      <path d="M6 3l5 5-5 5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function HomeIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+      <path d="M2.5 6.5L8 2l5.5 4.5V13a1 1 0 01-1 1H3.5a1 1 0 01-1-1V6.5z" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M6.5 14V9h3v5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }

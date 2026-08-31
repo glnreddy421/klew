@@ -152,6 +152,73 @@ func (r *RingBuffer) dropAt(pos int) {
 	r.remove(pos)
 }
 
+// KeepLogsForPods removes log lines from pods outside the allowlist.
+func (r *RingBuffer) KeepLogsForPods(podNames []string) {
+	if len(podNames) == 0 {
+		return
+	}
+	allow := make(map[string]bool, len(podNames))
+	for _, n := range podNames {
+		if n != "" {
+			allow[n] = true
+		}
+	}
+	if len(allow) == 0 {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	filtered := r.events[:0]
+	for _, e := range r.events {
+		if e.SourceType == model.SourceLog && !allow[e.Pod] {
+			continue
+		}
+		filtered = append(filtered, e)
+	}
+	r.events = filtered
+	r.reindex()
+}
+
+// ClearLogsForPods removes log lines for the named pods only.
+func (r *RingBuffer) ClearLogsForPods(podNames []string) {
+	if len(podNames) == 0 {
+		return
+	}
+	drop := make(map[string]bool, len(podNames))
+	for _, n := range podNames {
+		if n != "" {
+			drop[n] = true
+		}
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	filtered := r.events[:0]
+	for _, e := range r.events {
+		if e.SourceType == model.SourceLog && drop[e.Pod] {
+			continue
+		}
+		filtered = append(filtered, e)
+	}
+	r.events = filtered
+	r.reindex()
+}
+
+// ClearLogs removes all buffered log lines and resets drop counters.
+func (r *RingBuffer) ClearLogs() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	filtered := r.events[:0]
+	for _, e := range r.events {
+		if e.SourceType != model.SourceLog {
+			filtered = append(filtered, e)
+		}
+	}
+	r.events = filtered
+	r.reindex()
+	r.dropped = 0
+	r.droppedBy = make(map[model.Severity]int64)
+}
+
 // Snapshot returns a newest-first copy of buffered events.
 func (r *RingBuffer) Snapshot() []model.EvidenceEvent {
 	r.mu.Lock()

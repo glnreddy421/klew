@@ -144,6 +144,11 @@ type InvestigationState struct {
 	HypothesisChanges int               `json:"hypothesisChanges"`
 	Paused            bool              `json:"paused"`
 	LogPatterns       *LogPatterns      `json:"logPatterns,omitempty"`
+	// LogTailPods is the active log-gather allowlist; empty = not tailing logs.
+	LogTailPods       []string          `json:"logTailPods,omitempty"`
+	// LogTailPaused is true when log follows are stopped but the gather session
+	// (pod selection) is retained for resume.
+	LogTailPaused     bool              `json:"logTailPaused,omitempty"`
 }
 
 // Clone returns a shallow copy safe for TUI rendering.
@@ -158,6 +163,7 @@ func (s InvestigationState) Clone() InvestigationState {
 	out.CausalChain = append([]string(nil), s.CausalChain...)
 	out.NextChecks = append([]string(nil), s.NextChecks...)
 	out.FixActions = append([]string(nil), s.FixActions...)
+	out.LogTailPods = append([]string(nil), s.LogTailPods...)
 	return out
 }
 

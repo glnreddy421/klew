@@ -55,8 +55,10 @@ type KeyValue struct {
 
 // Table is a columnar relationship/list view.
 type Table struct {
-	Columns []string   `json:"columns"`
-	Rows    [][]string `json:"rows"`
+	Columns     []string   `json:"columns"`
+	Rows        [][]string `json:"rows"`
+	Sensitive   bool       `json:"sensitive,omitempty"`   // value column holds base64; UI toggles decode
+	ValueColumn int        `json:"valueColumn,omitempty"` // 0-based index; defaults to 1 when sensitive
 }
 
 // Empty reports whether the section has nothing to render.

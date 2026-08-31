@@ -416,3 +416,207 @@ export function formatReady(ready, total) {
   if (total == null || total === 0) return String(ready ?? '—')
   return `${ready ?? 0}/${total}`
 }
+
+/** Cluster-scoped kinds — no namespace on fetch or inspect row. */
+export const CLUSTER_SCOPED_KINDS = new Set([
+  'Node',
+  'Namespace',
+  'PersistentVolume',
+  'StorageClass',
+  'ClusterRole',
+  'ClusterRoleBinding',
+  'ClusterPolicy',
+])
+
+/** Kinds we can fetch on demand via GetObjectDetails when clicked outside the match list. */
+export const ON_DEMAND_INSPECT_KINDS = new Set([
+  'Pod',
+  'Node',
+  'Namespace',
+  'Deployment',
+  'ReplicaSet',
+  'StatefulSet',
+  'DaemonSet',
+  'Job',
+  'CronJob',
+  'Service',
+  'Ingress',
+  'EndpointSlice',
+  'ConfigMap',
+  'Secret',
+  'PersistentVolumeClaim',
+  'PersistentVolume',
+  'StorageClass',
+  'ServiceAccount',
+  'HorizontalPodAutoscaler',
+  'NetworkPolicy',
+  'Role',
+  'RoleBinding',
+  'ClusterRole',
+  'ClusterRoleBinding',
+])
+
+const KIND_ALIASES = {
+  pvc: 'PersistentVolumeClaim',
+  persistentvolumeclaim: 'PersistentVolumeClaim',
+  pv: 'PersistentVolume',
+  persistentvolume: 'PersistentVolume',
+  hpa: 'HorizontalPodAutoscaler',
+  horizontalpodautoscaler: 'HorizontalPodAutoscaler',
+  sa: 'ServiceAccount',
+  serviceaccount: 'ServiceAccount',
+  cm: 'ConfigMap',
+  configmap: 'ConfigMap',
+  deploy: 'Deployment',
+  deployment: 'Deployment',
+  sts: 'StatefulSet',
+  statefulset: 'StatefulSet',
+  ds: 'DaemonSet',
+  daemonset: 'DaemonSet',
+  rs: 'ReplicaSet',
+  replicaset: 'ReplicaSet',
+  ing: 'Ingress',
+  ingress: 'Ingress',
+  svc: 'Service',
+  service: 'Service',
+  ns: 'Namespace',
+  namespace: 'Namespace',
+  sc: 'StorageClass',
+  storageclass: 'StorageClass',
+  netpol: 'NetworkPolicy',
+  networkpolicy: 'NetworkPolicy',
+  cj: 'CronJob',
+  cronjob: 'CronJob',
+}
+
+export function normalizeInspectKind(kind) {
+  if (!kind) return ''
+  const k = String(kind).trim()
+  return KIND_ALIASES[k.toLowerCase()] || k
+}
+
+/** Parse `Kind/name` inspect keys (name may contain slashes). */
+export function parseInspectKey(key) {
+  if (!key || typeof key !== 'string') return null
+  const slash = key.indexOf('/')
+  if (slash <= 0) return null
+  const kind = normalizeInspectKind(key.slice(0, slash))
+  const name = key.slice(slash + 1)
+  if (!kind || !name) return null
+  return { kind, name, key: `${kind}/${name}` }
+}
+
+export function isInspectableKey(key, view, rows) {
+  if (!key) return false
+  const list = Array.isArray(rows) ? rows : []
+  if (list.some((r) => r.key === key)) return true
+  return !!inspectRowForKey(key, view, rows)
+}
+
+function lookupSnapshotObject(snap, kind, name) {
+  if (!snap || !name) return null
+  if (kind === 'Pod') return snap.pods?.find((p) => p.name === name) || null
+  if (kind === 'Node') return snap.nodes?.find((n) => n.name === name) || null
+  if (kind === 'Service') return snap.services?.find((s) => s.name === name) || null
+  if (kind === 'Ingress') return snap.ingresses?.find((i) => i.name === name) || null
+  if (kind === 'ReplicaSet') return snap.replicaSets?.find((r) => r.name === name) || null
+  if (kind === 'HorizontalPodAutoscaler') return snap.hpas?.find((h) => h.name === name) || null
+  if (['Deployment', 'StatefulSet', 'DaemonSet', 'Job', 'CronJob'].includes(kind)) {
+    return snap.workloads?.find((w) => w.name === name && (!w.kind || w.kind === kind)) || null
+  }
+  if (kind === 'ConfigMap') return snap.configRefs?.find((c) => c.name === name) || null
+  if (kind === 'Secret') return snap.secretRefs?.find((s) => s.name === name) || null
+  if (kind === 'PersistentVolumeClaim') return snap.pvcRefs?.find((p) => p.name === name) || null
+  return null
+}
+
+function investigationNamespace(view) {
+  return view?.summary?.namespace
+    || view?.state?.snapshot?.namespace
+    || view?.state?.context?.namespace
+    || ''
+}
+
+function synthesizeInspectRow(kind, name, view, status = 'unknown') {
+  const ns = CLUSTER_SCOPED_KINDS.has(kind) ? '' : investigationNamespace(view)
+  return {
+    key: `${kind}/${name}`,
+    kind,
+    name,
+    ref: { kind, name, namespace: ns },
+    namespace: ns,
+    status,
+    adhoc: true,
+  }
+}
+
+function snapshotObjectToInspectRow(obj, kind, view) {
+  if (kind === 'Node') {
+    return synthesizeInspectRow(kind, obj.name, view, obj.ready ? 'healthy' : 'degraded')
+  }
+  if (kind === 'Service') {
+    const degraded = obj.totalEndpoints > 0 && obj.readyEndpoints < obj.totalEndpoints
+    return synthesizeInspectRow(kind, obj.name, view, degraded ? 'degraded' : 'healthy')
+  }
+  if (['Deployment', 'StatefulSet', 'DaemonSet', 'Job', 'CronJob', 'ReplicaSet'].includes(kind)) {
+    const ready = obj.ready ?? 0
+    const replicas = obj.replicas ?? ready
+    const status = replicas > 0 && ready < replicas ? 'degraded' : 'healthy'
+    return {
+      ...synthesizeInspectRow(kind, obj.name, view, status),
+      adhoc: false,
+      ready,
+      total: replicas,
+    }
+  }
+  return synthesizeInspectRow(kind, obj.name, view)
+}
+
+/** Resolve an inspect row by key, including on-demand cluster/namespace objects. */
+export function inspectRowForKey(key, view, rows) {
+  const list = Array.isArray(rows) ? rows : []
+  const hit = list.find((r) => r.key === key)
+  if (hit) return hit
+
+  const parsed = parseInspectKey(key)
+  if (!parsed) return null
+
+  const snap = view?.state?.snapshot || {}
+  const obj = lookupSnapshotObject(snap, parsed.kind, parsed.name)
+  if (obj) {
+    if (parsed.kind === 'Pod') return podSummaryToInspectRow(obj)
+    return snapshotObjectToInspectRow(obj, parsed.kind, view)
+  }
+
+  if (ON_DEMAND_INSPECT_KINDS.has(parsed.kind)) {
+    return synthesizeInspectRow(parsed.kind, parsed.name, view)
+  }
+  return null
+}
+
+export function podSummaryToInspectRow(p) {
+  if (!p?.name) return null
+  let status = 'healthy'
+  if (!p.ready) {
+    status = 'degraded'
+    for (const c of p.containers || []) {
+      const reason = (c.reason || c.lastReason || '').toLowerCase()
+      if (reason.includes('crash') || reason.includes('oom') || reason.includes('backoff')) {
+        status = 'critical'
+        break
+      }
+    }
+  }
+  return {
+    key: `Pod/${p.name}`,
+    kind: 'Pod',
+    name: p.name,
+    ref: { kind: 'Pod', name: p.name, namespace: p.namespace },
+    namespace: p.namespace,
+    ready: p.ready ? 1 : 0,
+    total: 1,
+    restarts: p.restartCount || 0,
+    status,
+    phase: p.phase,
+  }
+}

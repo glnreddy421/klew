@@ -17,6 +17,15 @@ LDFLAGS="-s -w \
 
 export PATH="$(go env GOPATH)/bin:${PATH:-}"
 
+GOARCH="${GOARCH:-arm64}"
+case "$GOARCH" in
+  arm64 | amd64) ;;
+  *)
+    echo "unsupported GOARCH: $GOARCH (expected arm64 or amd64)" >&2
+    exit 1
+    ;;
+esac
+
 if ! command -v wails >/dev/null; then
   echo "wails not found; run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0" >&2
   exit 1
@@ -30,7 +39,7 @@ fi
 cd cmd/klew-desktop
 npm ci --prefix frontend
 npm run build --prefix frontend
-wails build -clean -ldflags "$LDFLAGS"
+wails build -clean -platform "darwin/${GOARCH}" -ldflags "$LDFLAGS"
 
 APP="build/bin/Klew.app"
 if [[ ! -d "$APP" ]]; then
@@ -42,4 +51,4 @@ if [[ -z "${APP:-}" || ! -d "$APP" ]]; then
   exit 1
 fi
 
-echo "Built ${APP}"
+echo "Built ${APP} (${GOARCH})"

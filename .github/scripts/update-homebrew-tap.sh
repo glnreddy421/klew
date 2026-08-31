@@ -1,15 +1,11 @@
 #!/usr/bin/env bash
-# Bump glnreddy421/homebrew-klew after a macOS release zip is built.
+# Bump glnreddy421/homebrew-klew after macOS release zips are built.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TAG="${GITHUB_REF_NAME:?GITHUB_REF_NAME is required (e.g. v0.1.4)}"
 VERSION="${TAG#v}"
-ARCH="${ARCH:-arm64}"
-
-ZIP_NAME="Klew-${VERSION}-macos-${ARCH}.zip"
-ZIP_PATH="${ZIP_PATH:-$ROOT/dist/$ZIP_NAME}"
 TAP_REPO="${HOMEBREW_TAP_REPO:-glnreddy421/homebrew-klew}"
 TAP_BRANCH="${HOMEBREW_TAP_BRANCH:-main}"
 
@@ -18,13 +14,20 @@ if [[ -z "${HOMEBREW_TAP_TOKEN:-}" ]]; then
   exit 1
 fi
 
-if [[ ! -f "$ZIP_PATH" ]]; then
-  echo "Release zip not found: $ZIP_PATH" >&2
-  exit 1
-fi
+zip_sha() {
+  local arch="$1"
+  local zip="$ROOT/dist/Klew-${VERSION}-macos-${arch}.zip"
+  if [[ ! -f "$zip" ]]; then
+    echo "Release zip not found: $zip" >&2
+    exit 1
+  fi
+  shasum -a 256 "$zip" | awk '{print $1}'
+}
 
-SHA256="$(shasum -a 256 "$ZIP_PATH" | awk '{print $1}')"
-URL="https://github.com/glnreddy421/klew/releases/download/${TAG}/${ZIP_NAME}"
+ARM64_URL="https://github.com/glnreddy421/klew/releases/download/${TAG}/Klew-${VERSION}-macos-arm64.zip"
+AMD64_URL="https://github.com/glnreddy421/klew/releases/download/${TAG}/Klew-${VERSION}-macos-amd64.zip"
+ARM64_SHA256="$(zip_sha arm64)"
+AMD64_SHA256="$(zip_sha amd64)"
 
 WORK="$(mktemp -d)"
 cleanup() { rm -rf "$WORK"; }
@@ -45,8 +48,12 @@ class Klew < Formula
 
   on_macos do
     on_arm do
-      url "${URL}"
-      sha256 "${SHA256}"
+      url "${ARM64_URL}"
+      sha256 "${ARM64_SHA256}"
+    end
+    on_intel do
+      url "${AMD64_URL}"
+      sha256 "${AMD64_SHA256}"
     end
   end
 
@@ -92,4 +99,4 @@ fi
 git commit -m "klew ${VERSION}"
 git push origin "$TAP_BRANCH"
 
-echo "Updated ${TAP_REPO} to klew ${VERSION} (${SHA256})."
+echo "Updated ${TAP_REPO} to klew ${VERSION} (arm64 + Intel)."

@@ -42,6 +42,8 @@ type App struct {
 	boot    bootOptions
 	cluster kube.ClusterState
 
+	terminals *terminalManager
+
 	watchCancel context.CancelFunc
 	rootCancel  context.CancelFunc
 
@@ -63,6 +65,9 @@ func (a *App) startup(ctx context.Context) {
 
 func (a *App) shutdown(context.Context) {
 	a.stopInvestigation()
+	if a.terminals != nil {
+		a.terminals.closeAll()
+	}
 }
 
 func (a *App) refreshCluster(contextName, namespace string) kube.ClusterState {
@@ -78,6 +83,24 @@ func (a *App) refreshCluster(contextName, namespace string) kube.ClusterState {
 		selectedNS = a.cluster.SelectedNamespace
 	}
 	return kube.RefreshClusterState(a.ctx, a.cluster.KubeconfigPath, selectedCtx, selectedNS)
+}
+
+func (a *App) invalidateClusterStatusCache() {
+	a.mu.Lock()
+	path := a.cluster.KubeconfigPath
+	ctxName := a.cluster.SelectedContext
+	if ctxName == "" {
+		ctxName = a.cluster.CurrentContext
+	}
+	a.mu.Unlock()
+	if ctxName == "" {
+		return
+	}
+	client, err := kube.NewFromFlags(path, ctxName, "")
+	if err != nil {
+		return
+	}
+	kube.InvalidateClusterStatus(path, client)
 }
 
 func (a *App) emitCluster() {
@@ -178,6 +201,23 @@ func (a *App) GetCluster() kube.ClusterState {
 	return a.cluster
 }
 
+// GetClusterStatus returns cluster-wide API reachability, version, and node inventory.
+func (a *App) GetClusterStatus() kube.ClusterStatus {
+	a.mu.Lock()
+	path := a.cluster.KubeconfigPath
+	ctxName := a.cluster.SelectedContext
+	if ctxName == "" {
+		ctxName = a.cluster.CurrentContext
+	}
+	a.mu.Unlock()
+
+	c := a.ctx
+	if c == nil {
+		c = context.Background()
+	}
+	return kube.CollectClusterStatus(c, path, ctxName)
+}
+
 // SyncCluster reloads kubeconfig from disk and refreshes namespace list.
 func (a *App) SyncCluster() kube.ClusterState {
 	a.mu.Lock()
@@ -189,6 +229,7 @@ func (a *App) SyncCluster() kube.ClusterState {
 	a.mu.Lock()
 	a.cluster = st
 	a.mu.Unlock()
+	a.invalidateClusterStatusCache()
 	a.emitCluster()
 	return st
 }
@@ -212,6 +253,7 @@ func (a *App) SelectContext(contextName string) kube.ClusterState {
 	a.mu.Lock()
 	a.cluster = st
 	a.mu.Unlock()
+	a.invalidateClusterStatusCache()
 	a.emitCluster()
 	return st
 }
@@ -302,19 +344,120 @@ func (a *App) DiscoverMatches(opts DiscoverOptions) ([]model.MatchedObject, erro
 	return matches, err
 }
 
+// CatalogOptions configures dynamic resource catalog discovery.
+type CatalogOptions struct {
+	Namespace     string `json:"namespace"`
+	Kubeconfig    string `json:"kubeconfig"`
+	Context       string `json:"context"`
+	IncludeCounts bool   `json:"includeCounts"`
+	Refresh       bool   `json:"refresh"`
+}
+
+func (a *App) resolveCatalogClient(opts CatalogOptions) (*kube.Client, string, error) {
+	if a.ctx == nil {
+		a.ctx = context.Background()
+	}
+	kcfg := opts.Kubeconfig
+	ctxName := opts.Context
+	ns := opts.Namespace
+	if kcfg == "" || ctxName == "" || ns == "" {
+		a.mu.Lock()
+		cluster := a.cluster
+		a.mu.Unlock()
+		if kcfg == "" {
+			kcfg = cluster.KubeconfigPath
+		}
+		if ctxName == "" {
+			ctxName = cluster.SelectedContext
+		}
+		if ns == "" {
+			ns = cluster.SelectedNamespace
+		}
+	}
+	client, err := kube.NewFromFlags(kcfg, ctxName, ns)
+	if err != nil {
+		return nil, "", err
+	}
+	if ns == "" {
+		ns = client.Namespace
+		if ns == "" {
+			ns = client.ContextNamespace
+		}
+	}
+	return client, ns, nil
+}
+
+// GetResourceCatalog returns a discovery-driven, RBAC-aware resource catalog.
+func (a *App) GetResourceCatalog(opts CatalogOptions) (model.ResourceCatalog, error) {
+	client, ns, err := a.resolveCatalogClient(opts)
+	if err != nil {
+		return model.ResourceCatalog{}, err
+	}
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if opts.Refresh {
+		return kube.RefreshResourceCatalog(ctx, client, ns, opts.IncludeCounts)
+	}
+	return kube.BuildResourceCatalog(ctx, client, ns, opts.IncludeCounts)
+}
+
+// RefreshResourceCatalog invalidates cached discovery/auth and rebuilds the catalog.
+func (a *App) RefreshResourceCatalog(opts CatalogOptions) (model.ResourceCatalog, error) {
+	opts.Refresh = true
+	return a.GetResourceCatalog(opts)
+}
+
+// ListCatalogEntitiesOptions configures lazy entity listing for a resource GVR.
+type ListCatalogEntitiesOptions struct {
+	ResourceID    string `json:"resourceId"`
+	Namespace     string `json:"namespace"`
+	ClusterScoped bool   `json:"clusterScoped"`
+	Kubeconfig    string `json:"kubeconfig"`
+	Context       string `json:"context"`
+}
+
+// ListCatalogEntities returns lightweight entities for a selected catalog resource.
+func (a *App) ListCatalogEntities(opts ListCatalogEntitiesOptions) (model.CatalogEntityList, error) {
+	client, ns, err := a.resolveCatalogClient(CatalogOptions{
+		Namespace:  opts.Namespace,
+		Kubeconfig: opts.Kubeconfig,
+		Context:    opts.Context,
+	})
+	if err != nil {
+		return model.CatalogEntityList{AccessState: model.ResourceAccessError, Error: err.Error()}, err
+	}
+	if opts.ResourceID == "" {
+		return model.CatalogEntityList{AccessState: model.ResourceAccessError, Error: "resourceId is required"}, fmt.Errorf("resourceId is required")
+	}
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	listNS := ns
+	if opts.Namespace != "" {
+		listNS = opts.Namespace
+	}
+	if opts.ClusterScoped {
+		listNS = ""
+	}
+	return kube.ListCatalogEntities(ctx, client, listNS, opts.ResourceID)
+}
+
 // StartOptions configures a live investigation from the desktop UI.
 type StartOptions struct {
-	Query          string `json:"query"`
-	Namespace      string `json:"namespace"`
-	AllNamespaces  bool   `json:"allNamespaces"`
-	Kubeconfig     string `json:"kubeconfig"`
-	Context        string `json:"context"`
-	Tail           int    `json:"tail"`
-	RefreshSec     int    `json:"refreshSec"`
-	WindowSec      int    `json:"windowSec"`
-	MaxLogRequests   int   `json:"maxLogRequests"`
-	AutoRefresh      *bool `json:"autoRefresh"`
-	UseMetricsServer *bool `json:"useMetricsServer"`
+	Query            string `json:"query"`
+	Namespace        string `json:"namespace"`
+	AllNamespaces    bool   `json:"allNamespaces"`
+	Kubeconfig       string `json:"kubeconfig"`
+	Context          string `json:"context"`
+	Tail             int    `json:"tail"`
+	RefreshSec       int    `json:"refreshSec"`
+	WindowSec        int    `json:"windowSec"`
+	MaxLogRequests   int    `json:"maxLogRequests"`
+	AutoRefresh      *bool  `json:"autoRefresh"`
+	UseMetricsServer *bool  `json:"useMetricsServer"`
 }
 
 // StartInvestigation begins live cluster collection.
@@ -410,6 +553,83 @@ func (a *App) StopInvestigation() {
 	a.stopInvestigation()
 }
 
+// LogTailOptions configures on-demand multipod log gathering.
+type LogTailOptions struct {
+	PodNames []string `json:"podNames"`
+}
+
+// LogTailActive reports whether log follows are running for the active session.
+func (a *App) LogTailActive() bool {
+	a.mu.Lock()
+	svc := a.svc
+	a.mu.Unlock()
+	if svc == nil {
+		return false
+	}
+	return svc.LogTailActive()
+}
+
+// StartLogTail begins gathering container logs from pods in the investigation scope.
+func (a *App) StartLogTail(opts LogTailOptions) error {
+	a.mu.Lock()
+	svc := a.svc
+	a.mu.Unlock()
+	if svc == nil {
+		return fmt.Errorf("no active investigation")
+	}
+	return svc.StartLogTail(engine.LogTailOptions{PodNames: opts.PodNames})
+}
+
+// StopLogTail stops log follows without ending the investigation.
+func (a *App) StopLogTail() {
+	a.mu.Lock()
+	svc := a.svc
+	a.mu.Unlock()
+	if svc != nil {
+		svc.StopLogTail()
+	}
+}
+
+// PauseLogTail closes GetLogs streams while retaining the gather selection.
+func (a *App) PauseLogTail() error {
+	a.mu.Lock()
+	svc := a.svc
+	a.mu.Unlock()
+	if svc == nil {
+		return fmt.Errorf("no active investigation")
+	}
+	err := svc.PauseLogTail()
+	if err == nil {
+		a.emitState()
+	}
+	return err
+}
+
+// ResumeLogTail reopens GetLogs follows for the paused gather selection.
+func (a *App) ResumeLogTail() error {
+	a.mu.Lock()
+	svc := a.svc
+	a.mu.Unlock()
+	if svc == nil {
+		return fmt.Errorf("no active investigation")
+	}
+	err := svc.ResumeLogTail()
+	if err == nil {
+		a.emitState()
+	}
+	return err
+}
+
+// ClearLogs removes all buffered log lines from the active investigation.
+func (a *App) ClearLogs() {
+	a.mu.Lock()
+	svc := a.svc
+	a.mu.Unlock()
+	if svc != nil {
+		svc.ClearLogs()
+	}
+}
+
 func (a *App) stopInvestigation() {
 	a.mu.Lock()
 	watchCancel := a.watchCancel
@@ -491,6 +711,19 @@ func (a *App) SetAutoRefresh(enabled bool) {
 	a.mu.Unlock()
 	if svc != nil {
 		svc.SetAutoRefresh(enabled)
+	}
+}
+
+// SetPollEverySec changes the snapshot refresh interval for the active session.
+func (a *App) SetPollEverySec(sec int) {
+	if sec <= 0 {
+		return
+	}
+	a.mu.Lock()
+	svc := a.svc
+	a.mu.Unlock()
+	if svc != nil {
+		svc.SetPollEvery(time.Duration(sec) * time.Second)
 	}
 }
 

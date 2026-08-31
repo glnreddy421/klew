@@ -17,10 +17,17 @@ const KIND_ORDER = [
 /**
  * Icon-centric K8s relation graph — names live in the side list + hover pills.
  */
-export function GraphView({ view }) {
+export function GraphView({ view, graphRelations }) {
   const layout = view?.graph || {}
   const rawNodes = layout.nodes || []
-  const edges = layout.edges || []
+  const allEdges = layout.edges || []
+  const rels = graphRelations || {}
+  const edges = allEdges.filter((e) => {
+    const key = e.relation === 'routesTo' ? 'routesTo' : e.relation
+    if (rels[key] === false) return false
+    if (e.relation === 'references' && rels.references === false) return false
+    return true
+  })
 
   const [selectedId, setSelectedId] = useState(null)
   const [hoverTip, setHoverTip] = useState(null) // { id, kind, name, x, y }

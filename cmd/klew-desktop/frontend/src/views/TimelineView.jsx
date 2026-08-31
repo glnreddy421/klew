@@ -7,9 +7,9 @@ import { SEVERITY_ROWS, SeverityCountsBody } from '../components/SeverityDonut'
  * Event Patterns 2×2 from Pod / Node / PVC events.
  * Used standalone (legacy) or embedded inside PatternsView.
  */
-export function TimelineView({ view, embedded = false }) {
+export function TimelineView({ view, embedded = false, filteredPatterns = null }) {
   const state = getState(view)
-  const patterns = view?.logPatterns || state.logPatterns || null
+  const patterns = filteredPatterns || view?.logPatterns || state.logPatterns || null
   const evidence = view?.evidence || state.liveEvidence || []
 
   const templates = patterns?.eventTemplates || []

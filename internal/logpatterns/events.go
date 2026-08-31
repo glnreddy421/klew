@@ -104,7 +104,67 @@ func MergeSnapshotEvents(live []model.EvidenceEvent, snap []model.EventRecord) [
 	return out
 }
 
-// filterInfraEvents selects k8s_event evidence that passes the kind allowlist.
+// infraEventKind returns the Kubernetes object kind for infra event filtering.
+func infraEventKind(e model.EvidenceEvent) string {
+	if k := strings.TrimSpace(e.SourceKind); k != "" {
+		return k
+	}
+	if len(e.RelatedObjectRefs) > 0 {
+		return e.RelatedObjectRefs[0].Kind
+	}
+	return ""
+}
+
+// InfraEventsFromSnapshot converts allowlisted snapshot events for pattern mining.
+func InfraEventsFromSnapshot(snap []model.EventRecord) []model.EvidenceEvent {
+	out := make([]model.EvidenceEvent, 0, len(snap))
+	for _, rec := range snap {
+		if !allowInfraEventKind(rec.InvolvedObject.Kind) {
+			continue
+		}
+		out = append(out, EventRecordToEvidence(rec))
+	}
+	return out
+}
+
+func mergeInfraEvents(live []model.EvidenceEvent, snap []model.EventRecord) []model.EvidenceEvent {
+	liveInfra := filterInfraEvents(live, 500)
+	snapInfra := InfraEventsFromSnapshot(snap)
+	if len(snapInfra) == 0 {
+		return liveInfra
+	}
+	if len(liveInfra) == 0 {
+		return snapInfra
+	}
+	seen := make(map[string]struct{}, len(liveInfra)+len(snapInfra))
+	key := func(e model.EvidenceEvent) string {
+		return infraEventKind(e) + "|" + e.SourceName + "|" + e.Reason + "|" + e.Message
+	}
+	out := make([]model.EvidenceEvent, 0, len(liveInfra)+len(snapInfra))
+	for _, e := range liveInfra {
+		k := key(e)
+		if _, ok := seen[k]; ok {
+			continue
+		}
+		seen[k] = struct{}{}
+		out = append(out, e)
+	}
+	for _, e := range snapInfra {
+		k := key(e)
+		if _, ok := seen[k]; ok {
+			continue
+		}
+		seen[k] = struct{}{}
+		out = append(out, e)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		return out[i].Timestamp.After(out[j].Timestamp)
+	})
+	if len(out) > 500 {
+		out = out[:500]
+	}
+	return out
+}
 // Returns newest-first, capped at max.
 func filterInfraEvents(events []model.EvidenceEvent, max int) []model.EvidenceEvent {
 	if max <= 0 {
@@ -119,7 +179,7 @@ func filterInfraEvents(events []model.EvidenceEvent, max int) []model.EvidenceEv
 		if e.SourceType != model.SourceK8sEvent {
 			continue
 		}
-		if !allowInfraEventKind(e.SourceKind) {
+		if !allowInfraEventKind(infraEventKind(e)) {
 			continue
 		}
 		out = append(out, e)

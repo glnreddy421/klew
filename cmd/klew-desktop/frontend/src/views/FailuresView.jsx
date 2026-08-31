@@ -16,10 +16,37 @@ import {
 /**
  * Failures — severity-ranked pod triage + investigation detail.
  */
-export function FailuresView({ view }) {
+export function FailuresView({ view, explorerFilter }) {
   const state = getState(view)
   const snap = getSnapshot(view)
-  const pods = useMemo(() => rankPodsForTriage(snap.pods || []), [snap.pods])
+  const pods = useMemo(() => {
+    let list = rankPodsForTriage(snap.pods || [])
+    const f = explorerFilter || {}
+    if (f.severity === 'critical') {
+      list = list.filter((p) => podHealthLabel(p) === 'critical')
+    } else if (f.severity === 'warning') {
+      list = list.filter((p) => {
+        const h = podHealthLabel(p)
+        return h === 'warning' || h === 'degraded'
+      })
+    } else if (f.severity === 'stable') {
+      list = list.filter((p) => podHealthLabel(p) === 'healthy')
+    }
+    if (f.type) {
+      list = list.filter((p) => {
+        const c = worstContainer(p)
+        const r = String(c?.lastReason || c?.reason || '').toLowerCase()
+        switch (f.type) {
+          case 'oom': return r.includes('oom')
+          case 'probe': return r.includes('probe') || r.includes('unhealthy')
+          case 'image': return r.includes('image')
+          case 'crash': return r.includes('crash') || r.includes('backoff')
+          default: return true
+        }
+      })
+    }
+    return list
+  }, [snap.pods, explorerFilter])
   const [selected, setSelected] = useState(null)
 
   const activeKey = selected && pods.some((p) => p.name === selected)

@@ -52,6 +52,20 @@ func sectionTable(id, title, group string, cols []string, rows [][]string) Secti
 	return Section{ID: id, Title: title, Group: group, Table: &Table{Columns: cols, Rows: rows}}
 }
 
+func sectionSensitiveTable(id, title, group string, cols []string, rows [][]string, valueColumn int) Section {
+	return Section{
+		ID:    id,
+		Title: title,
+		Group: group,
+		Table: &Table{
+			Columns:     cols,
+			Rows:        rows,
+			Sensitive:   true,
+			ValueColumn: valueColumn,
+		},
+	}
+}
+
 func prune(sections []Section) []Section {
 	out := make([]Section, 0, len(sections))
 	for _, s := range sections {

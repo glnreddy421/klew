@@ -59,15 +59,23 @@ func (t logTarget) key() string {
 type logStreamController struct {
 	ls *LogStreamer
 
-	mu         sync.Mutex
-	active     map[string]context.CancelFunc
-	pending    []logTarget
-	pendingSet map[string]bool
-	sem        chan struct{}
-	capWarned  bool
+	mu          sync.Mutex
+	active      map[string]context.CancelFunc
+	pending     []logTarget
+	pendingSet  map[string]bool
+	sem         chan struct{}
+	capWarned   bool
+	allowedPods map[string]bool // investigation scope; empty → fall back to Query match
 
 	parentCtx context.Context
 	parentWG  *sync.WaitGroup
+}
+
+func (c *logStreamController) podAllowed(name string) bool {
+	if len(c.allowedPods) > 0 {
+		return c.allowedPods[name]
+	}
+	return matchesQueryName(name, c.ls.Query) || c.ls.Query == ""
 }
 
 func (ls *LogStreamer) maxRequests() int {
@@ -78,7 +86,26 @@ func (ls *LogStreamer) maxRequests() int {
 }
 
 // Start streams logs for initial pods, then watches for pod add/update/delete.
+// Prefer StartWithStop for sessions that need a clean shutdown boundary.
 func (ls *LogStreamer) Start(ctx context.Context, pods []model.PodSummary, wg *sync.WaitGroup) {
+	ls.start(ctx, pods, wg)
+}
+
+// StartWithStop begins follows and returns stop, which cancels streams and waits for workers.
+func (ls *LogStreamer) StartWithStop(parent context.Context, pods []model.PodSummary) (stop func()) {
+	if parent == nil {
+		return func() {}
+	}
+	ctx, cancel := context.WithCancel(parent)
+	var wg sync.WaitGroup
+	ls.start(ctx, pods, &wg)
+	return func() {
+		cancel()
+		wg.Wait()
+	}
+}
+
+func (ls *LogStreamer) start(ctx context.Context, pods []model.PodSummary, wg *sync.WaitGroup) {
 	if ls.Sink == nil || ls.Client == nil {
 		return
 	}
@@ -91,9 +118,18 @@ func (ls *LogStreamer) Start(ctx context.Context, pods []model.PodSummary, wg *s
 		parentCtx:  ctx,
 		parentWG:   wg,
 	}
+	for _, p := range pods {
+		if p.Name == "" {
+			continue
+		}
+		if ctrl.allowedPods == nil {
+			ctrl.allowedPods = make(map[string]bool)
+		}
+		ctrl.allowedPods[p.Name] = true
+	}
 
 	for _, p := range pods {
-		if !matchesQueryName(p.Name, ls.Query) && ls.Query != "" {
+		if !ctrl.podAllowed(p.Name) {
 			continue
 		}
 		ns := p.Namespace
@@ -259,7 +295,7 @@ func (c *logStreamController) syncPod(pod *corev1.Pod) {
 	if pod == nil {
 		return
 	}
-	if !matchesQueryName(pod.Name, c.ls.Query) && c.ls.Query != "" {
+	if !c.podAllowed(pod.Name) {
 		return
 	}
 	if pod.DeletionTimestamp != nil ||
@@ -306,7 +342,7 @@ func (c *logStreamController) reconcileFromList(pods []corev1.Pod) {
 	live := make(map[string]struct{}, len(pods))
 	for i := range pods {
 		p := &pods[i]
-		if !matchesQueryName(p.Name, c.ls.Query) && c.ls.Query != "" {
+		if !c.podAllowed(p.Name) {
 			continue
 		}
 		live[p.Namespace+"/"+p.Name] = struct{}{}

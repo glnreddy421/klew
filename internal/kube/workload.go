@@ -147,7 +147,13 @@ func (col *Collector) Collect(ctx context.Context, opts CollectOptions) (model.E
 	}
 
 	if allowed(perms, "events", "list") {
-		bundle.Events = col.collectEvents(ctx, ns, deployNames)
+		scopePods := make([]string, 0, len(bundle.Pods))
+		for _, p := range bundle.Pods {
+			if p.Name != "" {
+				scopePods = append(scopePods, p.Name)
+			}
+		}
+		bundle.Events = col.collectEvents(ctx, ns, opts.Query, deployNames, scopePods)
 	}
 
 	logLimit := opts.LogLines
@@ -267,7 +273,49 @@ func summarizePod(pod corev1.Pod) model.PodSummary {
 	}
 	ps.Ready = ready
 	ps.RestartCount = restarts
+	ps.ConfigMapRefs = podConfigMapNames(pod)
+	ps.SecretRefs = podSecretNames(pod)
+	ps.PVCRefs = podPVCNames(pod)
 	return ps
+}
+
+func podConfigMapNames(pod corev1.Pod) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	for _, ref := range podConfigRefs(pod) {
+		if _, ok := seen[ref.Name]; ok {
+			continue
+		}
+		seen[ref.Name] = struct{}{}
+		out = append(out, ref.Name)
+	}
+	return out
+}
+
+func podSecretNames(pod corev1.Pod) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	for _, ref := range podSecretRefs(pod) {
+		if _, ok := seen[ref.Name]; ok {
+			continue
+		}
+		seen[ref.Name] = struct{}{}
+		out = append(out, ref.Name)
+	}
+	return out
+}
+
+func podPVCNames(pod corev1.Pod) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	for _, ref := range podPVCRefs(pod) {
+		if _, ok := seen[ref.Name]; ok {
+			continue
+		}
+		seen[ref.Name] = struct{}{}
+		out = append(out, ref.Name)
+	}
+	return out
 }
 
 func containerFromStatus(podName string, cs corev1.ContainerStatus, pod corev1.Pod) model.ContainerStatus {
@@ -505,10 +553,16 @@ func podConfigRefs(pod corev1.Pod) []model.ResourceRef {
 			refs = append(refs, model.ResourceRef{Kind: "ConfigMap", Name: v.ConfigMap.Name, Namespace: pod.Namespace, UsedBy: pod.Name})
 		}
 	}
-	for _, c := range pod.Spec.Containers {
-		for _, e := range c.EnvFrom {
-			if e.ConfigMapRef != nil {
-				refs = append(refs, model.ResourceRef{Kind: "ConfigMap", Name: e.ConfigMapRef.Name, Namespace: pod.Namespace, UsedBy: pod.Name})
+	for _, c := range append(pod.Spec.InitContainers, pod.Spec.Containers...) {
+		for _, e := range c.Env {
+			if e.ValueFrom != nil && e.ValueFrom.ConfigMapKeyRef != nil {
+				name := e.ValueFrom.ConfigMapKeyRef.Name
+				refs = append(refs, model.ResourceRef{Kind: "ConfigMap", Name: name, Namespace: pod.Namespace, UsedBy: pod.Name})
+			}
+		}
+		for _, ef := range c.EnvFrom {
+			if ef.ConfigMapRef != nil {
+				refs = append(refs, model.ResourceRef{Kind: "ConfigMap", Name: ef.ConfigMapRef.Name, Namespace: pod.Namespace, UsedBy: pod.Name})
 			}
 		}
 	}
@@ -520,6 +574,19 @@ func podSecretRefs(pod corev1.Pod) []model.ResourceRef {
 	for _, v := range pod.Spec.Volumes {
 		if v.Secret != nil {
 			refs = append(refs, model.ResourceRef{Kind: "Secret", Name: v.Secret.SecretName, Namespace: pod.Namespace, UsedBy: pod.Name})
+		}
+	}
+	for _, c := range append(pod.Spec.InitContainers, pod.Spec.Containers...) {
+		for _, e := range c.Env {
+			if e.ValueFrom != nil && e.ValueFrom.SecretKeyRef != nil {
+				name := e.ValueFrom.SecretKeyRef.Name
+				refs = append(refs, model.ResourceRef{Kind: "Secret", Name: name, Namespace: pod.Namespace, UsedBy: pod.Name})
+			}
+		}
+		for _, ef := range c.EnvFrom {
+			if ef.SecretRef != nil {
+				refs = append(refs, model.ResourceRef{Kind: "Secret", Name: ef.SecretRef.Name, Namespace: pod.Namespace, UsedBy: pod.Name})
+			}
 		}
 	}
 	return refs

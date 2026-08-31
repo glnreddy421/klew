@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
 import { ThemePicker } from '../components/ThemePicker'
+import { WorkspaceLayoutPicker } from '../components/incident/WorkspaceLayoutPicker'
+import { TerminalShellSelect } from '../components/TerminalShellSelect'
+import { TerminalAppearancePicker } from '../components/TerminalAppearancePicker'
 import { SETTINGS_SECTIONS } from '../lib/preferences'
 import { OpenKubeconfigDir, SetKubeconfigPath } from '../../wailsjs/go/main/App'
 import { BrowserOpenURL } from '../../wailsjs/runtime/runtime'
@@ -29,6 +32,7 @@ export function SettingsView({
   onClusterRefresh,
   section = 'general',
   onSectionChange,
+  onTerminalShellChange,
 }) {
   const [kubeDraft, setKubeDraft] = useState(prefs.kubeconfigPath || cluster?.kubeconfigPath || '')
   const [kubeBusy, setKubeBusy] = useState(false)
@@ -83,12 +87,12 @@ export function SettingsView({
         {section === 'general' && (
           <SettingsSection title="General" subtitle="Defaults when you start an investigation.">
             <Toggle
-              label="Open live tail when investigating"
+              label="Open logs panel when investigating"
               checked={prefs.openStreamOnInvestigate}
               onChange={(v) => set({ openStreamOnInvestigate: v })}
             />
             <Toggle
-              label="Follow (auto-scroll) live tail by default"
+              label="Auto-scroll while gathering logs"
               checked={prefs.followLogsByDefault}
               onChange={(v) => set({ followLogsByDefault: v })}
             />
@@ -97,18 +101,55 @@ export function SettingsView({
               checked={prefs.rememberLastQuery}
               onChange={(v) => set({ rememberLastQuery: v })}
             />
+            <h4 className="settings-subhead">Session</h4>
+            <Toggle
+              label="End investigation after inactivity"
+              checked={prefs.idleAutoStop}
+              onChange={(v) => set({ idleAutoStop: v })}
+            />
+            <NumberField
+              label="Inactivity limit (minutes)"
+              value={prefs.idleAutoStopMin}
+              min={30}
+              max={480}
+              disabled={!prefs.idleAutoStop}
+              onChange={(v) => set({ idleAutoStopMin: v })}
+            />
+            <h4 className="settings-subhead">Terminal</h4>
+            <TerminalShellSelect
+              value={prefs.terminalShell}
+              onChange={(shell) => {
+                set({ terminalShell: shell, terminalShellPrompted: true })
+                onTerminalShellChange?.(shell)
+              }}
+            />
             <div className="settings-about">
               <h4>About</h4>
-              <p className="muted">CLI: <code>brew tap klew-labs/klew &amp;&amp; brew install klew</code></p>
-              <p className="muted">Desktop: <code>brew install klew-desktop</code></p>
+              <p className="muted">
+                Install: <code>brew tap glnreddy421/klew &amp;&amp; brew install klew</code>
+              </p>
+              <p className="muted">
+                Releases:{' '}
+                <a href="https://github.com/glnreddy421/klew/releases" target="_blank" rel="noreferrer">
+                  github.com/glnreddy421/klew/releases
+                </a>
+              </p>
             </div>
           </SettingsSection>
         )}
 
         {section === 'appearance' && (
-          <SettingsSection title="Appearance" subtitle="Theme and live-tail typography.">
+          <SettingsSection title="Appearance" subtitle="Theme, workspace layout, and live-tail typography.">
             <h4 className="settings-subhead">Theme</h4>
             <ThemePicker themeId={themeId} onChange={onThemeChange} />
+            <h4 className="settings-subhead">Workspace layout</h4>
+            <p className="settings-note muted">
+              Choose how resources, entities, and signals are arranged on Overview. You can also switch layouts from the header while investigating.
+            </p>
+            <WorkspaceLayoutPicker
+              value={prefs.workspaceLayout}
+              onChange={(id) => set({ workspaceLayout: id })}
+            />
             <h4 className="settings-subhead">Live tail</h4>
             <NumberField
               label="Font size (px)"
@@ -127,13 +168,21 @@ export function SettingsView({
               checked={prefs.streamWrapLines}
               onChange={(v) => set({ streamWrapLines: v })}
             />
+            <h4 className="settings-subhead">In-app terminal</h4>
+            <p className="settings-note muted">
+              Terminal panel colors — pair with a Black theme above for a fully dark workspace. Applied instantly.
+            </p>
+            <TerminalAppearancePicker
+              value={prefs.terminalAppearance}
+              onChange={(id) => set({ terminalAppearance: id })}
+            />
           </SettingsSection>
         )}
 
         {section === 'investigation' && (
           <SettingsSection
             title="Investigation"
-            subtitle="Applied the next time you click Investigate. Active sessions keep their current values."
+            subtitle="Applied on the next Investigate, or immediately when a session is already running."
           >
             <NumberField
               label="Log tail lines (per container)"
@@ -313,7 +362,7 @@ function Toggle({ label, checked, onChange }) {
   )
 }
 
-function NumberField({ label, value, min, max, hint, onChange }) {
+function NumberField({ label, value, min, max, hint, disabled = false, onChange }) {
   return (
     <label className="settings-field">
       <span className="settings-field-label">{label}</span>
@@ -323,6 +372,7 @@ function NumberField({ label, value, min, max, hint, onChange }) {
         value={value}
         min={min}
         max={max}
+        disabled={disabled}
         onChange={(e) => onChange?.(Number(e.target.value))}
       />
       {hint && <span className="settings-field-hint">{hint}</span>}

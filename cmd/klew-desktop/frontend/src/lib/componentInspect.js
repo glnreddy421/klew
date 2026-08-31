@@ -57,6 +57,7 @@ export function buildComponentInspect(view, row) {
   const events = collectObjectEvents(view, kind, name).slice(0, 24)
   const resourceBars = buildResourceBars(relatedPods, snap.metrics)
   const anomalies = collectAnomalies(view, kind, name, row, resolved, relatedPods, events)
+  const relationships = collectRelationships(kind, name, snap, relatedPods, resolved)
 
   return {
     key: row.key,
@@ -69,8 +70,139 @@ export function buildComponentInspect(view, row) {
     events,
     resourceBars,
     anomalies,
+    relatedPods: relatedPodsForInspect(relatedPods),
+    relationships,
+    adhoc: Boolean(row.adhoc),
     notes: buildNotes(events.length, anomalies.length, resourceBars, snap.metrics),
   }
+}
+
+function collectRelationships(kind, name, snap, relatedPods, resolved) {
+  const rels = []
+  const seen = new Set()
+  const add = (k, n, role, ns) => {
+    if (!n || !k) return
+    const key = `${k}/${n}`
+    const id = `${role}|${key}`
+    if (seen.has(id)) return
+    seen.add(id)
+    rels.push({
+      kind: k,
+      name: n,
+      key,
+      role,
+      namespace: ns || resolved?.namespace || '',
+    })
+  }
+
+  for (const p of relatedPods) {
+    add('Pod', p.name, 'Pod', p.namespace)
+  }
+
+  if (kind === 'Pod' && resolved) {
+    for (const o of resolved.ownerRefs || []) {
+      add(o.kind, o.name, 'Owner', o.namespace)
+    }
+    if (resolved.node) add('Node', resolved.node, 'Node')
+    for (const cm of resolved.configMapRefs || []) add('ConfigMap', cm, 'ConfigMap')
+    for (const sec of resolved.secretRefs || []) add('Secret', sec, 'Secret')
+    for (const pvc of resolved.pvcRefs || []) add('PersistentVolumeClaim', pvc, 'Volume')
+  }
+
+  if (resolved?.rootOwner) {
+    add(resolved.rootOwner.kind, resolved.rootOwner.name, 'Owner', resolved.rootOwner.namespace)
+  }
+
+  if (kind === 'Deployment') {
+    for (const rs of snap.replicaSets || []) {
+      if (rs.deploymentOwner === name) add('ReplicaSet', rs.name, 'ReplicaSet', rs.namespace)
+    }
+  }
+
+  const podLabels = relatedPods.map((p) => p.labels || {})
+  for (const svc of snap.services || []) {
+    if (serviceMatchesPodLabels(svc, podLabels)) {
+      add('Service', svc.name, 'Service', svc.namespace)
+    }
+    if (kind === 'Service' && svc.name === name) {
+      for (const p of relatedPods) add('Pod', p.name, 'Target pod', p.namespace)
+    }
+  }
+
+  for (const ing of snap.ingresses || []) {
+    const backends = ing.backends || []
+    if (kind === 'Service' && backends.includes(name)) {
+      add('Ingress', ing.name, 'Ingress', ing.namespace)
+    }
+    if (WORKLOAD.has(kind)) {
+      for (const svc of snap.services || []) {
+        if (backends.includes(svc.name) && serviceMatchesPodLabels(svc, podLabels)) {
+          add('Ingress', ing.name, 'Ingress', ing.namespace)
+        }
+      }
+    }
+  }
+
+  for (const h of snap.hpas || []) {
+    if (h.targetName === name && (!h.targetKind || h.targetKind === kind || kindAliases(h.targetKind, kind))) {
+      add('HorizontalPodAutoscaler', h.name, 'Autoscaling', h.namespace)
+    }
+  }
+
+  if (['ConfigMap', 'Secret', 'PersistentVolumeClaim', 'PVC'].includes(kind)) {
+    for (const p of snap.pods || []) {
+      const refs = kind === 'ConfigMap' ? p.configMapRefs
+        : kind === 'Secret' ? p.secretRefs : p.pvcRefs
+      if (refs?.includes(name)) add('Pod', p.name, 'Mounted by', p.namespace)
+    }
+    for (const ref of [...(snap.configRefs || []), ...(snap.secretRefs || []), ...(snap.pvcRefs || [])]) {
+      if (ref.name === name && ref.usedBy) add('Pod', ref.usedBy, 'Used by', ref.namespace)
+    }
+  }
+
+  return rels.sort((a, b) => a.role.localeCompare(b.role) || a.name.localeCompare(b.name))
+}
+
+function serviceMatchesPodLabels(svc, podLabelSets) {
+  const sel = parseSelectorString(svc?.selector)
+  if (!sel.length || !podLabelSets.length) return false
+  return podLabelSets.some((labels) => sel.every(([k, v]) => labels[k] === v))
+}
+
+function parseSelectorString(raw) {
+  if (!raw) return []
+  return String(raw)
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => {
+      const i = part.indexOf('=')
+      if (i < 0) return [part, '']
+      return [part.slice(0, i).trim(), part.slice(i + 1).trim()]
+    })
+}
+
+function relatedPodsForInspect(pods) {
+  return (pods || []).map((p) => {
+    let status = p.ready ? 'healthy' : 'degraded'
+    for (const c of p.containers || []) {
+      const reason = (c.reason || c.lastReason || '').toLowerCase()
+      if (reason.includes('crash') || reason.includes('oom') || reason.includes('backoff')) {
+        status = 'critical'
+        break
+      }
+    }
+    return {
+      key: `Pod/${p.name}`,
+      name: p.name,
+      namespace: p.namespace,
+      ready: p.ready ? 1 : 0,
+      total: 1,
+      restarts: p.restartCount || 0,
+      phase: p.phase || '—',
+      status,
+    }
+  }).sort((a, b) => a.name.localeCompare(b.name))
 }
 
 /** Find the richest snapshot record for this kind/name. */

@@ -1,11 +1,61 @@
 export const NAV_ITEMS = [
-  { id: 'incident', label: 'Overview', navLabel: 'Overview', hint: 'Investigation home — matches and status' },
-  { id: 'patterns', label: 'Patterns', navLabel: 'Patterns', hint: 'Log and event patterns' },
-  { id: 'graph', label: 'Graph', navLabel: 'Graph', hint: 'Relations' },
-  { id: 'failures', label: 'Failures', navLabel: 'Failures', hint: 'Failing runtime' },
-  { id: 'resources', label: 'Resources', navLabel: 'Resources', hint: 'CPU & memory' },
-  { id: 'evidence', label: 'Evidence', navLabel: 'Evidence', hint: 'Correlated signals and verdict proof' },
+  { id: 'incident', label: 'Overview', navLabel: 'Overview', hint: 'Investigation command center' },
+  { id: 'patterns', label: 'Patterns', navLabel: 'Patterns', hint: 'Repeated and correlated behavior' },
+  { id: 'failures', label: 'Failures', navLabel: 'Failures', hint: 'Concrete runtime failures' },
+  { id: 'resources', label: 'Resources', navLabel: 'Resources', hint: 'Kubernetes catalog and entities' },
+  { id: 'evidence', label: 'Evidence', navLabel: 'Evidence', hint: 'Raw facts behind conclusions' },
 ]
+
+export const NAV_ITEMS_SECONDARY = [
+  { id: 'graph', label: 'Graph', navLabel: 'Graph', hint: 'Resource relationships' },
+  { id: 'terminal', label: 'Terminal', navLabel: 'Terminal', hint: 'Context-aware cluster shell' },
+]
+
+export const SURFACE_META = {
+  incident: {
+    title: 'Overview',
+    subtitle: 'Investigation brief — what Klew found and where to go next',
+  },
+  patterns: {
+    title: 'Patterns',
+    subtitle: 'Repeated and correlated behavior',
+  },
+  failures: {
+    title: 'Failures',
+    subtitle: 'Concrete failures in this investigation',
+  },
+  resources: {
+    title: 'Resources',
+    subtitle: 'Kubernetes objects in scope',
+  },
+  evidence: {
+    title: 'Evidence',
+    subtitle: 'Raw facts behind Klew conclusions',
+  },
+  graph: {
+    title: 'Graph',
+    subtitle: 'How affected resources relate',
+  },
+  terminal: {
+    title: 'Terminal',
+    subtitle: 'Context-aware shell for the selected cluster and namespace',
+  },
+  nodes: {
+    title: 'Nodes',
+    subtitle: 'Cluster inventory and investigation-scoped node context',
+  },
+  settings: {
+    title: 'Settings',
+    subtitle: 'Preferences and cluster access',
+  },
+  'settings-help': {
+    title: 'Help',
+    subtitle: 'Shortcuts and documentation',
+  },
+}
+
+/** @deprecated use NAV_ITEMS */
+export const LEGACY_NAV = NAV_ITEMS
 
 export const emptyView = () => ({
   summary: {},

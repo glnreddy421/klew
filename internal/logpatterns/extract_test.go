@@ -18,7 +18,7 @@ func TestExtractDrain3MergesVariableIPs(t *testing.T) {
 		logEv("payment-api", "app", "payment-api/app: dial tcp 10.0.2.19:5432: connect: connection refused", model.SeverityHigh, now.Add(-1*time.Second)),
 		logEv("payment-api", "app", "payment-api/app: GET /health 200 12ms userId=u1", model.SeverityInfo, now),
 	}
-	out := logpatterns.Extract(ev, logpatterns.Options{})
+	out := logpatterns.Extract(ev, nil, logpatterns.Options{})
 	if out.Window.PatternCount == 0 {
 		t.Fatalf("expected patterns, got %#v", out.Window)
 	}
@@ -69,7 +69,7 @@ func TestRankTopFieldsTfIdfPromotesEmergingKeys(t *testing.T) {
 			fmt.Sprintf("payment failed userId=u%d error.code=TIMEOUT status=ready", i),
 			model.SeverityHigh, now.Add(time.Duration(i)*time.Second)))
 	}
-	out := logpatterns.Extract(ev, logpatterns.Options{MaxAttrs: 5})
+	out := logpatterns.Extract(ev, nil, logpatterns.Options{MaxAttrs: 5})
 	if len(out.Attributes) == 0 {
 		t.Fatal("expected ranked fields")
 	}
@@ -94,8 +94,8 @@ func TestPatternIDStableAcrossWindows(t *testing.T) {
 		logEv("payment-api", "app", "dial tcp 10.0.2.15:5432: connect: connection refused", model.SeverityHigh, now.Add(time.Second)),
 		logEv("auth", "app", "dial tcp 10.1.0.9:5432: connect: connection refused", model.SeverityHigh, now.Add(2*time.Second)),
 	}
-	a := logpatterns.Extract(ev, logpatterns.Options{})
-	b := logpatterns.Extract(ev, logpatterns.Options{})
+	a := logpatterns.Extract(ev, nil, logpatterns.Options{})
+	b := logpatterns.Extract(ev, nil, logpatterns.Options{})
 	if len(a.Templates) == 0 {
 		t.Fatal("expected templates")
 	}
@@ -131,7 +131,7 @@ func TestTokenizeWordsStripsDrainWildcards(t *testing.T) {
 		logEv("p", "c", "user <*> logged in from <IP>", model.SeverityInfo, now.Add(time.Second)),
 		logEv("p", "c", "payment <*> timeout after retries", model.SeverityHigh, now.Add(2*time.Second)),
 	}
-	out := logpatterns.Extract(ev, logpatterns.Options{MaxWords: 20})
+	out := logpatterns.Extract(ev, nil, logpatterns.Options{MaxWords: 20})
 	for _, w := range out.Words {
 		if w.Word == "*" || w.Word == "<*>" || strings.Contains(w.Word, "<*>") {
 			t.Fatalf("Drain wildcard leaked into TF-IDF words: %#v", out.Words)
@@ -150,7 +150,7 @@ func TestMaxClustersBound(t *testing.T) {
 			fmt.Sprintf("unique event type-%d code=%d detail=noise-%d", i, i, i),
 			model.SeverityInfo, now.Add(time.Duration(i)*time.Millisecond)))
 	}
-	out := logpatterns.Extract(ev, logpatterns.Options{MaxClusters: 16, MaxTemplates: 40})
+	out := logpatterns.Extract(ev, nil, logpatterns.Options{MaxClusters: 16, MaxTemplates: 40})
 	if len(out.Templates) > 16 {
 		t.Fatalf("expected templates capped by MaxClusters/UI max, got %d", len(out.Templates))
 	}

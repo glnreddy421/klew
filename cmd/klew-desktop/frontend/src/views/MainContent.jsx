@@ -1,33 +1,24 @@
-import { useState } from 'react'
-import { IncidentView, incidentMetaLine } from './IncidentView'
+import { useEffect, useMemo, useState } from 'react'
+import { OverviewView } from './OverviewView'
+import {
+  ResourcesWorkbenchRoot,
+  ResourcesWorkbenchView,
+  ResourcesWorkbenchInspector,
+  useResourcesCatalog,
+} from './ResourcesWorkbenchView'
 import { PatternsView } from './PatternsView'
 import { GraphView } from './GraphView'
+import { NodesView } from './NodesView'
 import { FailuresView } from './FailuresView'
-import { ResourcesView } from './ResourcesView'
 import { EvidenceView } from './EvidenceView'
 import { SettingsView } from './SettingsView'
-import { IncidentLayoutSwitcher } from '../components/incident/IncidentLayoutSwitcher'
+import { TerminalView } from './TerminalView'
+import { WorkspaceChrome } from '../components/WorkspaceChrome'
 import { CollectingMatchesSplash } from '../components/incident/CollectingMatchesSplash'
-import { getMatchedObjects } from '../lib/matches'
-import { normalizeInvestigationQuery } from '../lib/investigationQuery'
-import { loadLayoutMode, saveLayoutMode } from '../lib/incidentLayout'
-
-const META = {
-  incident: {
-    title: 'Overview',
-    subtitle: 'Matched components, status, and investigation focus',
-  },
-  patterns: {
-    title: 'Patterns',
-    subtitle: 'Log Patterns and Event Patterns from this investigation',
-  },
-  graph: { title: 'Graph', subtitle: 'End-to-end ownership and traffic relations' },
-  failures: { title: 'Failures', subtitle: 'Failing pods and container runtime' },
-  resources: { title: 'Resources', subtitle: 'CPU, memory, nodes, and pressure' },
-  evidence: { title: 'Evidence', subtitle: 'Correlated signals, claims, and next checks' },
-  settings: { title: 'Settings', subtitle: 'General, appearance, investigation, and Kubernetes' },
-  'settings-help': { title: 'Help', subtitle: 'Keyboard shortcuts and documentation' },
-}
+import { deriveMatchRows, getMatchedObjects } from '../lib/matches'
+import { inspectRowFromKey } from '../lib/investigationContext'
+import { loadLayoutMode } from '../lib/incidentLayout'
+import { defaultRelations } from '../components/shell/explorers/ExplorerPanels.jsx'
 
 export function MainContent({
   tab,
@@ -37,13 +28,22 @@ export function MainContent({
   scopePickerOpen = false,
   activeQuery = '',
   cluster,
+  clusterStatus,
+  syncing = false,
   themeId,
   onThemeChange,
   onOpenSettings,
+  onNavigate,
+  nodesFocus = 'cluster',
   onOpenEvidence,
   prefs,
   onPrefsChange,
   onClusterRefresh,
+  onTerminalShellChange,
+  onOpenTerminalShellPicker,
+  terminalShellRestartToken = 0,
+  terminalMounted = false,
+  onTerminalMounted,
   settingsSection = 'general',
   onSettingsSectionChange,
   focusKey,
@@ -52,107 +52,196 @@ export function MainContent({
   onFocusChange,
   onClearFocus,
   onFilterLogsFromPatterns,
+  inspectKey,
+  onInspectKeyChange,
+  explorerFilters,
+  onExplorerFiltersChange,
+  graphRelations,
+  onGraphRelationsChange,
+  renderShell,
 }) {
-  const metaKey = tab === 'settings' && settingsSection === 'help' ? 'settings-help' : tab
-  const meta = META[metaKey] || META.incident
   const matchCount = getMatchedObjects(view).length
-  const viewQuery = normalizeInvestigationQuery(view?.summary?.query ?? '')
-  const expectedQuery = normalizeInvestigationQuery(activeQuery)
-  const viewStale = Boolean(
-    (running || starting) && expectedQuery && viewQuery && viewQuery !== expectedQuery,
+  const allRows = useMemo(() => deriveMatchRows(view, getMatchedObjects(view)), [view])
+  const inspectRow = useMemo(
+    () => inspectRowFromKey(inspectKey, view, allRows),
+    [inspectKey, view, allRows],
   )
-  const [layoutMode, setLayoutMode] = useState(loadLayoutMode)
 
-  const handleLayoutChange = (id) => {
-    setLayoutMode(id)
-    saveLayoutMode(id)
-  }
+  const resourcesCatalog = useResourcesCatalog(view, cluster)
 
-  let subtitle = meta.subtitle
-  if (tab === 'incident' && (running || starting)) {
-    subtitle = running && !viewStale && matchCount > 0
-      ? incidentMetaLine(view, cluster, matchCount)
-      : expectedQuery
-        ? `${expectedQuery} · ${cluster?.selectedNamespace || '—'} · scanning…`
-        : `${cluster?.selectedNamespace || '—'} · scanning namespace…`
-  }
+  const [layoutMode, setLayoutMode] = useState(() => loadLayoutMode(prefs))
 
-  if (!running && !starting && tab !== 'settings') {
-    return <WelcomePanel onOpenSettings={onOpenSettings} />
-  }
+  useEffect(() => {
+    if (prefs?.workspaceLayout) {
+      setLayoutMode(loadLayoutMode(prefs))
+    }
+  }, [prefs?.workspaceLayout])
 
   const collecting = !scopePickerOpen && (
-    starting || viewStale || (running && matchCount === 0)
+    starting || (running && matchCount === 0 && tab === 'resources')
   )
 
-  return (
-    <div className="main-content">
-      <div className="content-header">
-        <div className="content-header-row">
-          <div className="content-header-lead">
-            <h1>{meta.title}</h1>
-            {subtitle && <p>{subtitle}</p>}
-          </div>
-          <div className="content-header-actions">
-            {tab === 'incident' && focusPinned && drillDown?.active && (
-              <div className="focus-chip" title="Overview focused on this workload and related resources">
-                <span className="focus-chip-label">
-                  Focused · {drillDown.label}
-                  {drillDown.relatedPodCount > 0 ? ` · ${drillDown.relatedPodCount} pods` : ''}
-                </span>
-                <button type="button" className="focus-chip-clear" onClick={onClearFocus}>
-                  Clear
-                </button>
-              </div>
-            )}
-            {tab === 'incident' && (
-              <IncidentLayoutSwitcher value={layoutMode} onChange={handleLayoutChange} />
-            )}
-          </div>
-        </div>
-      </div>
+  const timeWindowLabel = prefs?.windowMin ? `Last ${prefs.windowMin}m` : 'Last 15m'
+  const live = running && prefs?.autoRefresh !== false
 
-      <div className="content-body">
+  const handleNavigate = (target) => {
+    onNavigate?.(target)
+  }
+
+  useEffect(() => {
+    if (tab === 'terminal') {
+      onTerminalMounted?.()
+    }
+  }, [tab, onTerminalMounted])
+
+  if (!running && !starting && tab !== 'settings' && tab !== 'terminal') {
+    const welcome = <WelcomePanel onOpenSettings={onOpenSettings} />
+    return renderShell?.({ workspace: welcome, showInspector: false }) ?? welcome
+  }
+
+  if (tab === 'settings') {
+    const settings = (
+      <div className="main-content main-content-settings">
+        <SettingsView
+          cluster={cluster}
+          themeId={themeId}
+          onThemeChange={onThemeChange}
+          prefs={prefs}
+          onPrefsChange={onPrefsChange}
+          onClusterRefresh={onClusterRefresh}
+          onTerminalShellChange={onTerminalShellChange}
+          section={settingsSection}
+          onSectionChange={onSettingsSectionChange}
+        />
+      </div>
+    )
+    return renderShell?.({ workspace: settings, showInspector: false }) ?? settings
+  }
+
+  const workspaceInner = (
+    <>
+      {tab !== 'terminal' && (
+        <WorkspaceChrome
+          tab={tab}
+          cluster={cluster}
+          running={running}
+          view={view}
+          inspectKey={inspectKey}
+          inspectRow={inspectRow}
+          focusPinned={focusPinned}
+          drillDown={drillDown}
+          onClearFocus={onClearFocus}
+          timeWindowLabel={timeWindowLabel}
+          live={live}
+          compact
+        />
+      )}
+      <div className="content-body content-body-workbench">
+        {tab === 'incident' && (
+          <OverviewView
+            view={view}
+            cluster={cluster}
+            clusterStatus={clusterStatus}
+            running={running}
+            syncing={syncing}
+            collecting={collecting}
+            inspectRow={inspectRow}
+            onNavigate={handleNavigate}
+            onOpenEvidence={onOpenEvidence}
+            onOpenSettings={onOpenSettings}
+            onInspectKeyChange={onInspectKeyChange}
+            timeWindowLabel={timeWindowLabel}
+            live={live}
+          />
+        )}
+        {tab === 'resources' && (
+          <ResourcesWorkbenchView shellMode />
+        )}
         {tab === 'patterns' && (
           <PatternsView
             view={view}
             running={running}
             onFilterLogs={onFilterLogsFromPatterns}
             onOpenEvidence={onOpenEvidence}
+            explorerFilter={explorerFilters?.patterns}
+            onExplorerFilterChange={(f) => onExplorerFiltersChange?.({
+              patterns: { ...explorerFilters?.patterns, ...f },
+            })}
           />
         )}
-        {tab === 'incident' && (
-          <IncidentView
+        {tab === 'graph' && (
+          <GraphView
             view={view}
-            focusKey={focusKey}
-            focusPinned={focusPinned}
-            onFocusChange={onFocusChange}
-            onClearFocus={onClearFocus}
-            collecting={collecting}
-            layoutMode={layoutMode}
+            graphRelations={graphRelations || defaultRelations()}
           />
         )}
-        {tab === 'graph' && <GraphView view={view} />}
-        {tab === 'failures' && <FailuresView view={view} />}
-        {tab === 'resources' && <ResourcesView view={view} />}
-        {tab === 'evidence' && (
-          <EvidenceView view={view} onFilterLogs={onFilterLogsFromPatterns} />
+        {tab === 'nodes' && (
+          <NodesView
+            view={view}
+            clusterStatus={clusterStatus}
+            focus={nodesFocus}
+          />
         )}
-        {tab === 'settings' && (
-          <SettingsView
-            cluster={cluster}
-            themeId={themeId}
-            onThemeChange={onThemeChange}
-            prefs={prefs}
-            onPrefsChange={onPrefsChange}
-            onClusterRefresh={onClusterRefresh}
-            section={settingsSection}
-            onSectionChange={onSettingsSectionChange}
+        {tab === 'failures' && (
+          <FailuresView
+            view={view}
+            onOpenEvidence={onOpenEvidence}
+            explorerFilter={explorerFilters?.failures}
+          />
+        )}
+        {tab === 'evidence' && (
+          <EvidenceView
+            view={view}
+            onFilterLogs={onFilterLogsFromPatterns}
+            explorerFilter={explorerFilters?.evidence}
           />
         )}
       </div>
+    </>
+  )
+
+  const workspace = (
+    <div className="main-content">
+      {tab !== 'terminal' && workspaceInner}
+      {terminalMounted && (
+        <TerminalView
+          cluster={cluster}
+          shellPref={prefs?.terminalShell}
+          appearance={prefs?.terminalAppearance}
+          onChangeShell={onOpenTerminalShellPicker}
+          shellRestartToken={terminalShellRestartToken}
+          hidden={tab !== 'terminal'}
+        />
+      )}
     </div>
   )
+
+  const shellPayload = {
+    workspace,
+    showInspector: tab === 'resources',
+    inspector: tab === 'resources' ? <ResourcesWorkbenchInspector /> : null,
+    resourcesWrap: tab === 'resources' ? {
+      view,
+      cluster,
+      catalog: resourcesCatalog.catalog,
+      rows: resourcesCatalog.allRows,
+      focusKey,
+      focusPinned,
+      onFocusChange,
+      onClearFocus,
+      collecting,
+      layoutMode,
+      inspectKey,
+      onInspectKeyChange,
+      shellMode: true,
+    } : null,
+  }
+
+  if (renderShell) {
+    return renderShell(shellPayload)
+  }
+
+  return workspace
 }
 
 function WelcomePanel({ onOpenSettings }) {
@@ -161,7 +250,7 @@ function WelcomePanel({ onOpenSettings }) {
       <CollectingMatchesSplash variant="idle" />
       <div className="welcome-actions">
         <p className="welcome-sub">
-          Klew streams pods, events, and logs for the selected namespace.
+          Klew is a Kubernetes investigation engine — connect a cluster and start investigating.
         </p>
         <button type="button" className="btn btn-outline" onClick={onOpenSettings}>
           Open Settings

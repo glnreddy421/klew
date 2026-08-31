@@ -12,7 +12,7 @@ import (
 	"github.com/glnreddy421/klew/internal/model"
 )
 
-// Service is the shared investigation backend for CLI/TUI and desktop.
+// Service is the shared investigation backend for the desktop app.
 type Service struct {
 	session *engine.LiveSession
 }
@@ -111,6 +111,62 @@ func (s *Service) PollInterval() time.Duration {
 		return 0
 	}
 	return s.session.PollInterval()
+}
+
+func (s *Service) LogTailActive() bool {
+	if s == nil || s.session == nil {
+		return false
+	}
+	return s.session.LogTailActive()
+}
+
+func (s *Service) LogTailEngaged() bool {
+	if s == nil || s.session == nil {
+		return false
+	}
+	return s.session.LogTailEngaged()
+}
+
+func (s *Service) LogTailPaused() bool {
+	if s == nil || s.session == nil {
+		return false
+	}
+	return s.session.LogTailPaused()
+}
+
+func (s *Service) StartLogTail(opts engine.LogTailOptions) error {
+	if s == nil || s.session == nil {
+		return fmt.Errorf("no active investigation")
+	}
+	return s.session.StartLogTail(opts)
+}
+
+func (s *Service) StopLogTail() {
+	if s == nil || s.session == nil {
+		return
+	}
+	s.session.StopLogTail()
+}
+
+func (s *Service) PauseLogTail() error {
+	if s == nil || s.session == nil {
+		return fmt.Errorf("no active investigation")
+	}
+	return s.session.PauseLogTail()
+}
+
+func (s *Service) ResumeLogTail() error {
+	if s == nil || s.session == nil {
+		return fmt.Errorf("no active investigation")
+	}
+	return s.session.ResumeLogTail()
+}
+
+func (s *Service) ClearLogs() {
+	if s == nil || s.session == nil {
+		return
+	}
+	s.session.ClearLogs()
 }
 
 // Watch invokes fn whenever investigation state changes until ctx is cancelled.
