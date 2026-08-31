@@ -99,26 +99,86 @@ func volumeSource(v corev1.Volume) string {
 }
 
 func envRows(containers []corev1.Container) [][]string {
+	return envRowsDetailed(containers, nil)
+}
+
+// envRowsDetailed emits Container, Name, Source, Value.
+// Optional resolver may fill ConfigMap values only; secret refs stay masked in this table.
+func envRowsDetailed(containers []corev1.Container, resolver envValueResolver) [][]string {
 	var rows [][]string
 	for _, c := range containers {
 		for _, e := range c.Env {
-			val := e.Value
-			if e.ValueFrom != nil {
-				val = envFromRef(e.ValueFrom)
-			}
-			rows = append(rows, []string{c.Name, e.Name, truncate(val, 80)})
+			source, value := envVarSourceValue(e, resolver)
+			rows = append(rows, []string{c.Name, e.Name, source, truncate(value, 120)})
 		}
 		for _, ef := range c.EnvFrom {
-			src := ""
-			if ef.ConfigMapRef != nil {
-				src = "configMap:" + ef.ConfigMapRef.Name
-			} else if ef.SecretRef != nil {
-				src = "secret:" + ef.SecretRef.Name
+			source, value := envFromSourceValue(ef, resolver)
+			prefix := ef.Prefix
+			if prefix == "" {
+				prefix = "*"
 			}
-			rows = append(rows, []string{c.Name, ef.Prefix + "*", src})
+			rows = append(rows, []string{c.Name, prefix, source, truncate(value, 120)})
 		}
 	}
 	return rows
+}
+
+const secretEnvPlaceholder = "(secret — reveal below if permitted)"
+
+type envValueResolver func(sourceKind, name, key string) (string, bool)
+
+type secretResolveResult struct {
+	value     string
+	found     bool
+	forbidden bool
+}
+
+type secretEnvResolver func(name, key string) secretResolveResult
+
+func envVarSourceValue(e corev1.EnvVar, resolver envValueResolver) (source, value string) {
+	if e.ValueFrom == nil {
+		return "literal", e.Value
+	}
+	switch {
+	case e.ValueFrom.ConfigMapKeyRef != nil:
+		ref := e.ValueFrom.ConfigMapKeyRef
+		source = "configMap:" + ref.Name + "/" + ref.Key
+		if resolver != nil {
+			if v, ok := resolver("ConfigMap", ref.Name, ref.Key); ok {
+				return source, v
+			}
+		}
+		return source, source
+	case e.ValueFrom.SecretKeyRef != nil:
+		ref := e.ValueFrom.SecretKeyRef
+		source = "secret:" + ref.Name + "/" + ref.Key
+		return source, secretEnvPlaceholder
+	case e.ValueFrom.FieldRef != nil:
+		return "field", e.ValueFrom.FieldRef.FieldPath
+	case e.ValueFrom.ResourceFieldRef != nil:
+		r := e.ValueFrom.ResourceFieldRef
+		return "resource", r.Resource + " (" + r.ContainerName + ")"
+	default:
+		return "valueFrom", ""
+	}
+}
+
+func envFromSourceValue(ef corev1.EnvFromSource, resolver envValueResolver) (source, value string) {
+	switch {
+	case ef.ConfigMapRef != nil:
+		source = "configMap:" + ef.ConfigMapRef.Name
+		if resolver != nil {
+			if v, ok := resolver("ConfigMap", ef.ConfigMapRef.Name, ""); ok {
+				return source, v
+			}
+		}
+		return source, "all keys"
+	case ef.SecretRef != nil:
+		source = "secret:" + ef.SecretRef.Name
+		return source, secretEnvPlaceholder
+	default:
+		return "envFrom", ""
+	}
 }
 
 func envFromRef(vf *corev1.EnvVarSource) string {
@@ -137,6 +197,164 @@ func envFromRef(vf *corev1.EnvVarSource) string {
 	default:
 		return "valueFrom"
 	}
+}
+
+func containerSpecRows(containers []corev1.Container) [][]string {
+	var rows [][]string
+	for _, c := range containers {
+		pull := string(c.ImagePullPolicy)
+		if pull == "" {
+			pull = "IfNotPresent"
+		}
+		rows = append(rows, []string{
+			c.Name,
+			c.Image,
+			pull,
+			truncate(strings.Join(c.Command, " "), 80),
+			truncate(strings.Join(c.Args, " "), 80),
+			c.WorkingDir,
+		})
+	}
+	return rows
+}
+
+func volumeMountRows(containers []corev1.Container) [][]string {
+	var rows [][]string
+	for _, c := range containers {
+		for _, m := range c.VolumeMounts {
+			sub := m.SubPath
+			if sub == "" && m.SubPathExpr != "" {
+				sub = m.SubPathExpr
+			}
+			rows = append(rows, []string{
+				c.Name,
+				m.Name,
+				m.MountPath,
+				sub,
+				boolStr(m.ReadOnly),
+			})
+		}
+	}
+	return rows
+}
+
+func probeRows(containers []corev1.Container) [][]string {
+	var rows [][]string
+	for _, c := range containers {
+		rows = append(rows, probeRow(c.Name, "Liveness", c.LivenessProbe)...)
+		rows = append(rows, probeRow(c.Name, "Readiness", c.ReadinessProbe)...)
+		rows = append(rows, probeRow(c.Name, "Startup", c.StartupProbe)...)
+	}
+	return rows
+}
+
+func probeRow(container, probeType string, p *corev1.Probe) [][]string {
+	if p == nil {
+		return nil
+	}
+	kind, target := describeProbeHandler(p.ProbeHandler)
+	return [][]string{{
+		container,
+		probeType,
+		kind,
+		target,
+		fmtInt32(p.InitialDelaySeconds),
+		fmtInt32(p.PeriodSeconds),
+		fmtInt32(p.TimeoutSeconds),
+		fmtInt32(p.FailureThreshold),
+	}}
+}
+
+func describeProbeHandler(h corev1.ProbeHandler) (kind, target string) {
+	switch {
+	case h.HTTPGet != nil:
+		path := h.HTTPGet.Path
+		if path == "" {
+			path = "/"
+		}
+		return "HTTP", path + " :" + h.HTTPGet.Port.String()
+	case h.TCPSocket != nil:
+		return "TCP", h.TCPSocket.Port.String()
+	case h.Exec != nil:
+		return "Exec", truncate(strings.Join(h.Exec.Command, " "), 80)
+	case h.GRPC != nil:
+		svc := ""
+		if h.GRPC.Service != nil {
+			svc = *h.GRPC.Service
+		}
+		return "GRPC", fmt.Sprintf("%d/%s", h.GRPC.Port, svc)
+	default:
+		return "unknown", ""
+	}
+}
+
+func securityContextRows(containers []corev1.Container) [][]string {
+	var rows [][]string
+	for _, c := range containers {
+		sc := c.SecurityContext
+		if sc == nil {
+			continue
+		}
+		rows = append(rows, []string{
+			c.Name,
+			fmtOptionalInt64(sc.RunAsUser),
+			fmtOptionalInt64(sc.RunAsGroup),
+			boolStr(sc.Privileged != nil && *sc.Privileged),
+			boolStr(sc.ReadOnlyRootFilesystem != nil && *sc.ReadOnlyRootFilesystem),
+		})
+	}
+	return rows
+}
+
+func fmtOptionalInt64(p *int64) string {
+	if p == nil {
+		return ""
+	}
+	return fmtInt64(*p)
+}
+
+func initContainerStateRows(sts []corev1.ContainerStatus) [][]string {
+	var rows [][]string
+	for _, s := range sts {
+		state, reason, exit := describeContainerState(s.State)
+		rows = append(rows, []string{
+			s.Name, boolStr(s.Ready), fmtInt32(s.RestartCount), state, reason, exit, s.Image,
+		})
+	}
+	return rows
+}
+
+func resolvedSecretEnvRows(containers []corev1.Container, resolver secretEnvResolver) ([][]string, []string) {
+	if resolver == nil {
+		return nil, nil
+	}
+	var rows [][]string
+	var denied int
+	for _, c := range containers {
+		for _, e := range c.Env {
+			if e.ValueFrom == nil || e.ValueFrom.SecretKeyRef == nil {
+				continue
+			}
+			ref := e.ValueFrom.SecretKeyRef
+			result := resolver(ref.Name, ref.Key)
+			if result.forbidden {
+				denied++
+				continue
+			}
+			if !result.found || result.value == "" {
+				continue
+			}
+			rows = append(rows, []string{c.Name, e.Name, ref.Name + "/" + ref.Key, result.value})
+		}
+	}
+	var notes []string
+	if denied > 0 {
+		notes = append(notes, fmt.Sprintf(
+			"%d secret environment variable(s) could not be resolved — insufficient permission to get Secrets.",
+			denied,
+		))
+	}
+	return rows, notes
 }
 
 func podTemplateSections(tpl *corev1.PodTemplateSpec, group string) []Section {
@@ -165,9 +383,17 @@ func podTemplateSections(tpl *corev1.PodTemplateSpec, group string) []Section {
 		out = append(out, sectionTable("volumes", "Volumes", group,
 			[]string{"Name", "Source"}, rows))
 	}
-	if rows := envRows(spec.Containers); len(rows) > 0 {
+	if rows := volumeMountRows(append(spec.InitContainers, spec.Containers...)); len(rows) > 0 {
+		out = append(out, sectionTable("volumeMounts", "Volume Mounts", group,
+			[]string{"Container", "Volume", "Mount Path", "Sub Path", "Read Only"}, rows))
+	}
+	if rows := probeRows(append(spec.InitContainers, spec.Containers...)); len(rows) > 0 {
+		out = append(out, sectionTable("probes", "Probes", group,
+			[]string{"Container", "Probe", "Type", "Target", "Initial Delay", "Period", "Timeout", "Failures"}, rows))
+	}
+	if rows := envRowsDetailed(spec.Containers, nil); len(rows) > 0 {
 		out = append(out, sectionTable("environment", "Environment", group,
-			[]string{"Container", "Name", "Value"}, rows))
+			[]string{"Container", "Name", "Source", "Value"}, rows))
 	}
 	return out
 }

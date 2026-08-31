@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -24,10 +25,17 @@ type LiveOptions struct {
 	DisableMetrics bool
 }
 
+// LogTailOptions configures an on-demand multipod log follow.
+type LogTailOptions struct {
+	// PodNames limits tailing to these pods. Empty → all pods in the investigation snapshot.
+	PodNames []string
+}
+
 // LiveSession runs collectors and exposes investigation state.
 type LiveSession struct {
 	Reducer *Reducer
 	Bus     *Bus
+	ctx     context.Context
 	cancel  context.CancelFunc
 	wg      sync.WaitGroup
 
@@ -37,9 +45,22 @@ type LiveSession struct {
 	client        *kube.Client
 	refreshNS     string
 	refreshQuery  string
+
+	logMu         sync.Mutex
+	stopLogTail   func()
+	logTailActive bool
+	logTailPaused bool
+	logTailNames  []string
+	tail          int
+	window        time.Duration
+	maxLogReq     int
+	logNS         string
+
+	watcher *kube.LiveWatcher
 }
 
-// StartLive creates snapshot, starts bus/reducer, watchers, log streams, metrics poll.
+// StartLive creates snapshot, starts bus/reducer, watchers, and metrics poll.
+// Live pod tailing starts only when the user requests it via StartLogTail.
 func StartLive(ctx context.Context, client *kube.Client, opts LiveOptions) (*LiveSession, error) {
 	if opts.PollEvery <= 0 {
 		opts.PollEvery = 10 * time.Second
@@ -76,12 +97,17 @@ func StartLive(ctx context.Context, client *kube.Client, opts LiveOptions) (*Liv
 	session := &LiveSession{
 		Reducer:      reducer,
 		Bus:          bus,
+		ctx:          ctx,
 		cancel:       cancel,
 		autoRefresh:  opts.AutoRefresh,
 		pollEvery:    opts.PollEvery,
 		client:       client,
 		refreshNS:    ns,
 		refreshQuery: opts.Query,
+		tail:         opts.Tail,
+		window:       opts.Window,
+		maxLogReq:    opts.MaxLogRequests,
+		logNS:        ns,
 	}
 
 	// Consumer must run before snapshot publish so seed events are not dropped
@@ -93,18 +119,9 @@ func StartLive(ctx context.Context, client *kube.Client, opts LiveOptions) (*Liv
 	go session.runRefreshLoop(ctx)
 
 	watcher := &kube.LiveWatcher{Client: client, Sink: sink, Namespace: ns, Query: opts.Query}
-	watches := watcher.Start(ctx, &session.wg)
-
-	logStreamer := &kube.LogStreamer{
-		Client:         client,
-		Sink:           sink,
-		Namespace:      ns,
-		Query:          opts.Query,
-		Tail:           opts.Tail,
-		Since:          opts.Window,
-		MaxLogRequests: opts.MaxLogRequests,
-	}
-	logStreamer.Start(ctx, bundle.Pods, &session.wg)
+	scopePods := podSummaryNames(bundle.Pods)
+	watches := watcher.Start(ctx, &session.wg, scopePods)
+	session.watcher = watcher
 
 	if opts.DisableMetrics {
 		sink(model.EvidenceEvent{
@@ -191,15 +208,239 @@ func (s *LiveSession) runRefreshLoop(ctx context.Context) {
 			lastRefresh = time.Now()
 			if err := RefreshSnapshot(ctx, client, reducer, ns, query); err != nil {
 				slog.Debug("snapshot refresh", "err", err)
+			} else if s.watcher != nil {
+				s.watcher.SetScopePodNames(podSummaryNames(reducer.State().Snapshot.Pods))
 			}
 		}
 	}
 }
 
 func (s *LiveSession) Stop() {
+	s.logMu.Lock()
+	s.stopLogTailLocked()
+	s.logMu.Unlock()
 	s.cancel()
 	s.Bus.Close()
 	s.wg.Wait()
+}
+
+// LogTailActive reports whether GetLogs follow streams are open.
+func (s *LiveSession) LogTailActive() bool {
+	if s == nil {
+		return false
+	}
+	s.logMu.Lock()
+	defer s.logMu.Unlock()
+	return s.logTailActive
+}
+
+// LogTailEngaged reports whether a gather session exists (streaming or paused).
+func (s *LiveSession) LogTailEngaged() bool {
+	if s == nil || s.Reducer == nil {
+		return false
+	}
+	s.logMu.Lock()
+	defer s.logMu.Unlock()
+	if s.logTailActive || s.logTailPaused {
+		return true
+	}
+	return len(s.Reducer.State().LogTailPods) > 0
+}
+
+// LogTailPaused reports whether log follows are paused with scope retained.
+func (s *LiveSession) LogTailPaused() bool {
+	if s == nil {
+		return false
+	}
+	s.logMu.Lock()
+	defer s.logMu.Unlock()
+	return s.logTailPaused
+}
+
+// StartLogTail opens GetLogs follows for pods in the investigation snapshot.
+func (s *LiveSession) StartLogTail(opts LogTailOptions) error {
+	if s == nil || s.client == nil {
+		return fmt.Errorf("no active investigation")
+	}
+	pods := filterSnapshotPods(s.Reducer.State().Snapshot.Pods, opts.PodNames)
+	if len(opts.PodNames) == 0 {
+		return fmt.Errorf("select at least one pod")
+	}
+	if len(pods) == 0 {
+		return fmt.Errorf("no pods in investigation scope")
+	}
+	allowNames := podSummaryNames(pods)
+
+	s.logMu.Lock()
+	defer s.logMu.Unlock()
+	s.stopLogTailLocked()
+	s.logTailNames = append([]string(nil), allowNames...)
+	return s.startLogStreamsLocked(pods, allowNames)
+}
+
+// PauseLogTail closes GetLogs streams but keeps the gather session for resume.
+func (s *LiveSession) PauseLogTail() error {
+	if s == nil {
+		return fmt.Errorf("no active investigation")
+	}
+	s.logMu.Lock()
+	defer s.logMu.Unlock()
+	if !s.logTailActive && !s.logTailPaused {
+		return fmt.Errorf("no active log gather session")
+	}
+	if s.logTailPaused {
+		return nil
+	}
+	s.stopStreamsLocked()
+	s.logTailPaused = true
+	if s.Reducer != nil {
+		s.Reducer.SetLogTailPaused(true)
+	}
+	s.emitLogTailSystem("log_tail_paused", "Log gather paused — GetLogs streams closed to reduce API load")
+	return nil
+}
+
+// ResumeLogTail reopens GetLogs follows for the last gather selection.
+func (s *LiveSession) ResumeLogTail() error {
+	if s == nil || s.client == nil {
+		return fmt.Errorf("no active investigation")
+	}
+	s.logMu.Lock()
+	defer s.logMu.Unlock()
+	if !s.logTailPaused {
+		return fmt.Errorf("log gather is not paused")
+	}
+	names := s.logTailNames
+	if len(names) == 0 {
+		names = append([]string(nil), s.Reducer.State().LogTailPods...)
+	}
+	if len(names) == 0 {
+		return fmt.Errorf("no pods to resume")
+	}
+	pods := filterSnapshotPods(s.Reducer.State().Snapshot.Pods, names)
+	if len(pods) == 0 {
+		return fmt.Errorf("selected pods are no longer in investigation scope")
+	}
+	allowNames := podSummaryNames(pods)
+	s.logTailNames = append([]string(nil), allowNames...)
+	if err := s.startLogStreamsLocked(pods, allowNames); err != nil {
+		return err
+	}
+	s.emitLogTailSystem("log_tail_resumed", fmt.Sprintf("Resumed log gather for %d pod(s)", len(pods)))
+	return nil
+}
+
+// StopLogTail ends active log follows without stopping the investigation.
+func (s *LiveSession) StopLogTail() {
+	if s == nil {
+		return
+	}
+	s.logMu.Lock()
+	defer s.logMu.Unlock()
+	s.stopLogTailLocked()
+}
+
+// ClearLogs wipes log lines for the active tail pods (live panel clean slate).
+// Log lines from other pods stay in the buffer for Patterns and other views.
+func (s *LiveSession) ClearLogs() {
+	if s == nil || s.Reducer == nil {
+		return
+	}
+	pods := s.Reducer.State().LogTailPods
+	if len(pods) > 0 {
+		s.Reducer.ClearLogsForPods(pods)
+		return
+	}
+	s.Reducer.ClearLogs()
+}
+
+func (s *LiveSession) stopLogTailLocked() {
+	s.stopStreamsLocked()
+	s.logTailPaused = false
+	s.logTailNames = nil
+	if s.Reducer != nil {
+		s.Reducer.SetLogTailPods(nil)
+		s.Reducer.SetLogTailPaused(false)
+	}
+}
+
+func (s *LiveSession) stopStreamsLocked() {
+	if s.stopLogTail != nil {
+		s.stopLogTail()
+		s.stopLogTail = nil
+	}
+	s.logTailActive = false
+}
+
+func (s *LiveSession) startLogStreamsLocked(pods []model.PodSummary, allowNames []string) error {
+	if s.client == nil {
+		return fmt.Errorf("no cluster client")
+	}
+	s.stopStreamsLocked()
+	s.logTailPaused = false
+
+	s.Reducer.SetLogTailPods(allowNames)
+	s.Reducer.SetLogTailPaused(false)
+
+	sink := func(e model.EvidenceEvent) { s.Bus.Publish(e) }
+	streamer := &kube.LogStreamer{
+		Client:         s.client,
+		Sink:           sink,
+		Namespace:      s.logNS,
+		Query:          "",
+		Tail:           s.tail,
+		Since:          s.window,
+		MaxLogRequests: s.maxLogReq,
+	}
+	s.stopLogTail = streamer.StartWithStop(s.ctx, pods)
+	s.logTailActive = true
+	s.emitLogTailSystem("log_tail_started", fmt.Sprintf("Gathering logs from %d pod(s)", len(pods)))
+	return nil
+}
+
+func (s *LiveSession) emitLogTailSystem(reason, message string) {
+	if s.Bus == nil {
+		return
+	}
+	s.Bus.Publish(model.EvidenceEvent{
+		Timestamp:  model.TimestampFrom(time.Now().UTC()),
+		SourceType: model.SourceSystem,
+		Severity:   model.SeverityInfo,
+		Reason:     reason,
+		Message:    message,
+		Confidence: 1,
+	})
+}
+
+func filterSnapshotPods(pods []model.PodSummary, names []string) []model.PodSummary {
+	if len(names) == 0 {
+		out := make([]model.PodSummary, len(pods))
+		copy(out, pods)
+		return out
+	}
+	want := make(map[string]bool, len(names))
+	for _, n := range names {
+		if n != "" {
+			want[n] = true
+		}
+	}
+	var out []model.PodSummary
+	for _, p := range pods {
+		if want[p.Name] {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func podSummaryNames(pods []model.PodSummary) []string {
+	out := make([]string, 0, len(pods))
+	for _, p := range pods {
+		if p.Name != "" {
+			out = append(out, p.Name)
+		}
+	}
+	return out
 }
 
 func RunFor(ctx context.Context, client *kube.Client, opts LiveOptions, duration time.Duration) (model.InvestigationState, error) {

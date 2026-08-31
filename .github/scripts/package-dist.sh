@@ -19,9 +19,9 @@ fi
 
 DIST="$ROOT/dist"
 mkdir -p "$DIST"
-ARCH="$(uname -m)"
-ZIP="$DIST/Klew-${VERSION}-macos-${ARCH}.zip"
-DMG="$DIST/Klew-${VERSION}-macos-${ARCH}.dmg"
+GOARCH="${GOARCH:-arm64}"
+ZIP="$DIST/Klew-${VERSION}-macos-${GOARCH}.zip"
+DMG="$DIST/Klew-${VERSION}-macos-${GOARCH}.dmg"
 
 ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
 

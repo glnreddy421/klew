@@ -1,37 +1,184 @@
-import { useEffect, useMemo, useState } from 'react'
-import { KindIcon } from '../KindIcon'
-import { RowStatusBadge } from './StatusBadge'
-import {
-  formatReady,
-  groupRowsByKind,
-  podsForMatch,
-  WORKLOAD_ROOT_KINDS,
-} from '../../lib/matches'
-
-const ROOT_KEY = '__all__'
+import { useMemo, useEffect } from 'react'
+import { buildCatalogScopeTree } from '../../lib/resourceCatalog.js'
+import { flattenTreeEntities, entitySearchPlaceholder, visibleCategories } from '../../lib/resourceNavigation.js'
+import { useResourceNavigation } from '../../hooks/useResourceNavigation.js'
+import { useCatalogEntities } from '../../hooks/useCatalogEntities.js'
+import { clusterScopeKey, useLazyResourceCounts } from '../../hooks/useLazyResourceCounts.js'
+import { useScopeBrowse } from '../../context/ScopeBrowseContext.jsx'
+import { ResourceNav } from './ResourceNav.jsx'
+import { EntityList } from './EntityList.jsx'
+import { EntityTable } from './EntityTable.jsx'
 
 /**
- * Scope UX — searchable hierarchical matched components (kind → items → related pods).
+ * Scope UX — resource kinds + entity collection.
+ * When navInExplorer is true, ResourceNav lives in the contextual explorer.
  */
 export function ScopePanel({
   rows = [],
   view,
+  catalog,
+  cluster,
+  catalogLoading = false,
+  catalogError = '',
   focusKey,
   inspectKey,
   mode = 'match',
   onInspect,
   onFocus,
+  onKindChange,
   showFocusButton = true,
-  title,
+  entityView = 'list',
+  tableDensity = 'standard',
+  showEmptyToggle = true,
+  navInExplorer = false,
 }) {
-  const [query, setQuery] = useState('')
-  const [expanded, setExpanded] = useState(() => new Set([ROOT_KEY]))
-
+  const browseCtx = useScopeBrowse()
   const pods = view?.state?.snapshot?.pods || []
   const chain = mode === 'chain'
-  const total = rows.length
+  const namespace = cluster?.selectedNamespace || cluster?.currentContext || ''
 
-  // Rebuild tree only when match/pod identity actually changes — not on every log tick.
+  const internal = useScopePanelState({
+    view,
+    catalog,
+    cluster,
+    rows,
+    chain,
+    enabled: !browseCtx && !chain,
+  })
+
+  const nav = browseCtx?.nav || internal.nav
+  const displayEntities = browseCtx?.displayEntities ?? internal.displayEntities
+  const effectiveKindGroup = browseCtx?.effectiveKindGroup ?? internal.effectiveKindGroup
+  const lazy = browseCtx?.lazy ?? internal.lazy
+  const canLazyLoad = browseCtx?.canLazyLoad ?? internal.canLazyLoad
+  const tree = browseCtx?.tree ?? internal.tree
+
+  const filteredEntities = useMemo(() => {
+    const q = String(nav.entitySearchQuery || '').trim().toLowerCase()
+    if (!q) return displayEntities
+    return displayEntities.filter((row) =>
+      `${row.name || ''} ${row.key || ''}`.toLowerCase().includes(q),
+    )
+  }, [displayEntities, nav.entitySearchQuery])
+
+  const entityChangeSig = useMemo(
+    () => `${nav.selectedResourceId || nav.selectedKind || ''}|${displayEntities.map((e) => e.key).join(',')}`,
+    [nav.selectedResourceId, nav.selectedKind, displayEntities],
+  )
+
+  useEffect(() => {
+    if (chain || !onKindChange) return
+    onKindChange({
+      groupId: nav.selectedGroupId,
+      kind: nav.selectedKind,
+      resourceId: nav.selectedResourceId,
+      entities: displayEntities,
+    })
+  }, [chain, nav.selectedGroupId, nav.selectedKind, nav.selectedResourceId, entityChangeSig, onKindChange])
+
+  const chainEntities = useMemo(() => (chain ? flattenTreeEntities(tree) : []), [chain, tree])
+  const searchPlaceholder = entitySearchPlaceholder(nav.selectedKind, effectiveKindGroup?.label)
+
+  if (chain) {
+    return (
+      <div className="scope-panel scope-panel-browse">
+        <EntityList
+          title="Focus chain"
+          kind={null}
+          entities={chainEntities}
+          filteredEntities={chainEntities}
+          inspectKey={inspectKey}
+          focusKey={focusKey}
+          showFocusButton={false}
+          onSelect={onInspect}
+          onFocus={onFocus}
+          chainMode
+        />
+      </div>
+    )
+  }
+
+  return (
+    <div className="scope-panel scope-panel-browse">
+      <div className="scope-toolbar">
+        <input
+          type="search"
+          className="scope-toolbar-search"
+          value={nav.entitySearchQuery}
+          onChange={(e) => nav.setEntitySearchQuery(e.target.value)}
+          placeholder={searchPlaceholder}
+          aria-label="Filter entities"
+        />
+        <div className="scope-toolbar-meta">
+          {catalogLoading && <span className="scope-toolbar-hint">Syncing catalog…</span>}
+          {catalogError && !catalogLoading && (
+            <span className="scope-toolbar-hint scope-toolbar-warn" title={catalogError}>
+              Limited discovery
+            </span>
+          )}
+          {namespace && <span className="scope-toolbar-ns mono">{namespace}</span>}
+          {showEmptyToggle && (
+            <button
+              type="button"
+              className={`scope-toolbar-btn ${nav.showEmptyKinds ? 'is-active' : ''}`}
+              onClick={nav.toggleShowEmpty}
+              aria-pressed={nav.showEmptyKinds}
+            >
+              Empty
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className={`scope-browse-split ${entityView === 'table' ? 'scope-browse-table' : 'scope-browse-list'} ${navInExplorer ? 'scope-browse-no-nav' : ''}`}>
+        {!navInExplorer && (
+          <ResourceNav
+            categories={nav.categories}
+            expandedGroups={nav.expandedGroups}
+            selectedGroupId={nav.selectedGroupId}
+            selectedKind={nav.selectedKind}
+            selectedResourceId={nav.selectedResourceId}
+            onToggleGroup={nav.toggleGroup}
+            onSelectKind={nav.selectKind}
+          />
+        )}
+        {entityView === 'table' ? (
+          <EntityTable
+            kind={nav.selectedKind}
+            kindGroup={effectiveKindGroup}
+            entities={displayEntities}
+            filteredEntities={filteredEntities}
+            entitiesLoading={lazy.loading && canLazyLoad}
+            pods={pods}
+            density={tableDensity}
+            hasSearchQuery={nav.entitySearchQuery.trim()}
+            inspectKey={inspectKey}
+            focusKey={focusKey}
+            onSelect={onInspect}
+          />
+        ) : (
+          <EntityList
+            kind={nav.selectedKind}
+            kindGroup={effectiveKindGroup}
+            entities={displayEntities}
+            filteredEntities={filteredEntities}
+            entitiesLoading={lazy.loading && canLazyLoad}
+            hasSearchQuery={nav.entitySearchQuery.trim()}
+            inspectKey={inspectKey}
+            focusKey={focusKey}
+            showFocusButton={showFocusButton}
+            onSelect={onInspect}
+            onFocus={onFocus}
+          />
+        )}
+      </div>
+    </div>
+  )
+}
+
+function useScopePanelState({ view, catalog, cluster, rows, chain, enabled }) {
+  const pods = view?.state?.snapshot?.pods || []
+
   const rowSig = useMemo(
     () => rows.map((r) => `${r.key}:${r.status}:${r.ready}:${r.total}:${r.restarts}`).join('|'),
     [rows],
@@ -40,381 +187,67 @@ export function ScopePanel({
     () => pods.map((p) => `${p.name}:${p.ready ? 1 : 0}:${p.restartCount || 0}`).join('|'),
     [pods],
   )
+  const catalogSig = useMemo(
+    () => (catalog ? `${catalog.generatedAt}:${catalog.resources?.length || 0}` : ''),
+    [catalog],
+  )
 
-  const tree = useMemo(
-    () => buildScopeTree(rows, pods, { nestPods: !chain }),
-    // rowSig/podSig gate rebuilds; rows/pods provide the values.
+  const baseTree = useMemo(
+    () => buildCatalogScopeTree(catalog, rows, pods),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rowSig, podSig, chain],
+    [rowSig, podSig, catalogSig],
   )
 
-  // Open root + kind groups by default (only when new keys appear — avoid re-render thrash).
-  useEffect(() => {
-    setExpanded((prev) => {
-      let changed = false
-      const next = new Set(prev)
-      if (!next.has(ROOT_KEY)) {
-        next.add(ROOT_KEY)
-        changed = true
-      }
-      for (const g of tree.groups) {
-        const k = `kind:${g.kind}`
-        if (!next.has(k)) {
-          next.add(k)
-          changed = true
-        }
-      }
-      return changed ? next : prev
-    })
-  }, [tree])
+  const navBase = useResourceNavigation(baseTree, { enabled })
 
-  const filtered = useMemo(
-    () => filterScopeTree(tree, query),
-    [tree, query],
+  const investigationEntities = navBase.entities
+  const kindGroup = navBase.selectedKindGroup
+  const canLazyLoad = Boolean(
+    kindGroup?.resourceId
+    && kindGroup.accessState !== 'forbidden'
+    && kindGroup.countState?.state !== 'forbidden'
+    && kindGroup.discovered
+    && investigationEntities.length === 0,
   )
 
-  const toggle = (key) => {
-    setExpanded((prev) => {
-      const next = new Set(prev)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
-      return next
-    })
-  }
-
-  // Ensure visible groups stay open when searching.
-  const isOpen = (key) => {
-    if (query.trim()) return true
-    return expanded.has(key)
-  }
-
-  if (!rows.length) {
-    return (
-      <div className="scope-panel">
-        <header className="scope-header">
-          <h3 className="scope-title">{title || 'Scope'}</h3>
-        </header>
-        <div className="scope-empty muted">No matched components in scope</div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="scope-panel">
-      <header className="scope-header">
-        <h3 className="scope-title">
-          {title || (chain ? 'Focus chain' : 'Scope')}
-          <span className="scope-title-count muted">
-            · {total} match{total === 1 ? '' : 'es'}
-          </span>
-        </h3>
-      </header>
-
-      <div className="scope-search-wrap">
-        <svg className="scope-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-          <circle cx="11" cy="11" r="7" />
-          <path d="M20 20l-3.5-3.5" strokeLinecap="round" />
-        </svg>
-        <input
-          className="scope-search"
-          type="search"
-          placeholder="Search components"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          aria-label="Search components"
-        />
-      </div>
-
-      <div className="scope-tree" role="tree" aria-label={chain ? 'Focus chain' : 'Matched scope'}>
-        {!chain && (
-          <ScopeBranch
-            open={isOpen(ROOT_KEY)}
-            onToggle={() => toggle(ROOT_KEY)}
-            depth={0}
-            icon={null}
-            label="All matches"
-            count={filtered.count}
-            kind="Folder"
-          >
-            {filtered.groups.map((group) => (
-              <ScopeBranch
-                key={group.kind}
-                open={isOpen(`kind:${group.kind}`)}
-                onToggle={() => toggle(`kind:${group.kind}`)}
-                depth={1}
-                icon={<KindIcon kind={group.kind} size={14} />}
-                label={group.label}
-                count={group.count}
-                kind={group.kind}
-              >
-                {group.items.map((node) => (
-                  <ScopeItemNode
-                    key={node.row.key}
-                    node={node}
-                    depth={2}
-                    focusKey={focusKey}
-                    inspectKey={inspectKey}
-                    showFocusButton={showFocusButton && !chain}
-                    onInspect={onInspect}
-                    onFocus={onFocus}
-                    expanded={isOpen(`item:${node.row.key}`)}
-                    onToggleExpand={() => toggle(`item:${node.row.key}`)}
-                  />
-                ))}
-              </ScopeBranch>
-            ))}
-          </ScopeBranch>
-        )}
-
-        {chain && filtered.groups.flatMap((g) => g.items).map((node) => (
-          <ScopeItemNode
-            key={node.row.key}
-            node={node}
-            depth={0}
-            focusKey={focusKey}
-            inspectKey={inspectKey}
-            showFocusButton={false}
-            onInspect={onInspect}
-            onFocus={onFocus}
-            expanded={false}
-            onToggleExpand={() => {}}
-            forceLeaf
-          />
-        ))}
-
-        {query.trim() && filtered.count === 0 && (
-          <div className="scope-empty muted">No components match “{query.trim()}”</div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function ScopeBranch({ open, onToggle, depth, icon, label, count, kind, children }) {
-  return (
-    <div className="scope-branch" role="treeitem" aria-expanded={open} data-depth={depth}>
-      <button
-        type="button"
-        className="scope-branch-row"
-        style={{ '--scope-depth': depth }}
-        onClick={onToggle}
-      >
-        <span className={`scope-chevron ${open ? 'open' : ''}`} aria-hidden="true">
-          <Chevron />
-        </span>
-        {icon ? <span className="scope-kind-icon">{icon}</span> : <span className="scope-kind-icon scope-folder" aria-hidden="true"><FolderIcon /></span>}
-        <span className="scope-branch-label" title={label}>{label}</span>
-        <span className="scope-count mono">{count}</span>
-      </button>
-      {open && (
-        <div className="scope-branch-children" role="group" data-kind={kind}>
-          {children}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function ScopeItemNode({
-  node,
-  depth,
-  focusKey,
-  inspectKey,
-  showFocusButton,
-  onInspect,
-  onFocus,
-  expanded,
-  onToggleExpand,
-  forceLeaf = false,
-}) {
-  const { row, children = [] } = node
-  const hasKids = !forceLeaf && children.length > 0
-  const active = inspectKey === row.key
-  const isRoot = focusKey === row.key
-  const tone = row.status || 'unknown'
-
-  return (
-    <div className="scope-item-block" role="treeitem" aria-expanded={hasKids ? expanded : undefined} data-depth={depth}>
-      <div
-        className={[
-          'scope-item-row',
-          active ? 'selected' : '',
-          isRoot ? 'focus-root' : '',
-        ].filter(Boolean).join(' ')}
-        style={{ '--scope-depth': depth }}
-      >
-        {hasKids ? (
-          <button
-            type="button"
-            className={`scope-chevron ${expanded ? 'open' : ''}`}
-            aria-label={expanded ? 'Collapse' : 'Expand'}
-            onClick={onToggleExpand}
-          >
-            <Chevron />
-          </button>
-        ) : (
-          <span className="scope-chevron spacer" aria-hidden="true" />
-        )}
-        <button
-          type="button"
-          className="scope-item-main"
-          onClick={() => onInspect?.(row.key)}
-          title={`${row.kind}/${row.name}`}
-        >
-          <KindIcon kind={row.kind} size={14} />
-          <span className="scope-item-name mono" title={row.name}>{row.name}</span>
-          <span className="scope-item-ready muted">{formatReady(row.ready, row.total)}</span>
-          <RowStatusBadge status={tone} />
-        </button>
-        {showFocusButton && (
-          <button
-            type="button"
-            className="scope-focus-btn"
-            title={`Focus ${row.kind}/${row.name}`}
-            aria-label={`Focus ${row.name}`}
-            onClick={(e) => {
-              e.stopPropagation()
-              onFocus?.(row.key)
-            }}
-          >
-            Focus
-          </button>
-        )}
-      </div>
-      {hasKids && expanded && (
-        <div className="scope-branch-children">
-          {children.map((child) => (
-            <ScopeItemNode
-              key={child.row.key}
-              node={child}
-              depth={depth + 1}
-              focusKey={focusKey}
-              inspectKey={inspectKey}
-              showFocusButton={false}
-              onInspect={onInspect}
-              onFocus={onFocus}
-              expanded={false}
-              onToggleExpand={() => {}}
-              forceLeaf
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function buildScopeTree(rows, pods, { nestPods }) {
-  const list = Array.isArray(rows) ? rows : []
-  if (!nestPods) {
-    const groups = groupRowsByKind(list).map((g) => ({
-      kind: g.kind,
-      label: g.label,
-      count: g.items.length,
-      items: g.items.map((row) => ({ row, children: [] })),
-    }))
-    return { count: list.length, groups }
-  }
-
-  const nestedPodKeys = new Set()
-  const groups = groupRowsByKind(list).map((g) => {
-    const items = g.items.map((row) => {
-      const children = []
-      if (WORKLOAD_ROOT_KINDS.includes(row.kind) || row.kind === 'Deployment') {
-        const related = podsForMatch(row.ref || row, pods)
-        for (const p of related) {
-          const key = `Pod/${p.name}`
-          nestedPodKeys.add(key)
-          // Prefer existing match row for that pod when present
-          const existing = list.find((r) => r.key === key)
-          if (existing) {
-            children.push({ row: existing, children: [] })
-          } else {
-            children.push({
-              row: {
-                key,
-                kind: 'Pod',
-                name: p.name,
-                ref: { kind: 'Pod', name: p.name, namespace: p.namespace },
-                ready: p.ready ? 1 : 0,
-                total: 1,
-                restarts: p.restartCount || 0,
-                status: p.ready ? 'healthy' : 'degraded',
-              },
-              children: [],
-            })
-          }
-        }
-      }
-      return { row, children }
-    })
-    return {
-      kind: g.kind,
-      label: g.label,
-      count: items.length,
-      items,
-    }
+  const lazy = useCatalogEntities({ cluster, kindGroup, enabled: enabled && canLazyLoad })
+  const tree = useLazyResourceCounts(baseTree, {
+    clusterKey: clusterScopeKey(cluster),
+    kindGroup,
+    lazy,
   })
 
-  // Drop top-level Pod group entries that are already nested under a workload
-  const pruned = groups
-    .map((g) => {
-      if (g.kind !== 'Pod') return g
-      const items = g.items.filter((n) => !nestedPodKeys.has(n.row.key))
-      return { ...g, items, count: items.length }
-    })
-    .filter((g) => g.count > 0)
+  const nav = useMemo(() => ({
+    ...navBase,
+    categories: visibleCategories(tree, navBase.showEmptyKinds),
+  }), [navBase, tree])
 
-  return { count: list.length, groups: pruned }
-}
+  const displayEntities = investigationEntities.length ? investigationEntities : lazy.entities
 
-function filterScopeTree(tree, query) {
-  const q = String(query || '').trim().toLowerCase()
-  if (!q) return tree
-
-  const groups = []
-  let count = 0
-  for (const g of tree.groups) {
-    const items = []
-    for (const node of g.items) {
-      const selfHit = matchesQuery(node.row, q) || g.label.toLowerCase().includes(q)
-      const kids = (node.children || []).filter((c) => matchesQuery(c.row, q))
-      if (selfHit || kids.length) {
-        items.push({
-          row: node.row,
-          children: selfHit ? (node.children || []) : kids,
-        })
-        count += 1
+  const effectiveKindGroup = useMemo(() => {
+    if (!kindGroup) return null
+    if (investigationEntities.length > 0) {
+      return {
+        ...kindGroup,
+        accessState: 'allowed',
+        countState: { state: 'loaded', value: investigationEntities.length },
       }
     }
-    if (g.label.toLowerCase().includes(q) && !items.length) {
-      // kind label hit but no items — show full group
-      groups.push({ ...g })
-      count += g.items.length
-    } else if (items.length) {
-      groups.push({ ...g, items, count: items.length })
+    if (lazy.accessState === 'allowed') {
+      return {
+        ...kindGroup,
+        accessState: 'allowed',
+        countState: { state: 'loaded', value: lazy.entities.length },
+      }
     }
-  }
-  return { count, groups }
-}
+    if (lazy.accessState === 'forbidden') {
+      return { ...kindGroup, accessState: 'forbidden', countState: { state: 'forbidden' } }
+    }
+    if (lazy.accessState === 'unavailable') {
+      return { ...kindGroup, accessState: 'unavailable', countState: { state: 'unavailable' } }
+    }
+    return kindGroup
+  }, [kindGroup, lazy.accessState, lazy.entities.length, investigationEntities.length])
 
-function matchesQuery(row, q) {
-  const hay = `${row.kind || ''} ${row.name || ''} ${row.key || ''}`.toLowerCase()
-  return hay.includes(q)
-}
-
-function Chevron() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
-      <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  )
-}
-
-function FolderIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
-      <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  )
+  return { tree, nav, displayEntities, effectiveKindGroup, lazy, canLazyLoad }
 }

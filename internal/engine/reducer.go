@@ -131,6 +131,51 @@ func (r *StateStore) SetPaused(p bool) {
 	r.state.Paused = p
 }
 
+// KeepLogsForPods drops buffered log lines from pods outside the allowlist.
+func (r *StateStore) KeepLogsForPods(podNames []string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.ring.KeepLogsForPods(podNames)
+	r.recompute()
+	r.state.LastUpdatedAt = model.TimestampFrom(time.Now().UTC())
+}
+
+// ClearLogsForPods removes buffered log lines for the given pods only.
+func (r *StateStore) ClearLogsForPods(podNames []string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.ring.ClearLogsForPods(podNames)
+	r.recompute()
+	r.state.LastUpdatedAt = model.TimestampFrom(time.Now().UTC())
+}
+
+// ClearLogs removes all log lines from the live evidence buffer.
+func (r *StateStore) ClearLogs() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.ring.ClearLogs()
+	r.recompute()
+	r.state.LastUpdatedAt = model.TimestampFrom(time.Now().UTC())
+}
+
+// SetLogTailPods sets the pod allowlist for live log tail display (empty clears).
+func (r *StateStore) SetLogTailPods(podNames []string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(podNames) == 0 {
+		r.state.LogTailPods = nil
+		return
+	}
+	r.state.LogTailPods = append([]string(nil), podNames...)
+}
+
+// SetLogTailPaused marks whether log follows are paused while retaining scope.
+func (r *StateStore) SetLogTailPaused(v bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.state.LogTailPaused = v
+}
+
 func (r *StateStore) SetWatches(w []model.ActiveWatch) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -174,8 +219,8 @@ func (r *StateStore) recompute() {
 	// Merge snapshot K8s events so Infrastructure Patterns are not starved when
 	// the live ring is dominated by container log lines.
 	if r.lastPatternsAt.IsZero() || now.Sub(r.lastPatternsAt) >= logPatternsMinInterval {
-		patternEvents := logpatterns.MergeSnapshotEvents(events, r.state.Snapshot.Events)
-		lp := logpatterns.Extract(patternEvents, logpatterns.Options{})
+		patternEvents := events
+		lp := logpatterns.Extract(patternEvents, r.state.Snapshot.Events, logpatterns.Options{})
 		r.state.LogPatterns = &lp
 		r.lastPatternsAt = now
 	}

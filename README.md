@@ -16,9 +16,10 @@ Requires macOS and a kubeconfig for live investigations (`~/.kube/config`).
 
 Get the latest macOS build from **[GitHub Releases](https://github.com/glnreddy421/klew/releases)**:
 
-1. Download `Klew-x.y.z-macos-arm64.dmg` (or `.zip`)
-2. Open the DMG and drag **Klew** to Applications
-3. Launch Klew — signed releases open without a Gatekeeper warning
+1. **Apple Silicon:** `Klew-x.y.z-macos-arm64.dmg`
+2. **Intel Mac:** `Klew-x.y.z-macos-amd64.dmg`
+3. Open the DMG and drag **Klew** to Applications
+4. Launch Klew — signed releases open without a Gatekeeper warning
 
 > **Older unsigned builds:** right-click the app → **Open**, or allow it in **System Settings → Privacy & Security**.
 

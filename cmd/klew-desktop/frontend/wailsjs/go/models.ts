@@ -106,6 +106,8 @@ export namespace details {
 	export class Table {
 	    columns: string[];
 	    rows: string[][];
+	    sensitive?: boolean;
+	    valueColumn?: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new Table(source);
@@ -115,6 +117,8 @@ export namespace details {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.columns = source["columns"];
 	        this.rows = source["rows"];
+	        this.sensitive = source["sensitive"];
+	        this.valueColumn = source["valueColumn"];
 	    }
 	}
 	export class Section {
@@ -446,6 +450,50 @@ export namespace investigation {
 
 export namespace kube {
 	
+	export class ClusterNodeItem {
+	    name: string;
+	    ready: boolean;
+	    memoryPressure: boolean;
+	    diskPressure: boolean;
+	    pidPressure: boolean;
+	    unschedulable: boolean;
+	    kubeletVersion?: string;
+	    role?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ClusterNodeItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.ready = source["ready"];
+	        this.memoryPressure = source["memoryPressure"];
+	        this.diskPressure = source["diskPressure"];
+	        this.pidPressure = source["pidPressure"];
+	        this.unschedulable = source["unschedulable"];
+	        this.kubeletVersion = source["kubeletVersion"];
+	        this.role = source["role"];
+	    }
+	}
+	export class ClusterNodeSummary {
+	    total: number;
+	    ready: number;
+	    notReady: number;
+	    pressured: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ClusterNodeSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.total = source["total"];
+	        this.ready = source["ready"];
+	        this.notReady = source["notReady"];
+	        this.pressured = source["pressured"];
+	    }
+	}
 	export class ContextOption {
 	    name: string;
 	    cluster: string;
@@ -514,11 +562,135 @@ export namespace kube {
 		    return a;
 		}
 	}
+	export class ClusterVersionGroup {
+	    count: number;
+	    label?: string;
+	    skewed: boolean;
+	    versions?: Record<string, number>;
+	
+	    static createFrom(source: any = {}) {
+	        return new ClusterVersionGroup(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.count = source["count"];
+	        this.label = source["label"];
+	        this.skewed = source["skewed"];
+	        this.versions = source["versions"];
+	    }
+	}
+	export class ClusterVersionSummary {
+	    apiServer?: string;
+	    controlPlane: ClusterVersionGroup;
+	    workers: ClusterVersionGroup;
+	    skewed: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ClusterVersionSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.apiServer = source["apiServer"];
+	        this.controlPlane = this.convertValues(source["controlPlane"], ClusterVersionGroup);
+	        this.workers = this.convertValues(source["workers"], ClusterVersionGroup);
+	        this.skewed = source["skewed"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ClusterStatus {
+	    available: boolean;
+	    collectedAt: string;
+	    kubernetesVersion?: string;
+	    platform?: string;
+	    apiReachable: boolean;
+	    error?: string;
+	    nodes: ClusterNodeSummary;
+	    nodeItems?: ClusterNodeItem[];
+	    versions: ClusterVersionSummary;
+	    namespaceCount?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ClusterStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.available = source["available"];
+	        this.collectedAt = source["collectedAt"];
+	        this.kubernetesVersion = source["kubernetesVersion"];
+	        this.platform = source["platform"];
+	        this.apiReachable = source["apiReachable"];
+	        this.error = source["error"];
+	        this.nodes = this.convertValues(source["nodes"], ClusterNodeSummary);
+	        this.nodeItems = this.convertValues(source["nodeItems"], ClusterNodeItem);
+	        this.versions = this.convertValues(source["versions"], ClusterVersionSummary);
+	        this.namespaceCount = source["namespaceCount"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	
 
 }
 
 export namespace main {
 	
+	export class CatalogOptions {
+	    namespace: string;
+	    kubeconfig: string;
+	    context: string;
+	    includeCounts: boolean;
+	    refresh: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new CatalogOptions(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.namespace = source["namespace"];
+	        this.kubeconfig = source["kubeconfig"];
+	        this.context = source["context"];
+	        this.includeCounts = source["includeCounts"];
+	        this.refresh = source["refresh"];
+	    }
+	}
 	export class DiscoverOptions {
 	    query: string;
 	    namespace: string;
@@ -535,6 +707,38 @@ export namespace main {
 	        this.namespace = source["namespace"];
 	        this.kubeconfig = source["kubeconfig"];
 	        this.context = source["context"];
+	    }
+	}
+	export class ListCatalogEntitiesOptions {
+	    resourceId: string;
+	    namespace: string;
+	    clusterScoped: boolean;
+	    kubeconfig: string;
+	    context: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ListCatalogEntitiesOptions(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.resourceId = source["resourceId"];
+	        this.namespace = source["namespace"];
+	        this.clusterScoped = source["clusterScoped"];
+	        this.kubeconfig = source["kubeconfig"];
+	        this.context = source["context"];
+	    }
+	}
+	export class LogTailOptions {
+	    podNames: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new LogTailOptions(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.podNames = source["podNames"];
 	    }
 	}
 	export class OpenWindowOptions {
@@ -585,6 +789,62 @@ export namespace main {
 	        this.useMetricsServer = source["useMetricsServer"];
 	    }
 	}
+	export class TerminalInfo {
+	    id: string;
+	    shell: string;
+	    context: string;
+	    namespace: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TerminalInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.shell = source["shell"];
+	        this.context = source["context"];
+	        this.namespace = source["namespace"];
+	    }
+	}
+	export class TerminalOptions {
+	    kubeconfig: string;
+	    context: string;
+	    namespace: string;
+	    shell: string;
+	    cols: number;
+	    rows: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new TerminalOptions(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kubeconfig = source["kubeconfig"];
+	        this.context = source["context"];
+	        this.namespace = source["namespace"];
+	        this.shell = source["shell"];
+	        this.cols = source["cols"];
+	        this.rows = source["rows"];
+	    }
+	}
+	export class TerminalShellChoice {
+	    id: string;
+	    label: string;
+	    path: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TerminalShellChoice(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.label = source["label"];
+	        this.path = source["path"];
+	    }
+	}
 
 }
 
@@ -607,6 +867,68 @@ export namespace model {
 	        this.namespace = source["namespace"];
 	        this.startedAt = source["startedAt"];
 	    }
+	}
+	export class CatalogEntity {
+	    resourceId: string;
+	    name: string;
+	    namespace?: string;
+	    uid?: string;
+	    resourceVersion?: string;
+	    kind: string;
+	    apiVersion: string;
+	    creationTimestamp?: string;
+	    statusHint?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CatalogEntity(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.resourceId = source["resourceId"];
+	        this.name = source["name"];
+	        this.namespace = source["namespace"];
+	        this.uid = source["uid"];
+	        this.resourceVersion = source["resourceVersion"];
+	        this.kind = source["kind"];
+	        this.apiVersion = source["apiVersion"];
+	        this.creationTimestamp = source["creationTimestamp"];
+	        this.statusHint = source["statusHint"];
+	    }
+	}
+	export class CatalogEntityList {
+	    entities: CatalogEntity[];
+	    accessState: string;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CatalogEntityList(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.entities = this.convertValues(source["entities"], CatalogEntity);
+	        this.accessState = source["accessState"];
+	        this.error = source["error"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class ContainerStatus {
 	    podName: string;
@@ -1901,6 +2223,8 @@ export namespace model {
 	    hypothesisChanges: number;
 	    paused: boolean;
 	    logPatterns?: LogPatterns;
+	    logTailPods?: string[];
+	    logTailPaused?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new InvestigationState(source);
@@ -1945,6 +2269,97 @@ export namespace model {
 	        this.hypothesisChanges = source["hypothesisChanges"];
 	        this.paused = source["paused"];
 	        this.logPatterns = this.convertValues(source["logPatterns"], LogPatterns);
+	        this.logTailPods = source["logTailPods"];
+	        this.logTailPaused = source["logTailPaused"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class ResourceCount {
+	    state: string;
+	    count?: number;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ResourceCount(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.state = source["state"];
+	        this.count = source["count"];
+	        this.error = source["error"];
+	    }
+	}
+	export class ResourcePermissions {
+	    get?: boolean;
+	    list?: boolean;
+	    watch?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ResourcePermissions(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.get = source["get"];
+	        this.list = source["list"];
+	        this.watch = source["watch"];
+	    }
+	}
+	export class KubernetesResourceDescriptor {
+	    id: string;
+	    group: string;
+	    version: string;
+	    apiVersion: string;
+	    resource: string;
+	    kind: string;
+	    namespaced: boolean;
+	    shortNames: string[];
+	    supportedVerbs: string[];
+	    permissions: ResourcePermissions;
+	    source: string;
+	    accessState: string;
+	    discovered: boolean;
+	    count?: ResourceCount;
+	
+	    static createFrom(source: any = {}) {
+	        return new KubernetesResourceDescriptor(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.group = source["group"];
+	        this.version = source["version"];
+	        this.apiVersion = source["apiVersion"];
+	        this.resource = source["resource"];
+	        this.kind = source["kind"];
+	        this.namespaced = source["namespaced"];
+	        this.shortNames = source["shortNames"];
+	        this.supportedVerbs = source["supportedVerbs"];
+	        this.permissions = this.convertValues(source["permissions"], ResourcePermissions);
+	        this.source = source["source"];
+	        this.accessState = source["accessState"];
+	        this.discovered = source["discovered"];
+	        this.count = this.convertValues(source["count"], ResourceCount);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -1981,6 +2396,58 @@ export namespace model {
 	
 	
 	
+	
+	export class ResourceCatalog {
+	    context: string;
+	    cluster: string;
+	    namespace: string;
+	    // Go type: time
+	    generatedAt: any;
+	    discoveryDurationMs: number;
+	    authDurationMs: number;
+	    resources: KubernetesResourceDescriptor[];
+	    namespaced: KubernetesResourceDescriptor[];
+	    extensions: KubernetesResourceDescriptor[];
+	    clusterScoped: KubernetesResourceDescriptor[];
+	    failedGroups?: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ResourceCatalog(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.context = source["context"];
+	        this.cluster = source["cluster"];
+	        this.namespace = source["namespace"];
+	        this.generatedAt = this.convertValues(source["generatedAt"], null);
+	        this.discoveryDurationMs = source["discoveryDurationMs"];
+	        this.authDurationMs = source["authDurationMs"];
+	        this.resources = this.convertValues(source["resources"], KubernetesResourceDescriptor);
+	        this.namespaced = this.convertValues(source["namespaced"], KubernetesResourceDescriptor);
+	        this.extensions = this.convertValues(source["extensions"], KubernetesResourceDescriptor);
+	        this.clusterScoped = this.convertValues(source["clusterScoped"], KubernetesResourceDescriptor);
+	        this.failedGroups = source["failedGroups"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	
 	
 	

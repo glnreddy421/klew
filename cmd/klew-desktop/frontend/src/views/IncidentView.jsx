@@ -6,6 +6,8 @@ import { CollectingMatchesSplash } from '../components/incident/CollectingMatche
 import {
   deriveMatchRows,
   getMatchedObjects,
+  inspectRowForKey,
+  isInspectableKey,
   pickDefaultFocus,
   scopeStatus,
 } from '../lib/matches'
@@ -13,8 +15,12 @@ import { buildChainRows, buildFocusScope } from '../lib/focusScope'
 import { buildComponentInspect } from '../lib/componentInspect'
 import { mergeInspect, normalizeObjectDetail } from '../lib/objectDetails'
 import { GetObjectDetails } from '../../wailsjs/go/main/App'
+import { useResourceCatalog } from '../hooks/useResourceCatalog.js'
 import {
+  defaultListWidth,
+  inspectPanelMode,
   inspectShowsFocusCta,
+  layoutConfig,
   listChromeForMode,
   loadLayoutMode,
   loadListWidth,
@@ -23,6 +29,7 @@ import {
 
 export function IncidentView({
   view,
+  cluster,
   focusKey,
   focusPinned,
   onFocusChange,
@@ -34,12 +41,18 @@ export function IncidentView({
   const allMatches = getMatchedObjects(view)
   const allRows = useMemo(() => deriveMatchRows(view, allMatches), [view, allMatches])
   const scope = useMemo(() => scopeStatus(allRows), [allRows])
+  const { catalog, loading: catalogLoading, error: catalogError } = useResourceCatalog(cluster)
 
   const layoutMode = layoutModeProp || loadLayoutMode()
+  const layout = layoutConfig(layoutMode)
   const [inspectKey, setInspectKey] = useState(null)
   const [listWidth, setListWidth] = useState(() => loadListWidth(layoutMode))
   const splitRef = useRef(null)
   const dragRef = useRef(null)
+
+  const isAdhocInspectable = useCallback((key, rowList) => {
+    return isInspectableKey(key, view, rowList || allRows)
+  }, [view, allRows])
 
   const startColResize = useCallback((e) => {
     e.preventDefault()
@@ -92,18 +105,22 @@ export function IncidentView({
   }, [])
 
   useEffect(() => {
+    setListWidth(defaultListWidth(layoutMode))
+  }, [layoutMode])
+
+  useEffect(() => {
     if (focusPinned) return
     if (!allRows.length) {
       setInspectKey(null)
       return
     }
-    if (inspectKey && allRows.some((r) => r.key === inspectKey)) return
+    if (inspectKey && isAdhocInspectable(inspectKey, allRows)) return
     const preferred = focusKey && allRows.some((r) => r.key === focusKey)
       ? focusKey
       : pickDefaultFocus(allRows)
     setInspectKey(preferred)
     if (!focusKey) onFocusChange?.(preferred, { pinned: false })
-  }, [allRows, focusPinned, focusKey, inspectKey, onFocusChange])
+  }, [allRows, focusPinned, focusKey, inspectKey, onFocusChange, isAdhocInspectable])
 
   useEffect(() => {
     if (focusPinned && focusKey) setInspectKey(focusKey)
@@ -122,16 +139,20 @@ export function IncidentView({
 
   useEffect(() => {
     if (!rows.length) return
-    if (inspectKey && rows.some((r) => r.key === inspectKey)) return
+    if (inspectKey && isAdhocInspectable(inspectKey, rows)) return
     setInspectKey(focusPinned ? (focusKey || rows[0].key) : (pickDefaultFocus(rows) || rows[0].key))
-  }, [rows, inspectKey, focusPinned, focusKey])
+  }, [rows, inspectKey, focusPinned, focusKey, isAdhocInspectable])
 
   const inspectRow = useMemo(() => {
-    return rows.find((r) => r.key === inspectKey)
-      || rows.find((r) => r.key === focusKey)
-      || rows[0]
-      || null
-  }, [rows, inspectKey, focusKey])
+    if (inspectKey) {
+      const fromRows = rows.find((r) => r.key === inspectKey)
+      if (fromRows) return fromRows
+      const fromSnap = inspectRowForKey(inspectKey, view, allRows)
+      if (fromSnap) return fromSnap
+      return null
+    }
+    return rows.find((r) => r.key === focusKey) || rows[0] || null
+  }, [rows, allRows, inspectKey, focusKey, view])
 
   const snapshotInspect = useMemo(
     () => (inspectRow ? buildComponentInspect(view, inspectRow) : null),
@@ -181,17 +202,31 @@ export function IncidentView({
 
   const listChrome = listChromeForMode(layoutMode)
   const showFocusCta = inspectShowsFocusCta(layoutMode)
+  const panelMode = inspectPanelMode(layoutMode)
 
   const displayRows = useMemo(() => {
-    if (layoutMode !== 'signal-first' || focusPinned) return rows
+    if (!layout.sortBySignal || focusPinned) return rows
     const rank = { critical: 0, degraded: 1, warning: 1, healthy: 2, unknown: 3 }
     return [...rows].sort((a, b) => (rank[a.status] ?? 3) - (rank[b.status] ?? 3))
-  }, [rows, layoutMode, focusPinned])
+  }, [rows, layout.sortBySignal, focusPinned])
 
   const handleInspect = (key) => {
     setInspectKey(key)
-    if (!focusPinned) onFocusChange?.(key, { pinned: false })
+    if (!focusPinned && allRows.some((r) => r.key === key)) {
+      onFocusChange?.(key, { pinned: false })
+    }
   }
+
+  const handleNavKindChange = useCallback(({ entities }) => {
+    if (!entities?.length) {
+      setInspectKey(null)
+      return
+    }
+    setInspectKey((prev) => {
+      if (prev && entities.some((e) => e.key === prev)) return prev
+      return entities[0].key
+    })
+  }, [])
 
   const handleFocus = (key) => {
     onFocusChange?.(key, { pinned: true })
@@ -224,7 +259,7 @@ export function IncidentView({
           view={view}
         />
 
-        {layoutMode === 'unified-select' && inspectRow && (
+        {layout.id === 'investigation-flow' && inspectRow && (
           <div className="incident-unified-chrome">
             <span className="muted">
               Inspecting <strong>{inspectRow.kind}/{inspectRow.name}</strong>
@@ -260,12 +295,20 @@ export function IncidentView({
             <ScopePanel
               rows={displayRows}
               view={view}
+              catalog={catalog}
+              cluster={cluster}
+              catalogLoading={catalogLoading}
+              catalogError={catalogError}
               focusKey={focusKey}
               inspectKey={inspectKey}
               mode={focusPinned ? 'chain' : 'match'}
               onInspect={handleInspect}
               onFocus={handleFocus}
+              onKindChange={handleNavKindChange}
               showFocusButton={listChrome.showFocusButton}
+              entityView={listChrome.entityView}
+              tableDensity={listChrome.tableDensity}
+              showEmptyToggle={listChrome.showEmptyToggle}
               title={focusPinned ? 'Focus chain' : 'Scope'}
             />
           </div>
@@ -282,22 +325,25 @@ export function IncidentView({
 
         <section className="card incident-card incident-inspect-card">
           <div className="card-title-row">
-            <h3>Signals & details</h3>
-            {inspect && layoutMode === 'current' && (
+            <h3>{layout.id === 'investigation-flow' ? 'Investigation' : 'Signals & details'}</h3>
+            {inspect && layout.id !== 'investigation-flow' && (
               <span className="muted matched-hint">{inspect.kind}/{inspect.name}</span>
             )}
           </div>
           <div className="card-body inspect-card-body">
             <ComponentInspectPanel
               inspect={inspect}
-              layoutMode={layoutMode}
+              layoutMode={panelMode}
               focusPinned={focusPinned}
               showFocusCta={showFocusCta}
               onFocus={handleFocus}
+              onInspect={handleInspect}
               loading={detailLoading}
               error={detailError}
               emptyHint={
-                focusPinned
+                inspectKey && !inspectRow
+                  ? `Could not open ${inspectKey} for inspection.`
+                  : focusPinned
                   ? 'Select a component in the focus chain to inspect it.'
                   : 'Select a matched component to see signals and details. Use Focus to isolate its related resources.'
               }

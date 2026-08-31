@@ -30,6 +30,7 @@ export function normalizeObjectDetail(detail, row) {
     namespace: detail?.ref?.namespace || row?.namespace || row?.ref?.namespace || '',
     category,
     categoryLabel: categoryLabel(category),
+    adhoc: Boolean(row?.adhoc),
     status: {
       tone: detail?.status?.tone || row?.status || 'unknown',
       label: detail?.status?.label || row?.status || 'Unknown',
@@ -105,6 +106,9 @@ export function mergeInspect(detailModel, snapshotInspect) {
     notes: snap.notes || [],
     events: snap.events || [],
     meta: snap.meta || { labels: [], annotations: [] },
+    relatedPods: snap.relatedPods || [],
+    relationships: snap.relationships || [],
+    adhoc: snap.adhoc || detailModel.adhoc,
     status: {
       ...(snap.status || {}),
       tone: detailModel.status?.tone || snap.status?.tone,

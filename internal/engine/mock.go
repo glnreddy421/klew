@@ -62,3 +62,27 @@ func mockBaseState() model.InvestigationState {
 	st.ExpectedWatches = 8
 	return st
 }
+
+func fixturePermissions() []model.PermissionCheck {
+	allow := func(res, verb string, ok bool) model.PermissionCheck {
+		return model.PermissionCheck{Resource: res, Verb: verb, Namespace: "prod", Allowed: ok}
+	}
+	var out []model.PermissionCheck
+	for _, res := range []string{"pods", "deployments", "replicasets", "services", "endpointslices", "events"} {
+		for _, verb := range []string{"get", "list", "watch"} {
+			out = append(out, allow(res, verb, true))
+		}
+	}
+	out = append(out, allow("pods/log", "get", true))
+	out = append(out, allow("nodes", "get", false))
+	return out
+}
+
+func fixtureWatches(start model.Timestamp) []model.ActiveWatch {
+	names := []string{"pods", "deployments", "replicasets", "services", "endpointslices", "events", "logs:payment-gateway", "logs:payment-gateway"}
+	var out []model.ActiveWatch
+	for _, n := range names {
+		out = append(out, model.ActiveWatch{Name: n, Resource: n, Namespace: "prod", StartedAt: start})
+	}
+	return out
+}

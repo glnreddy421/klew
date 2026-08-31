@@ -11,7 +11,7 @@ permissions:
 jobs:
   macos:
     runs-on: macos-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     env:
       VERSION: ${{ github.ref_name }}
       APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -34,9 +34,6 @@ jobs:
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
 
-      - name: Build Klew.app
-        run: ./.github/scripts/build-macos.sh
-
       - name: Import signing certificate
         uses: apple-actions/import-codesign-certs@v3
         with:
@@ -52,14 +49,8 @@ jobs:
             exit 1
           fi
 
-      - name: Sign Klew.app
-        run: ./.github/scripts/sign-app.sh
-
-      - name: Notarize Klew.app
-        run: ./.github/scripts/notarize-app.sh
-
-      - name: Package release artifacts
-        run: ./.github/scripts/package-dist.sh
+      - name: Build, sign, notarize, and package (arm64 + Intel)
+        run: ./.github/scripts/release-macos.sh
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2

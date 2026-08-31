@@ -1,10 +1,19 @@
-import { useEffect, useMemo, useState } from 'react'
-import { StatusBadge } from './StatusBadge'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { StatusBadge, RowStatusBadge } from './StatusBadge'
 import { KindIcon } from '../KindIcon'
+import { formatReady, parseInspectKey } from '../../lib/matches'
 import {
   deriveSignalStats,
   hasAnomalyIssues,
 } from '../../lib/incidentLayout'
+import { decodeSecretValue } from '../../lib/secretDisplay'
+import {
+  enrichInspectGroups,
+  inferRowKind,
+  linkableTableColumn,
+  parseObjectRefCell,
+  summaryMetrics,
+} from '../../lib/inspectEnrich'
 
 /**
  * Kind-aware object inspector.
@@ -15,15 +24,33 @@ export function ComponentInspectPanel({
   emptyHint,
   layoutMode = 'detail-tabs',
   onFocus,
+  onInspect,
   focusPinned = false,
   showFocusCta = false,
   loading = false,
   error = null,
 }) {
   const groups = useMemo(
-    () => (inspect?.groups?.length ? inspect.groups : fallbackGroups(inspect)),
+    () => enrichInspectGroups(
+      inspect?.groups?.length ? inspect.groups : fallbackGroups(inspect),
+      inspect,
+    ),
     [inspect],
   )
+
+  const metrics = useMemo(() => summaryMetrics(inspect), [inspect])
+
+  const relatedPods = useMemo(() => {
+    if (!inspect?.relatedPods?.length || inspect.kind === 'Pod') return []
+    return inspect.relatedPods
+  }, [inspect])
+
+  const relationshipItems = useMemo(() => {
+    if (!inspect) return []
+    const items = inspect.relationships || []
+    if (!relatedPods.length) return items
+    return items.filter((r) => r.kind !== 'Pod' && r.role !== 'Pod' && r.role !== 'Target pod')
+  }, [inspect, relatedPods])
 
   if (!inspect) {
     return (
@@ -37,6 +64,21 @@ export function ComponentInspectPanel({
 
   const unhealthy = hasAnomalyIssues(inspect)
   const focusKey = inspect.key
+
+  const relatedPodsBlock = relatedPods.length > 0 ? (
+    <RelatedPodsSection pods={relatedPods} onInspect={onInspect} />
+  ) : null
+
+  const relationshipsBlock = relationshipItems.length > 0 ? (
+    <RelationshipsSection items={relationshipItems} onInspect={onInspect} />
+  ) : null
+
+  const summaryExtras = (
+    <>
+      {metrics.length > 0 && <InspectSummaryMetrics metrics={metrics} />}
+      {relationshipsBlock}
+    </>
+  )
 
   const header = (
     <InspectIdentityHeader
@@ -55,7 +97,10 @@ export function ComponentInspectPanel({
           inspect={inspect}
           unhealthy={unhealthy}
           header={header}
+          summaryExtras={summaryExtras}
           groups={groups}
+          relatedPodsBlock={relatedPodsBlock}
+          onInspect={onInspect}
         />
       )
 
@@ -65,25 +110,22 @@ export function ComponentInspectPanel({
           inspect={inspect}
           unhealthy={unhealthy}
           header={header}
+          summaryExtras={summaryExtras}
           groups={groups}
+          relatedPodsBlock={relatedPodsBlock}
+          onInspect={onInspect}
         />
       )
 
-    case 'master-detail':
-    case 'unified-select':
-    case 'dense-list':
-    case 'current':
+    case 'stacked':
     default:
       return (
-        <div className={`inspect-panel mode-${layoutMode || 'current'}`}>
+        <div className={`inspect-panel mode-${layoutMode || 'stacked'}`}>
           {header}
-          {layoutMode === 'unified-select' && !focusPinned && (
-            <p className="inspect-unified-banner">
-              Selected for inspect — use <strong>Focus chain</strong> to isolate related resources.
-            </p>
-          )}
-          <SignalsBlock inspect={inspect} unhealthy={unhealthy} quietHealthy />
-          <StackedSections groups={groups} />
+          {summaryExtras}
+          <SignalsBlock inspect={inspect} unhealthy={unhealthy} quietHealthy compact={metrics.length > 0} />
+          {relatedPodsBlock}
+          <StackedSections groups={groups} onInspect={onInspect} />
         </div>
       )
   }
@@ -136,20 +178,36 @@ function fallbackGroups(inspect) {
 
 function InspectIdentityHeader({ inspect, showFocusCta, onFocus, loading, error }) {
   return (
-    <div className="inspect-header inspect-header-actions">
+    <header className="inspect-header inspect-header-actions inspect-identity">
       <div className="inspect-title-block">
-        <span className="inspect-category">{inspect.categoryLabel}</span>
-        <h4 className="inspect-name">
-          <KindIcon kind={inspect.kind} size={16} />
-          <span className="inspect-name-text">{inspect.name}</span>
-        </h4>
-        {inspect.namespace && (
-          <span className="inspect-ns muted mono">{inspect.namespace}</span>
-        )}
+        <div className="inspect-name-row">
+          <KindIcon kind={inspect.kind} size={18} />
+          <h4 className="inspect-name">
+            <span className="inspect-name-text">{inspect.name}</span>
+          </h4>
+          {inspect.adhoc && (
+            <span className="inspect-adhoc-tag" title="Fetched on demand — not in investigation scope">
+              On demand
+            </span>
+          )}
+        </div>
+        <p className="inspect-identity-meta muted">
+          <span>{inspect.kind}</span>
+          {inspect.namespace ? (
+            <>
+              <span className="inspect-meta-sep">·</span>
+              <span className="mono">{inspect.namespace}</span>
+            </>
+          ) : (
+            <>
+              <span className="inspect-meta-sep">·</span>
+              <span>Cluster-scoped</span>
+            </>
+          )}
+        </p>
       </div>
       <div className="inspect-header-right">
-        {loading && <span className="muted inspect-loading">Updating…</span>}
-        {error && <span className="inspect-error" title={error}>Live fetch failed</span>}
+        {loading && <span className="muted inspect-loading">Fetching live details…</span>}
         <StatusBadge status={inspect.status.tone} label={inspect.status.label} />
         {showFocusCta && (
           <button
@@ -162,11 +220,69 @@ function InspectIdentityHeader({ inspect, showFocusCta, onFocus, loading, error 
           </button>
         )}
       </div>
-    </div>
+      {error && (
+        <div className="inspect-fetch-error" role="alert">
+          {error}
+        </div>
+      )}
+    </header>
   )
 }
 
-function SignalFirstPanel({ inspect, unhealthy, header, groups }) {
+function InspectSummaryMetrics({ metrics }) {
+  if (!metrics?.length) return null
+  return (
+    <dl className="inspect-prop-list inspect-summary-props" aria-label="Summary">
+      {metrics.map((m) => (
+        <div key={m.key} className="inspect-prop-row">
+          <dt>{m.key}</dt>
+          <dd>{m.value}</dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
+
+function RelationshipsSection({ items, onInspect }) {
+  if (!items?.length) return null
+  const grouped = items.reduce((acc, item) => {
+    const role = item.role || 'Related'
+    if (!acc[role]) acc[role] = []
+    acc[role].push(item)
+    return acc
+  }, {})
+
+  return (
+    <section className="inspect-section inspect-relationships">
+      <h5 className="inspect-section-label">Relationships</h5>
+      <div className="inspect-relationship-groups">
+        {Object.entries(grouped).map(([role, list]) => (
+          <div key={role} className="inspect-relationship-group">
+            <span className="inspect-relationship-role">{role}</span>
+            <ul className="inspect-link-list">
+              {list.map((item) => (
+                <li key={`${item.role}-${item.key}`}>
+                  <button
+                    type="button"
+                    className="inspect-link-row"
+                    onClick={() => onInspect?.(item.key)}
+                    title={`Inspect ${item.kind}/${item.name}`}
+                  >
+                    <KindIcon kind={item.kind} size={15} />
+                    <span className="inspect-link-name">{item.name}</span>
+                    <span className="inspect-link-meta muted">{item.kind}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function SignalFirstPanel({ inspect, unhealthy, header, summaryExtras, groups, relatedPodsBlock, onInspect }) {
   const [metaOpen, setMetaOpen] = useState(!unhealthy)
   const stats = deriveSignalStats(inspect)
 
@@ -177,6 +293,7 @@ function SignalFirstPanel({ inspect, unhealthy, header, groups }) {
   return (
     <div className="inspect-panel mode-signal-first">
       {header}
+      {summaryExtras}
       {unhealthy ? (
         <>
           <div className="inspect-signal-hero">
@@ -200,23 +317,59 @@ function SignalFirstPanel({ inspect, unhealthy, header, groups }) {
           >
             {metaOpen ? 'Hide details' : 'Show details'}
           </button>
-          {metaOpen && <StackedSections groups={groups} />}
+          {metaOpen && (
+            <>
+              {relatedPodsBlock}
+              <StackedSections groups={groups} onInspect={onInspect} />
+            </>
+          )}
         </>
       ) : (
         <>
-          <p className="inspect-quiet-ok muted">No anomalies on this component.</p>
-          <StackedSections groups={groups} />
+          <SignalsBlock inspect={inspect} unhealthy={unhealthy} quietHealthy compact />
+          {relatedPodsBlock}
+          <StackedSections groups={groups} onInspect={onInspect} />
         </>
       )}
     </div>
   )
 }
 
-function DetailTabsPanel({ inspect, unhealthy, header, groups }) {
+function DetailTabsPanel({
+  inspect,
+  unhealthy,
+  header,
+  summaryExtras,
+  groups,
+  relatedPodsBlock,
+  onInspect,
+}) {
   const [tab, setTab] = useState(groups[0]?.id || 'status')
+  const hasSummaryTab = groups.some((g) => g.id === 'summary')
+  const lastInspectKeyRef = useRef(inspect.key)
+  const metrics = useMemo(() => summaryMetrics(inspect), [inspect])
+  const relationshipItems = useMemo(() => {
+    const items = inspect?.relationships || []
+    const hasPodList = inspect?.relatedPods?.length && inspect.kind !== 'Pod'
+    if (!hasPodList) return items
+    return items.filter((r) => r.kind !== 'Pod' && r.role !== 'Pod' && r.role !== 'Target pod')
+  }, [inspect])
+  const relationshipsBlock = relationshipItems.length > 0 ? (
+    <RelationshipsSection items={relationshipItems} onInspect={onInspect} />
+  ) : null
 
+  // Reset tab only when the user selects a different object. Live refreshes rebuild
+  // `groups` with a new reference — preserve the active tab when it still exists.
   useEffect(() => {
-    setTab(groups[0]?.id || 'status')
+    const objectChanged = lastInspectKeyRef.current !== inspect.key
+    lastInspectKeyRef.current = inspect.key
+    const ids = new Set(groups.map((g) => g.id))
+
+    setTab((current) => {
+      if (objectChanged) return groups[0]?.id || 'status'
+      if (ids.has(current)) return current
+      return groups[0]?.id || 'status'
+    })
   }, [inspect.key, groups])
 
   const active = groups.find((g) => g.id === tab) || groups[0]
@@ -224,9 +377,11 @@ function DetailTabsPanel({ inspect, unhealthy, header, groups }) {
   return (
     <div className="inspect-panel mode-detail-tabs">
       {header}
-      <SignalsBlock inspect={inspect} unhealthy={unhealthy} quietHealthy />
+      {!hasSummaryTab && summaryExtras}
+      <SignalsBlock inspect={inspect} unhealthy={unhealthy} quietHealthy compact={!!summaryExtras} />
       {groups.length > 0 && (
         <>
+          {!hasSummaryTab && relatedPodsBlock}
           <div className="inspect-tabs" role="tablist" aria-label="Detail sections">
             {groups.map((g) => (
               <button
@@ -238,11 +393,21 @@ function DetailTabsPanel({ inspect, unhealthy, header, groups }) {
                 onClick={() => setTab(g.id)}
               >
                 {g.label}
+                {g.sections.length > 1 && (
+                  <span className="inspect-tab-count">{g.sections.length}</span>
+                )}
               </button>
             ))}
           </div>
           <div className="inspect-tab-panel" role="tabpanel">
-            {active && <GroupBody group={active} />}
+            {active?.id === 'summary' && metrics.length > 0 && !active.sections.some((s) => s.fields?.length) && (
+              <InspectSummaryMetrics metrics={metrics} />
+            )}
+            {(active?.id === 'summary' || active?.id === 'relationships') && relationshipsBlock}
+            {active?.id === 'summary' && relatedPodsBlock}
+            {active && (
+              <GroupBody group={active} onInspect={onInspect} hideGroupTitle />
+            )}
           </div>
         </>
       )}
@@ -250,35 +415,72 @@ function DetailTabsPanel({ inspect, unhealthy, header, groups }) {
   )
 }
 
-function StackedSections({ groups }) {
+function RelatedPodsSection({ pods, onInspect }) {
+  if (!pods?.length) return null
+  return (
+    <section className="inspect-section inspect-related-pods">
+      <h5 className="inspect-section-label">Pods</h5>
+      <ul className="inspect-link-list">
+        {pods.map((pod) => (
+          <li key={pod.key}>
+            <button
+              type="button"
+              className="inspect-link-row"
+              onClick={() => onInspect?.(pod.key)}
+              aria-label={`Inspect pod ${pod.name}`}
+            >
+              <KindIcon kind="Pod" size={15} />
+              <span className="inspect-link-name">{pod.name}</span>
+              <span className="inspect-link-meta">{pod.phase}</span>
+              <span className="inspect-link-meta">{formatReady(pod.ready, pod.total)}</span>
+              {pod.restarts > 0 && (
+                <span className="inspect-link-meta muted">{pod.restarts} restarts</span>
+              )}
+              <RowStatusBadge status={pod.status} />
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+function StackedSections({ groups, onInspect }) {
   if (!groups?.length) return null
   return (
     <div className="inspect-stack">
       {groups.map((g) => (
-        <GroupBody key={g.id} group={g} showHeading />
+        <GroupBody key={g.id} group={g} showHeading onInspect={onInspect} />
       ))}
     </div>
   )
 }
 
-function GroupBody({ group, showHeading = false }) {
+function GroupBody({ group, showHeading = false, hideGroupTitle = false, onInspect }) {
   return (
     <div className="inspect-group">
-      {showHeading && <h5 className="inspect-group-title">{group.label}</h5>}
+      {showHeading && !hideGroupTitle && (
+        <h5 className="inspect-group-title">{group.label}</h5>
+      )}
       {group.sections.map((s) => (
-        <DetailSection key={s.id || s.title} section={s} />
+        <DetailSection
+          key={s.id || s.title}
+          section={s}
+          groupId={group.id}
+          onInspect={onInspect}
+        />
       ))}
     </div>
   )
 }
 
-function DetailSection({ section }) {
+function DetailSection({ section, groupId, onInspect }) {
   if (!section) return null
 
   if (section._resourceBars) {
     return (
       <section className="inspect-section">
-        <h5>{section.title}</h5>
+        <h5 className="inspect-section-label">{section.title}</h5>
         <div className="resource-bars">
           {section._resourceBars.map((bar) => (
             <ResourceBar key={bar.id} bar={bar} />
@@ -294,7 +496,7 @@ function DetailSection({ section }) {
     if (!labels.length && !annotations.length) return null
     return (
       <section className="inspect-section">
-        <h5>{section.title}</h5>
+        <h5 className="inspect-section-label">{section.title}</h5>
         {labels.length > 0 && (
           <div className="inspect-meta-block">
             <span className="inspect-meta-label">Labels</span>
@@ -328,7 +530,7 @@ function DetailSection({ section }) {
   if (section._events) {
     return (
       <section className="inspect-section">
-        <h5>{section.title}</h5>
+        <h5 className="inspect-section-label">{section.title}</h5>
         <ul className="inspect-events">
           {section._events.map((ev, i) => (
             <li key={`${ev.time}-${i}`} className={`inspect-event sev-${ev.severity}`}>
@@ -353,11 +555,11 @@ function DetailSection({ section }) {
 
   return (
     <section className="inspect-section">
-      <h5>{section.title}</h5>
+      <h5 className="inspect-section-label">{section.title}</h5>
       {hasFields && (
-        <dl className="inspect-fields">
+        <dl className="inspect-prop-list">
           {section.fields.map((f, i) => (
-            <div key={`${f.key}-${i}`} className="inspect-field">
+            <div key={`${f.key}-${i}`} className="inspect-prop-row">
               <dt>{f.key}</dt>
               <dd title={f.value}>{f.value}</dd>
             </div>
@@ -387,9 +589,43 @@ function DetailSection({ section }) {
             <tbody>
               {section.table.rows.map((row, i) => (
                 <tr key={i}>
-                  {row.map((cell, j) => (
-                    <td key={j} title={cell}>{cell || '—'}</td>
-                  ))}
+                  {row.map((cell, j) => {
+                    const valueCol = section.table.valueColumn ?? 1
+                    if (section.table.sensitive && j === valueCol) {
+                      return (
+                        <td key={j}>
+                          <SensitiveValueCell encoded={cell} />
+                        </td>
+                      )
+                    }
+                    const colName = section.table.columns[j]
+                    const linkable = linkableTableColumn(colName, groupId)
+                      && cell && onInspect
+                    if (linkable) {
+                      const parsedRef = parseObjectRefCell(cell)
+                      const kind = parsedRef?.kind || inferRowKind(section, j, cell)
+                      const inspectName = parsedRef?.name || cell
+                      const parsed = kind ? parseInspectKey(`${kind}/${inspectName}`) : null
+                      const key = parsed?.key
+                      if (key) {
+                        return (
+                          <td key={j}>
+                            <button
+                              type="button"
+                              className="inspect-table-link"
+                              onClick={() => onInspect(key)}
+                              title={`Inspect ${kind}/${inspectName}`}
+                            >
+                              {cell}
+                            </button>
+                          </td>
+                        )
+                      }
+                    }
+                    return (
+                      <td key={j} title={cell}>{cell || '—'}</td>
+                    )
+                  })}
                 </tr>
               ))}
             </tbody>
@@ -407,14 +643,66 @@ function DetailSection({ section }) {
   )
 }
 
-function SignalsBlock({ inspect, unhealthy, quietHealthy }) {
+function SensitiveValueCell({ encoded }) {
+  const [revealed, setRevealed] = useState(false)
+  const display = revealed ? decodeSecretValue(encoded) : (encoded || '—')
+
+  return (
+    <div className="inspect-sensitive-cell">
+      <span
+        className={`inspect-sensitive-value mono ${revealed ? 'revealed' : 'encoded'}`}
+        title={display}
+      >
+        {display}
+      </span>
+      <button
+        type="button"
+        className="inspect-reveal-btn"
+        aria-label={revealed ? 'Hide decoded value' : 'Reveal decoded value'}
+        aria-pressed={revealed}
+        onClick={() => setRevealed((v) => !v)}
+      >
+        {revealed ? <EyeOffIcon /> : <EyeIcon />}
+      </button>
+    </div>
+  )
+}
+
+function EyeIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"
+        stroke="currentColor"
+        strokeWidth="1.75"
+      />
+      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.75" />
+    </svg>
+  )
+}
+
+function EyeOffIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M3 3l18 18M10.5 10.7A3 3 0 0 0 12 15a3 3 0 0 0 2.3-1M6.7 6.8C4.6 8.1 3 10 2 12s3.5 7 10 7c1.8 0 3.4-.4 4.8-1.1M14 9.2c.6.6 1 1.4 1 2.3a3 3 0 0 1-3 3"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
+function SignalsBlock({ inspect, unhealthy, quietHealthy, compact = false }) {
   if (quietHealthy && !unhealthy) {
+    if (compact) return null
     return <p className="inspect-quiet-ok muted">No anomalies on this component.</p>
   }
 
   return (
     <section className={`inspect-section inspect-anomalies ${unhealthy ? 'has-issues' : 'clear'}`}>
-      <h5>Signals</h5>
+      <h5 className="inspect-section-label">Signals</h5>
       <p className="inspect-events-hint muted">
         Anomalies for this component only — not the overall investigation.
       </p>

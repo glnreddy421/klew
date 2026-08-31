@@ -13,7 +13,7 @@ import {
 /**
  * Evidence — correlated pattern links first, then supporting claims & next checks.
  */
-export function EvidenceView({ view, onFilterLogs }) {
+export function EvidenceView({ view, onFilterLogs, explorerFilter }) {
   const state = getState(view)
   const verdict = state.verdict || {}
   const healthy = String(verdict.status || '').toLowerCase() === 'healthy'
@@ -37,7 +37,19 @@ export function EvidenceView({ view, onFilterLogs }) {
     return ranked.length ? ranked : (view?.signals || [])
   }, [verdict, view?.signals])
 
-  const evidence = view?.evidence || state.liveEvidence || []
+  const evidence = useMemo(() => {
+    const raw = view?.evidence || state.liveEvidence || []
+    const t = explorerFilter?.type
+    if (!t) return raw
+    return raw.filter((e) => {
+      const st = String(e.sourceType || '').toLowerCase()
+      if (t === 'log') return st === 'log'
+      if (t === 'event') return st === 'k8s_event' || st === 'event'
+      if (t === 'change') return st === 'object_change' || st === 'change'
+      if (t === 'metric') return st === 'metric' || st === 'metrics'
+      return true
+    })
+  }, [view?.evidence, state.liveEvidence, explorerFilter?.type])
   const groups = useMemo(() => groupEvidence(evidence), [evidence])
   const nextChecks = view?.nextChecks || state.nextChecks || verdict.recommendedNextChecks || []
   const gaps = verdict.missingDataWarnings || state.warnings || []

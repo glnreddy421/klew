@@ -32,6 +32,8 @@ func main() {
 		MinHeight: 640,
 		Menu:      buildApplicationMenu(app),
 		Mac: &mac.Options{
+			Appearance:           mac.NSAppearanceNameDarkAqua,
+			DisableZoom:          false,
 			About: &mac.AboutInfo{
 				Title:   "Klew",
 				Message: "Everything your cluster is saying. One screen.",

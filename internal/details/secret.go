@@ -2,6 +2,7 @@ package details
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"sort"
 )
@@ -36,10 +37,15 @@ func (secretProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, e
 	if len(keys) > 0 {
 		var rows [][]string
 		for _, k := range keys {
-			rows = append(rows, []string{k, fmt.Sprintf("%d bytes", len(sec.Data[k]))})
+			raw := sec.Data[k]
+			rows = append(rows, []string{
+				k,
+				base64.StdEncoding.EncodeToString(raw),
+				fmt.Sprintf("%d bytes", len(raw)),
+			})
 		}
-		sections = append(sections, sectionTable("keys", "Keys", GroupSpec,
-			[]string{"Key", "Size"}, rows))
+		sections = append(sections, sectionSensitiveTable("keys", "Keys", GroupSpec,
+			[]string{"Key", "Value", "Size"}, rows, 1))
 	}
 	if len(consumers) > 0 {
 		var rows [][]string

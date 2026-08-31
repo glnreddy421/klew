@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync"
 
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+
 	"github.com/glnreddy421/klew/internal/kube"
 	"github.com/glnreddy421/klew/internal/model"
 )
@@ -78,7 +80,9 @@ func Build(ctx context.Context, req *Request) (*ObjectDetail, error) {
 	if kind == "" || name == "" {
 		return nil, fmt.Errorf("details: kind and name are required")
 	}
-	if req.Ref.Namespace == "" && req.Client != nil {
+	if isClusterScopedKind(kind) {
+		req.Ref.Namespace = ""
+	} else if req.Ref.Namespace == "" && req.Client != nil {
 		req.Ref.Namespace = req.Client.Namespace
 	}
 
@@ -91,7 +95,7 @@ func Build(ctx context.Context, req *Request) (*ObjectDetail, error) {
 
 	detail, err := p.Build(ctx, req)
 	if err != nil {
-		return nil, err
+		return nil, wrapDetailErr(err, kind, name)
 	}
 	if detail == nil {
 		return nil, fmt.Errorf("details: empty result for %s/%s", kind, name)
@@ -159,4 +163,30 @@ func normalizeKind(kind string) string {
 	default:
 		return kind
 	}
+}
+
+func isClusterScopedKind(kind string) bool {
+	switch kind {
+	case "Node", "Namespace", "PersistentVolume", "StorageClass",
+		"ClusterRole", "ClusterRoleBinding", "ClusterPolicy":
+		return true
+	default:
+		return false
+	}
+}
+
+func wrapDetailErr(err error, kind, name string) error {
+	if err == nil {
+		return nil
+	}
+	if k8serrors.IsForbidden(err) {
+		return fmt.Errorf("you don't have permission to view %s %q", kind, name)
+	}
+	if k8serrors.IsUnauthorized(err) {
+		return fmt.Errorf("not authorized to view %s %q — check your kubeconfig credentials", kind, name)
+	}
+	if k8serrors.IsNotFound(err) {
+		return fmt.Errorf("%s %q was not found in the cluster", kind, name)
+	}
+	return err
 }

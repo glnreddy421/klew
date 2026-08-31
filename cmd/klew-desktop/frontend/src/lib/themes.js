@@ -1,6 +1,32 @@
 export const THEME_STORAGE_KEY = 'klew-desktop-theme'
 export const DEFAULT_THEME = 'ocean'
 
+function parseHexColor(hex) {
+  const raw = String(hex || '').trim().replace('#', '')
+  if (raw.length === 3) {
+    return raw.split('').map((c) => parseInt(c + c, 16))
+  }
+  if (raw.length !== 6) return null
+  return [
+    parseInt(raw.slice(0, 2), 16),
+    parseInt(raw.slice(2, 4), 16),
+    parseInt(raw.slice(4, 6), 16),
+  ]
+}
+
+/** Pick readable label color for accent-filled buttons (Investigate, primary CTAs). */
+export function onAccentForColor(accent) {
+  const rgb = parseHexColor(accent)
+  if (!rgb || rgb.some((n) => Number.isNaN(n))) return '#ffffff'
+  const channelLum = (c) => {
+    const s = c / 255
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4
+  }
+  const [r, g, b] = rgb.map(channelLum)
+  const l = 0.2126 * r + 0.7152 * g + 0.0722 * b
+  return l > 0.55 ? '#0a0a0a' : '#ffffff'
+}
+
 const DARK_HOVER = {
   '--surface-hover': 'rgba(255, 255, 255, 0.04)',
   '--surface-hover-strong': 'rgba(255, 255, 255, 0.06)',
@@ -130,6 +156,79 @@ const DARK_THEMES = [
   },
 ]
 
+/** Pure black / grey-black shells — minimal accent, OLED-friendly. */
+const BLACK_THEMES = [
+  {
+    id: 'midnight',
+    name: 'Midnight',
+    description: 'Grey-black workspace — GitHub-style',
+    mode: 'dark',
+    swatch: ['#0d1117', '#58a6ff'],
+    vars: {
+      '--sidebar-bg': '#0d1117',
+      '--sidebar-hover': '#161b22',
+      '--sidebar-active': '#21262d',
+      '--workspace-bg': '#010409',
+      '--surface': '#0d1117',
+      '--surface-2': '#161b22',
+      '--border': '#30363d',
+      '--border-light': '#484f58',
+      '--text': '#e6edf3',
+      '--text-secondary': '#8b949e',
+      '--accent': '#58a6ff',
+      '--accent-hover': '#79b8ff',
+      '--accent-dim': 'rgba(88, 166, 255, 0.16)',
+      ...DARK_HOVER,
+    },
+  },
+  {
+    id: 'black',
+    name: 'Black',
+    description: 'True black — high contrast',
+    mode: 'dark',
+    swatch: ['#000000', '#f5f5f5'],
+    vars: {
+      '--sidebar-bg': '#000000',
+      '--sidebar-hover': '#121212',
+      '--sidebar-active': '#1a1a1a',
+      '--workspace-bg': '#000000',
+      '--surface': '#080808',
+      '--surface-2': '#111111',
+      '--border': '#333333',
+      '--border-light': '#404040',
+      '--text': '#f5f5f5',
+      '--text-secondary': '#a3a3a3',
+      '--accent': '#f0f0f0',
+      '--accent-hover': '#ffffff',
+      '--accent-dim': 'rgba(255, 255, 255, 0.12)',
+      ...DARK_HOVER,
+    },
+  },
+  {
+    id: 'silver',
+    name: 'Black silver',
+    description: 'Deep black with cool silver accent',
+    mode: 'dark',
+    swatch: ['#050506', '#c5cdd8'],
+    vars: {
+      '--sidebar-bg': '#050506',
+      '--sidebar-hover': '#101114',
+      '--sidebar-active': '#181a1f',
+      '--workspace-bg': '#000000',
+      '--surface': '#0a0a0c',
+      '--surface-2': '#121418',
+      '--border': '#252830',
+      '--border-light': '#353942',
+      '--text': '#c5cdd8',
+      '--text-secondary': '#8b939e',
+      '--accent': '#c5cdd8',
+      '--accent-hover': '#d4dae3',
+      '--accent-dim': 'rgba(197, 205, 216, 0.14)',
+      ...DARK_HOVER,
+    },
+  },
+]
+
 /** Light UI palettes — same accents, bright shells. */
 const LIGHT_THEMES = [
   {
@@ -249,10 +348,11 @@ const LIGHT_THEMES = [
   },
 ]
 
-export const THEMES = [...DARK_THEMES, ...LIGHT_THEMES]
+export const THEMES = [...DARK_THEMES, ...BLACK_THEMES, ...LIGHT_THEMES]
 
 export const THEME_GROUPS = [
   { id: 'dark', label: 'Dark', themes: DARK_THEMES },
+  { id: 'black', label: 'Black', themes: BLACK_THEMES },
   { id: 'light', label: 'Light', themes: LIGHT_THEMES },
 ]
 
@@ -269,6 +369,10 @@ export function applyTheme(id) {
   for (const [key, value] of Object.entries(theme.vars)) {
     root.style.setProperty(key, value)
   }
+  root.style.setProperty('--on-accent', onAccentForColor(theme.vars['--accent']))
+  // Investigation shell uses dedicated tokens — keep them aligned with appearance accent.
+  root.style.setProperty('--investigation-accent', theme.vars['--accent'])
+  root.style.setProperty('--investigation-accent-dim', theme.vars['--accent-dim'])
   try {
     localStorage.setItem(THEME_STORAGE_KEY, theme.id)
   } catch {

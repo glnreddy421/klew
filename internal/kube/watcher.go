@@ -9,6 +9,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	eventsv1 "k8s.io/api/events/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
 
@@ -24,19 +25,51 @@ type LiveWatcher struct {
 	Sink      EvidenceSink
 	Namespace string
 	Query     string
+
+	scopeMu   sync.RWMutex
+	scopePods investigationPods
+
+	dedupeMu sync.Mutex
+	dedupe   map[string]struct{}
+}
+
+// SetScopePodNames updates the investigation pod allowlist used for live events.
+func (w *LiveWatcher) SetScopePodNames(names []string) {
+	if w == nil {
+		return
+	}
+	w.scopeMu.Lock()
+	w.scopePods = newInvestigationPods(names)
+	w.scopeMu.Unlock()
+}
+
+func (w *LiveWatcher) scopeSnapshot() investigationPods {
+	w.scopeMu.RLock()
+	defer w.scopeMu.RUnlock()
+	if len(w.scopePods) == 0 {
+		return nil
+	}
+	out := make(investigationPods, len(w.scopePods))
+	for k, v := range w.scopePods {
+		out[k] = v
+	}
+	return out
 }
 
 // Start launches watch goroutines.
-func (w *LiveWatcher) Start(ctx context.Context, wg *sync.WaitGroup) []model.ActiveWatch {
+func (w *LiveWatcher) Start(ctx context.Context, wg *sync.WaitGroup, scopePodNames []string) []model.ActiveWatch {
+	w.SetScopePodNames(scopePodNames)
 	now := time.Now().UTC()
 	watches := []model.ActiveWatch{
 		{Name: "pods", Resource: "pods", Namespace: w.Namespace, StartedAt: model.TimestampFrom(now)},
 		{Name: "events", Resource: "events", Namespace: w.Namespace, StartedAt: model.TimestampFrom(now)},
+		{Name: "events_v1", Resource: "events.events.k8s.io", Namespace: w.Namespace, StartedAt: model.TimestampFrom(now)},
 		{Name: "deployments", Resource: "deployments", Namespace: w.Namespace, StartedAt: model.TimestampFrom(now)},
 	}
 	if wg != nil {
-		wg.Add(3)
+		wg.Add(4)
 		go func() { defer wg.Done(); w.watchEvents(ctx) }()
+		go func() { defer wg.Done(); w.watchEventsV1(ctx) }()
 		go func() { defer wg.Done(); w.watchPods(ctx) }()
 		go func() { defer wg.Done(); w.watchDeployments(ctx) }()
 	}
@@ -76,19 +109,52 @@ func (w *LiveWatcher) watchEvents(ctx context.Context) {
 	}
 }
 
+func (w *LiveWatcher) watchEventsV1(ctx context.Context) {
+	if w.Sink == nil {
+		return
+	}
+	backoff := time.Second
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+		established, err := w.watchEventsV1Once(ctx)
+		if ctx.Err() != nil {
+			return
+		}
+		if established {
+			backoff = time.Second
+		}
+		if err != nil {
+			w.Sink(systemEvent("events_v1_watch_failed", err.Error(), model.SeverityWarning))
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(backoff):
+		}
+		if !established {
+			backoff *= 2
+			if backoff > 30*time.Second {
+				backoff = 30 * time.Second
+			}
+		}
+	}
+}
+
 func (w *LiveWatcher) watchEventsOnce(ctx context.Context) (established bool, err error) {
 	list, err := w.Client.Clientset.CoreV1().Events(w.Namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return false, err
 	}
-	// Seed a bounded recent window so Infrastructure Patterns has history immediately.
 	const maxSeed = 300
 	items := list.Items
 	if len(items) > maxSeed {
 		items = items[len(items)-maxSeed:]
 	}
+	scope := w.scopeSnapshot()
 	for i := range items {
-		w.emitEvent(&items[i])
+		w.emitCoreEvent(&items[i], scope)
 	}
 
 	wi, err := w.Client.Clientset.CoreV1().Events(w.Namespace).Watch(ctx, metav1.ListOptions{
@@ -115,23 +181,72 @@ func (w *LiveWatcher) watchEventsOnce(ctx context.Context) (established bool, er
 			if !ok || e == nil {
 				continue
 			}
-			w.emitEvent(e)
+			w.emitCoreEvent(e, w.scopeSnapshot())
 		}
 	}
 }
 
-func (w *LiveWatcher) emitEvent(e *corev1.Event) {
+func (w *LiveWatcher) watchEventsV1Once(ctx context.Context) (established bool, err error) {
+	list, err := w.Client.Clientset.EventsV1().Events(w.Namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return false, err
+	}
+	wi, err := w.Client.Clientset.EventsV1().Events(w.Namespace).Watch(ctx, metav1.ListOptions{
+		ResourceVersion: list.ResourceVersion,
+	})
+	if err != nil {
+		return false, err
+	}
+	defer wi.Stop()
+	established = true
+
+	for {
+		select {
+		case <-ctx.Done():
+			return true, nil
+		case ev, ok := <-wi.ResultChan():
+			if !ok {
+				return true, fmt.Errorf("events v1 watch closed")
+			}
+			if ev.Type == watch.Error {
+				return true, fmt.Errorf("events v1 watch error")
+			}
+			e, ok := ev.Object.(*eventsv1.Event)
+			if !ok || e == nil {
+				continue
+			}
+			w.emitEventsV1(e, w.scopeSnapshot())
+		}
+	}
+}
+
+func (w *LiveWatcher) shouldEmit(kind, name, reason, msg string) bool {
+	key := kind + "|" + name + "|" + reason + "|" + msg
+	w.dedupeMu.Lock()
+	defer w.dedupeMu.Unlock()
+	if w.dedupe == nil {
+		w.dedupe = make(map[string]struct{}, 256)
+	}
+	if _, ok := w.dedupe[key]; ok {
+		return false
+	}
+	w.dedupe[key] = struct{}{}
+	if len(w.dedupe) > 500 {
+		w.dedupe = make(map[string]struct{}, 256)
+	}
+	return true
+}
+
+func (w *LiveWatcher) emitCoreEvent(e *corev1.Event, scope investigationPods) {
 	if e == nil || w.Sink == nil {
 		return
 	}
 	kind := e.InvolvedObject.Kind
-	infra := kind == "Pod" || kind == "Node" || kind == "PersistentVolumeClaim"
-	// Pod/Node/PVC always flow to the EventMiner; other kinds still respect query.
-	if !infra && w.Query != "" && !matchesQueryName(e.InvolvedObject.Name, w.Query) {
+	name := e.InvolvedObject.Name
+	if !EventInInvestigationScope(kind, name, w.Query, scope) {
 		return
 	}
-	if infra && kind == "Pod" && w.Query != "" && !matchesQueryName(e.InvolvedObject.Name, w.Query) {
-		// Keep Pod events for query-matched names only (noise control).
+	if !w.shouldEmit(kind, name, e.Reason, e.Message) {
 		return
 	}
 	ts := e.LastTimestamp.Time
@@ -144,8 +259,8 @@ func (w *LiveWatcher) emitEvent(e *corev1.Event) {
 	w.Sink(model.EvidenceEvent{
 		Timestamp:  model.TimestampFrom(ts),
 		SourceType: model.SourceK8sEvent,
-		SourceKind: e.InvolvedObject.Kind,
-		SourceName: e.InvolvedObject.Name,
+		SourceKind: kind,
+		SourceName: name,
 		Namespace:  e.InvolvedObject.Namespace,
 		Severity:   eventSeverity(e.Reason, e.Message),
 		Reason:     e.Reason,
@@ -154,9 +269,52 @@ func (w *LiveWatcher) emitEvent(e *corev1.Event) {
 		Count:      int(e.Count),
 		Confidence: 0.9,
 		RelatedObjectRefs: []model.ObjectRef{{
-			Kind: e.InvolvedObject.Kind, Name: e.InvolvedObject.Name, Namespace: e.InvolvedObject.Namespace,
+			Kind: kind, Name: name, Namespace: e.InvolvedObject.Namespace,
 		}},
 	})
+}
+
+func (w *LiveWatcher) emitEventsV1(e *eventsv1.Event, scope investigationPods) {
+	if e == nil || w.Sink == nil {
+		return
+	}
+	kind := e.Regarding.Kind
+	name := e.Regarding.Name
+	msg := e.Note
+	if !EventInInvestigationScope(kind, name, w.Query, scope) {
+		return
+	}
+	if !w.shouldEmit(kind, name, e.Reason, msg) {
+		return
+	}
+	rec := eventV1ToRecord(*e)
+	w.Sink(model.EvidenceEvent{
+		Timestamp:  rec.Timestamp,
+		SourceType: model.SourceK8sEvent,
+		SourceKind: kind,
+		SourceName: name,
+		Namespace:  rec.InvolvedObject.Namespace,
+		Severity:   eventRecordSeverity(rec.Reason),
+		Reason:     rec.Reason,
+		Message:    rec.Message,
+		Raw:        rec.Message,
+		Count:      int(rec.Count),
+		Confidence: 0.9,
+		RelatedObjectRefs: []model.ObjectRef{{
+			Kind: kind, Name: name, Namespace: rec.InvolvedObject.Namespace,
+		}},
+	})
+}
+
+func eventRecordSeverity(reason string) model.Severity {
+	switch reason {
+	case "OOMKilling", "Failed", "FailedScheduling", "FailedMount":
+		return model.SeverityCritical
+	case "BackOff", "Unhealthy":
+		return model.SeverityHigh
+	default:
+		return model.SeverityWarning
+	}
 }
 
 func (w *LiveWatcher) watchPods(ctx context.Context) {

@@ -6,17 +6,39 @@ import {kube} from '../models';
 import {details} from '../models';
 import {api} from '../models';
 
+export function ClearLogs():Promise<void>;
+
+export function CloseTerminal(arg1:string):Promise<void>;
+
 export function DiscoverMatches(arg1:main.DiscoverOptions):Promise<Array<model.MatchedObject>>;
 
 export function GetCluster():Promise<kube.ClusterState>;
 
+export function GetClusterStatus():Promise<kube.ClusterStatus>;
+
 export function GetObjectDetails(arg1:string,arg2:string,arg3:string):Promise<details.ObjectDetail>;
 
+export function GetResourceCatalog(arg1:main.CatalogOptions):Promise<model.ResourceCatalog>;
+
+export function GetTerminalShellChoices():Promise<Array<main.TerminalShellChoice>>;
+
 export function GetView():Promise<api.View>;
+
+export function ListCatalogEntities(arg1:main.ListCatalogEntitiesOptions):Promise<model.CatalogEntityList>;
+
+export function LogTailActive():Promise<boolean>;
 
 export function OpenKubeconfigDir():Promise<void>;
 
 export function OpenNewWindow(arg1:main.OpenWindowOptions):Promise<void>;
+
+export function PauseLogTail():Promise<void>;
+
+export function RefreshResourceCatalog(arg1:main.CatalogOptions):Promise<model.ResourceCatalog>;
+
+export function ResizeTerminal(arg1:string,arg2:number,arg3:number):Promise<void>;
+
+export function ResumeLogTail():Promise<void>;
 
 export function SelectContext(arg1:string):Promise<kube.ClusterState>;
 
@@ -26,8 +48,18 @@ export function SetAutoRefresh(arg1:boolean):Promise<void>;
 
 export function SetKubeconfigPath(arg1:string):Promise<kube.ClusterState>;
 
+export function SetPollEverySec(arg1:number):Promise<void>;
+
 export function StartInvestigation(arg1:main.StartOptions):Promise<void>;
+
+export function StartLogTail(arg1:main.LogTailOptions):Promise<void>;
+
+export function StartTerminal(arg1:main.TerminalOptions):Promise<main.TerminalInfo>;
 
 export function StopInvestigation():Promise<void>;
 
+export function StopLogTail():Promise<void>;
+
 export function SyncCluster():Promise<kube.ClusterState>;
+
+export function WriteTerminal(arg1:string,arg2:string):Promise<void>;

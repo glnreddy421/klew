@@ -1,47 +1,129 @@
 export const LAYOUT_STORAGE_KEY = 'klew.incident.layoutMode'
 export const LIST_WIDTH_STORAGE_KEY = 'klew.incident.listWidth'
 
-export const LAYOUT_MODES = [
-  { id: 'current', letter: 'A', label: 'Current' },
-  { id: 'master-detail', letter: 'B', label: 'Master–detail' },
-  { id: 'signal-first', letter: 'C', label: 'Signal-first' },
-  { id: 'detail-tabs', letter: 'D', label: 'Detail tabs' },
-  { id: 'dense-list', letter: 'E', label: 'Dense list' },
-  { id: 'unified-select', letter: 'F', label: 'Unified select' },
+/** Default workspace layout — balanced table + signals sidebar. */
+export const DEFAULT_WORKSPACE_LAYOUT = 'clean-professional'
+
+export const WORKSPACE_LAYOUTS = [
+  {
+    id: 'command-center',
+    letter: '1',
+    label: 'Command Center',
+    shortLabel: 'Center',
+    hint: 'Analyst focused',
+    description: 'Resource tree, entity table, and signals sidebar.',
+    entityView: 'table',
+    tableDensity: 'standard',
+    inspectMode: 'stacked',
+    defaultListWidth: 560,
+    showFocusButton: false,
+    showEmptyToggle: false,
+    sortBySignal: false,
+  },
+  {
+    id: 'clean-professional',
+    letter: '2',
+    label: 'Clean Professional',
+    shortLabel: 'Clean',
+    hint: 'Balanced',
+    description: 'Spacious table layout with empty-resource controls.',
+    entityView: 'table',
+    tableDensity: 'standard',
+    inspectMode: 'stacked',
+    defaultListWidth: 580,
+    showFocusButton: false,
+    showEmptyToggle: true,
+    sortBySignal: false,
+  },
+  {
+    id: 'data-dense',
+    letter: '3',
+    label: 'Data Dense',
+    shortLabel: 'Dense',
+    hint: 'Power users',
+    description: 'Extra columns for restarts, CPU, and memory.',
+    entityView: 'table',
+    tableDensity: 'dense',
+    inspectMode: 'stacked',
+    defaultListWidth: 660,
+    showFocusButton: false,
+    showEmptyToggle: false,
+    sortBySignal: false,
+  },
+  {
+    id: 'investigation-flow',
+    letter: '4',
+    label: 'Investigation Flow',
+    shortLabel: 'Flow',
+    hint: 'Contextual',
+    description: 'Compact entity list with tabbed deep-dive panel.',
+    entityView: 'list',
+    tableDensity: 'standard',
+    inspectMode: 'detail-tabs',
+    defaultListWidth: 400,
+    showFocusButton: true,
+    showEmptyToggle: false,
+    sortBySignal: true,
+  },
 ]
 
-const VALID = new Set(LAYOUT_MODES.map((m) => m.id))
+/** @deprecated use WORKSPACE_LAYOUTS */
+export const LAYOUT_MODES = WORKSPACE_LAYOUTS
 
-const DEFAULT_LIST_WIDTH = {
-  current: 340,
-  'master-detail': 250,
-  'signal-first': 250,
-  'detail-tabs': 250,
-  'dense-list': 260,
-  'unified-select': 300,
+const LEGACY_LAYOUT_MAP = {
+  current: 'command-center',
+  'master-detail': 'command-center',
+  'signal-first': 'command-center',
+  'detail-tabs': 'investigation-flow',
+  'dense-list': 'data-dense',
+  'unified-select': 'clean-professional',
 }
 
-export function loadLayoutMode() {
+const VALID = new Set(WORKSPACE_LAYOUTS.map((m) => m.id))
+
+const DEFAULT_LIST_WIDTH = Object.fromEntries(
+  WORKSPACE_LAYOUTS.map((m) => [m.id, m.defaultListWidth]),
+)
+
+export function layoutConfig(id) {
+  return WORKSPACE_LAYOUTS.find((m) => m.id === id)
+    || WORKSPACE_LAYOUTS.find((m) => m.id === DEFAULT_WORKSPACE_LAYOUT)
+}
+
+export function normalizeLayoutMode(id) {
+  if (id && VALID.has(id)) return id
+  if (id && LEGACY_LAYOUT_MAP[id]) return LEGACY_LAYOUT_MAP[id]
+  return DEFAULT_WORKSPACE_LAYOUT
+}
+
+export function loadLayoutMode(prefs) {
+  const fromPrefs = prefs?.workspaceLayout
+  if (fromPrefs) {
+    const normalized = normalizeLayoutMode(fromPrefs)
+    if (VALID.has(normalized)) return normalized
+  }
   try {
     const v = localStorage.getItem(LAYOUT_STORAGE_KEY)
-    if (v && VALID.has(v)) return v
+    if (v) return normalizeLayoutMode(v)
   } catch {
     /* ignore */
   }
-  return 'detail-tabs'
+  return DEFAULT_WORKSPACE_LAYOUT
 }
 
 export function saveLayoutMode(id) {
-  if (!VALID.has(id)) return
+  const next = normalizeLayoutMode(id)
+  if (!VALID.has(next)) return
   try {
-    localStorage.setItem(LAYOUT_STORAGE_KEY, id)
+    localStorage.setItem(LAYOUT_STORAGE_KEY, next)
   } catch {
     /* ignore */
   }
+  return next
 }
 
 export function defaultListWidth(layoutMode) {
-  return DEFAULT_LIST_WIDTH[layoutMode] || 300
+  return DEFAULT_LIST_WIDTH[normalizeLayoutMode(layoutMode)] || 520
 }
 
 export function loadListWidth(layoutMode) {
@@ -49,7 +131,7 @@ export function loadListWidth(layoutMode) {
     const raw = localStorage.getItem(LIST_WIDTH_STORAGE_KEY)
     if (raw) {
       const n = Number(raw)
-      if (Number.isFinite(n) && n >= 200 && n <= 720) return n
+      if (Number.isFinite(n) && n >= 200 && n <= 900) return n
     }
   } catch {
     /* ignore */
@@ -65,48 +147,28 @@ export function saveListWidth(px) {
   }
 }
 
-/** List chrome flags derived from layout mode (match list, not focus-chain). */
+/** List chrome flags derived from workspace layout. */
 export function listChromeForMode(layoutMode) {
-  switch (layoutMode) {
-    case 'master-detail':
-    case 'signal-first':
-    case 'detail-tabs':
-    case 'unified-select':
-      return {
-        showFocusButton: false,
-        dense: layoutMode !== 'unified-select',
-        statusLed: layoutMode === 'signal-first',
-        allowHoverInspect: false,
-        focusChevron: false,
-      }
-    case 'dense-list':
-      return {
-        showFocusButton: false,
-        dense: true,
-        statusLed: true,
-        allowHoverInspect: false,
-        focusChevron: true,
-      }
-    case 'current':
-    default:
-      return {
-        showFocusButton: true,
-        dense: false,
-        statusLed: false,
-        allowHoverInspect: true,
-        focusChevron: false,
-      }
+  const cfg = layoutConfig(layoutMode)
+  return {
+    showFocusButton: cfg.showFocusButton,
+    dense: cfg.entityView === 'list',
+    statusLed: cfg.entityView === 'list',
+    allowHoverInspect: cfg.entityView === 'list',
+    focusChevron: false,
+    entityView: cfg.entityView,
+    tableDensity: cfg.tableDensity,
+    showEmptyToggle: cfg.showEmptyToggle,
   }
+}
+
+export function inspectPanelMode(layoutMode) {
+  return layoutConfig(layoutMode).inspectMode
 }
 
 /** Whether the detail panel should expose a Focus chain CTA in its header. */
 export function inspectShowsFocusCta(layoutMode) {
-  // A/E: list or legacy chrome owns Focus. F: inspecting strip owns the only CTA.
-  return (
-    layoutMode !== 'current'
-    && layoutMode !== 'dense-list'
-    && layoutMode !== 'unified-select'
-  )
+  return layoutConfig(layoutMode).id === 'investigation-flow'
 }
 
 /** Pull up to 3 compact stats from existing inspect model (no invented telemetry). */

@@ -11,6 +11,16 @@ export function getSnapshot(view) {
   return getState(view).snapshot || {}
 }
 
+/** Coerce backend/text fields that should be string arrays. */
+export function asStringArray(value) {
+  if (Array.isArray(value)) {
+    return value.map((v) => String(v ?? '').trim()).filter(Boolean)
+  }
+  if (value == null || value === '') return []
+  if (typeof value === 'string') return value.trim() ? [value.trim()] : []
+  return []
+}
+
 export function formatClock(ts) {
   if (!ts) return '—'
   try {
