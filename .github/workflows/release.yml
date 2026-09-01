@@ -15,7 +15,9 @@ jobs:
     env:
       VERSION: ${{ github.ref_name }}
       APPLE_ID: ${{ secrets.APPLE_ID }}
+      # App-specific password from appleid.apple.com (not your Apple ID login password).
       APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     steps:
       - uses: actions/checkout@v4
@@ -48,6 +50,9 @@ jobs:
             echo "::error::No Developer ID Application certificate found after import."
             exit 1
           fi
+
+      - name: Verify notarization credentials
+        run: ./.github/scripts/verify-notarization-credentials.sh
 
       - name: Build, sign, notarize, and package (arm64 + Intel)
         run: ./.github/scripts/release-macos.sh
