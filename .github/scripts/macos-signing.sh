@@ -10,18 +10,28 @@ macos_signing_ready() {
 }
 
 macos_notarization_ready() {
+  # Accept legacy secret name APPLE_PASSWORD if APPLE_APP_PASSWORD is unset.
+  if [[ -z "${APPLE_APP_PASSWORD:-}" && -n "${APPLE_PASSWORD:-}" ]]; then
+    APPLE_APP_PASSWORD="$APPLE_PASSWORD"
+  fi
   [[ -n "${APPLE_ID:-}" ]] &&
     [[ -n "${APPLE_APP_PASSWORD:-}" ]] &&
     [[ -n "${APPLE_TEAM_ID:-}" ]]
 }
 
 macos_normalize_apple_credentials() {
+  if [[ -z "${APPLE_APP_PASSWORD:-}" && -n "${APPLE_PASSWORD:-}" ]]; then
+    APPLE_APP_PASSWORD="$APPLE_PASSWORD"
+  fi
   APPLE_ID="${APPLE_ID//$'\n'/}"
   APPLE_ID="${APPLE_ID//$'\r'/}"
+  APPLE_ID="${APPLE_ID// /}"
   APPLE_APP_PASSWORD="${APPLE_APP_PASSWORD//$'\n'/}"
   APPLE_APP_PASSWORD="${APPLE_APP_PASSWORD//$'\r'/}"
+  APPLE_APP_PASSWORD="${APPLE_APP_PASSWORD// /}"
   APPLE_TEAM_ID="${APPLE_TEAM_ID//$'\r'/}"
   APPLE_TEAM_ID="${APPLE_TEAM_ID//$'\n'/}"
+  APPLE_TEAM_ID="${APPLE_TEAM_ID// /}"
 }
 
 macos_resolve_signing_identity() {
