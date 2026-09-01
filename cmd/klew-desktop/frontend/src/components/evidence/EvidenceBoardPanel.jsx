@@ -7,7 +7,6 @@ import { useState } from 'react'
 export function EvidenceBoardPanel({ board, onFilterLogs, compactEmpty = false }) {
   const cards = board?.cards || []
   const thresholdPct = Math.round((board?.threshold ?? 0.6) * 100)
-  const windowMins = board?.windowMinutes || 15
 
   return (
     <section className="ev-chains" aria-labelledby="ev-chains-title">
@@ -15,7 +14,7 @@ export function EvidenceBoardPanel({ board, onFilterLogs, compactEmpty = false }
         <div>
           <h3 id="ev-chains-title">Correlated signals</h3>
           <p className="ev-chains-sub muted">
-            Event ↔ log patterns that fire in the same minutes
+            Infrastructure events linked to log templates by minute overlap
           </p>
         </div>
         <div className="ev-chains-stats">
@@ -24,7 +23,6 @@ export function EvidenceBoardPanel({ board, onFilterLogs, compactEmpty = false }
             <em>linked</em>
           </span>
           <span className="ev-stat muted">≥{thresholdPct}%</span>
-          <span className="ev-stat muted">{windowMins}m window</span>
         </div>
       </header>
 
@@ -46,8 +44,8 @@ export function EvidenceBoardPanel({ board, onFilterLogs, compactEmpty = false }
             <span className="ev-slot on" />
           </div>
           <p>
-            No overlapping patterns yet. When an infrastructure event and a log template
-            share active minutes (≥{thresholdPct}% overlap), they show up here as a chain.
+            No linked patterns yet. When an event template and a log template share active minutes
+            (≥{thresholdPct}% overlap), they appear here.
           </p>
         </div>
       ) : (

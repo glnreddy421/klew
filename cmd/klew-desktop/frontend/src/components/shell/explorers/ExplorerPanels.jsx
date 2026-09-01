@@ -216,11 +216,9 @@ export function PatternsExplorer({ view, filter, onFilterChange }) {
   )
 }
 
-export function EvidenceExplorer({ view, filter, onFilterChange, prefs, onPrefsChange }) {
+export function EvidenceExplorer({ view, filter, onFilterChange }) {
   const evidence = view?.evidence || view?.state?.liveEvidence || []
   const counts = countEvidenceTypes(evidence)
-  const windows = [5, 15, 30, 60]
-  const currentWindow = prefs?.windowMin || 15
 
   return (
     <>
@@ -230,16 +228,6 @@ export function EvidenceExplorer({ view, filter, onFilterChange, prefs, onPrefsC
         <ExplorerFilterRow label="Events" count={counts.event} active={filter?.type === 'event'} onClick={() => onFilterChange?.({ type: 'event' })} />
         <ExplorerFilterRow label="Changes" count={counts.change} active={filter?.type === 'change'} onClick={() => onFilterChange?.({ type: 'change' })} />
         <ExplorerFilterRow label="Metrics" count={counts.metric} active={filter?.type === 'metric'} onClick={() => onFilterChange?.({ type: 'metric' })} />
-      </ExplorerSection>
-      <ExplorerSection title="Window">
-        {windows.map((m) => (
-          <ExplorerFilterRow
-            key={m}
-            label={m >= 60 ? '1 hour' : `${m} minutes`}
-            active={currentWindow === m}
-            onClick={() => onPrefsChange?.({ windowMin: m })}
-          />
-        ))}
       </ExplorerSection>
     </>
   )

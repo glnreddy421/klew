@@ -1,6 +1,15 @@
 import { NAV_ITEMS, NAV_ITEMS_SECONDARY } from '../../lib/constants.js'
+import { StreamLiveBadge } from '../StreamLiveBadge.jsx'
 
-export function ActivityRail({ active, onSelect, collapsed = false, onToggleCollapse }) {
+export function ActivityRail({
+  active,
+  terminalOpen = false,
+  liveLogsOpen = false,
+  streamLive = null,
+  onSelect,
+  collapsed = false,
+  onToggleCollapse,
+}) {
   return (
     <aside
       className={`activity-rail ${collapsed ? 'is-collapsed' : ''}`}
@@ -26,9 +35,20 @@ export function ActivityRail({ active, onSelect, collapsed = false, onToggleColl
             <ActivityRailItem
               key={item.id}
               item={item}
-              active={active === item.id}
+              active={
+                item.id === 'terminal'
+                  ? terminalOpen
+                  : item.id === 'live-logs'
+                    ? liveLogsOpen
+                    : active === item.id
+              }
               collapsed={collapsed}
               onClick={() => onSelect?.(item.id)}
+              trailing={
+                item.id === 'live-logs' && streamLive ? (
+                  <StreamLiveBadge {...streamLive} className="activity-rail-live-dot" />
+                ) : null
+              }
             />
           ))}
         </nav>
@@ -43,7 +63,9 @@ export function ActivityRail({ active, onSelect, collapsed = false, onToggleColl
           aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}
           aria-expanded={!collapsed}
         >
-          <RailToggleIcon collapsed={collapsed} />
+          <span className="activity-rail-icon-wrap" aria-hidden="true">
+            <RailToggleIcon collapsed={collapsed} />
+          </span>
           <span className="activity-rail-collapse-label">Collapse</span>
         </button>
       </footer>
@@ -51,7 +73,7 @@ export function ActivityRail({ active, onSelect, collapsed = false, onToggleColl
   )
 }
 
-function ActivityRailItem({ item, active, collapsed, onClick }) {
+function ActivityRailItem({ item, active, collapsed, onClick, trailing = null }) {
   const label = item.navLabel || item.label
   const tip = item.hint || item.label
 
@@ -60,31 +82,38 @@ function ActivityRailItem({ item, active, collapsed, onClick }) {
       type="button"
       className={`activity-rail-item ${active ? 'is-active' : ''}`}
       onClick={onClick}
-      title={collapsed ? tip : undefined}
+      title={tip}
       aria-label={item.label}
       aria-current={active ? 'page' : undefined}
     >
       <span className="activity-rail-icon-wrap" aria-hidden="true">
-        <ActivityIcon id={item.id} />
+        <ActivityIcon id={item.id} active={active} />
+        {trailing}
       </span>
-      <span className="activity-rail-label">{label}</span>
+      {!collapsed ? (
+        <span className="activity-rail-label-row">
+          <span className="activity-rail-label">{label}</span>
+        </span>
+      ) : null}
     </button>
   )
 }
 
 function RailToggleIcon({ collapsed }) {
   return (
-    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-      {collapsed ? (
-        <path d="M6 4l4 4-4 4" strokeLinecap="round" strokeLinejoin="round" />
-      ) : (
-        <path d="M10 4L6 8l4 4" strokeLinecap="round" strokeLinejoin="round" />
-      )}
-    </svg>
+    <span className="activity-rail-icon">
+      <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+        {collapsed ? (
+          <path d="M6 4l4 4-4 4" strokeLinecap="round" strokeLinejoin="round" />
+        ) : (
+          <path d="M10 4L6 8l4 4" strokeLinecap="round" strokeLinejoin="round" />
+        )}
+      </svg>
+    </span>
   )
 }
 
-function ActivityIcon({ id }) {
+function ActivityIcon({ id, active = false }) {
   const icons = {
     incident: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
@@ -121,6 +150,13 @@ function ActivityIcon({ id }) {
         <path d="M8 17h8M18 9v6M7.75 15.25l8.5-6.5" />
       </svg>
     ),
+    'live-logs': (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M14 3H7a2 2 0 00-2 2v16a2 2 0 002 2h10a2 2 0 002-2V8z" />
+        <path d="M14 3v5h5" />
+        <path d="M8 13h5M8 17h8" />
+      </svg>
+    ),
     terminal: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
         <rect x="3" y="4.5" width="18" height="15" rx="2" />
@@ -129,5 +165,9 @@ function ActivityIcon({ id }) {
       </svg>
     ),
   }
-  return <span className="activity-rail-icon">{icons[id]}</span>
+  return (
+    <span className={`activity-rail-icon ${active ? 'is-active' : ''}`}>
+      {icons[id]}
+    </span>
+  )
 }

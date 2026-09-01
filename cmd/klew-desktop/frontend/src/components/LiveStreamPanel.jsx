@@ -57,6 +57,7 @@ export function LiveStreamPanel({
   onClearLogs,
   gatherBusy = false,
   gatherError = '',
+  embedded = false,
 }) {
   const scrollRef = useRef(null)
   const prevRowCount = useRef(0)
@@ -208,7 +209,7 @@ export function LiveStreamPanel({
     prevRowCount.current = rowCount
   }, [groups, rowCount, follow, panelState, logTailPaused])
 
-  if (panelState === PANEL_CLOSED) {
+  if (!embedded && panelState === PANEL_CLOSED) {
     return (
       <button type="button" className="stream-reopen" onClick={() => onOpen(PANEL_NORMAL)}>
         <svg className="stream-doc-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
@@ -235,17 +236,18 @@ export function LiveStreamPanel({
     <section
       className={[
         'stream-panel',
+        embedded ? 'stream-panel-embedded' : '',
         expanded ? 'expanded' : 'collapsed',
-        maximized ? 'maximized' : '',
+        maximized && !embedded ? 'maximized' : '',
         streamDense ? 'stream-dense' : '',
         streamWrapLines ? 'stream-wrap' : '',
       ].filter(Boolean).join(' ')}
       style={{
         '--stream-font-size': `${streamFontSize}px`,
-        ...(panelState === PANEL_NORMAL ? { '--stream-h': `${height}px` } : null),
+        ...((panelState === PANEL_NORMAL || embedded) ? { '--stream-h': `${height}px` } : null),
       }}
     >
-      {panelState === PANEL_NORMAL && (
+      {(panelState === PANEL_NORMAL || embedded) && !maximized && (
         <div
           className="stream-resize-handle"
           role="separator"
@@ -274,10 +276,10 @@ export function LiveStreamPanel({
             <path d="M14 2v6h6" />
           </svg>
           <span>Container logs</span>
-          {!running && <span className="stream-live-badge idle">IDLE</span>}
-          {running && !logTailEngaged && <span className="stream-live-badge idle">READY</span>}
-          {running && logTailStreaming && <span className="stream-live-badge">LIVE</span>}
-          {running && logTailEngaged && logTailPaused && <span className="stream-live-badge paused">PAUSED</span>}
+          {!embedded && !running && <span className="stream-live-badge idle">IDLE</span>}
+          {!embedded && running && !logTailEngaged && <span className="stream-live-badge idle">READY</span>}
+          {!embedded && running && logTailStreaming && <span className="stream-live-badge">LIVE</span>}
+          {!embedded && running && logTailEngaged && logTailPaused && <span className="stream-live-badge paused">PAUSED</span>}
           {crispChips.length > 0 && (
             <span className="stream-chips">
               {crispChips.map((chip) => (
@@ -342,6 +344,7 @@ export function LiveStreamPanel({
             </>
           )}
 
+          {!embedded && (
           <div className="stream-window-controls">
             {maximized ? (
               <WindowBtn label="Restore panel" onClick={onRestore}>
@@ -362,10 +365,11 @@ export function LiveStreamPanel({
               <IconClose />
             </WindowBtn>
           </div>
+          )}
         </div>
       </header>
 
-      {expanded && (
+      {(expanded || embedded) && (
         <div className="stream-body">
           {running && !logTailEngaged ? (
             <div className="log-request">

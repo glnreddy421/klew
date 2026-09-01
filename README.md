@@ -1,102 +1,99 @@
 # Klew
 
-**Kubernetes-native live incident investigation.**
+Live Kubernetes incident investigation for macOS.
 
-Klew continuously combines Kubernetes workload state, events, and multi-pod logs into an evolving incident timeline — read-only, no in-cluster agent.
+When something breaks in a cluster, you need to answer three questions quickly: **what failed**, **why it failed**, and **what else is affected**. Klew discovers related objects, watches live state and events, correlates logs and infrastructure signals, and keeps a single investigation updated as the cluster changes.
 
-> Not a log viewer. Not a dashboard. A live investigation engine.
->
-> **Klew** (from *clew*, the ball of thread that leads you out of a labyrinth): follow the thread from symptom to root cause.
+Built for engineers on call, SREs, and platform teams who already use `kubectl` and want a focused workspace instead of stitching together commands across terminal tabs.
+
+## Screenshots
+
+| Welcome | Overview |
+| --- | --- |
+| Pick context, namespace, and start investigating. | Live brief — signals, chain, confidence, next steps. |
+| ![Welcome](docs/screenshots/overview.png) | ![Overview](docs/screenshots/investigation.png) |
+
+| Failures | Patterns |
+| --- | --- |
+| Ranked runtime failures in scope. | Log and event templates with correlated behavior. |
+| ![Failures](docs/screenshots/failures.png) | ![Patterns](docs/screenshots/patterns.png) |
+
+| Evidence | Resources |
+| --- | --- |
+| Correlated signals and supporting facts. | In-scope catalog with deep inspection. |
+| ![Evidence](docs/screenshots/evidence.png) | ![Resources](docs/screenshots/resources.png) |
+
+| Graph |
+| --- |
+| Relationships across workloads, services, and ingress. |
+| ![Graph](docs/screenshots/graph.png) |
 
 ## Install
 
-Requires macOS and a kubeconfig for live investigations (`~/.kube/config`).
+**Requirements:** macOS 12+, a valid kubeconfig (`~/.kube/config` by default).
 
 ### Download
 
-Get the latest macOS build from **[GitHub Releases](https://github.com/glnreddy421/klew/releases)**:
+Latest release: [github.com/glnreddy421/klew/releases](https://github.com/glnreddy421/klew/releases)
 
-1. **Apple Silicon:** `Klew-x.y.z-macos-arm64.dmg`
-2. **Intel Mac:** `Klew-x.y.z-macos-amd64.dmg`
-3. Open the DMG and drag **Klew** to Applications
-4. Launch Klew — signed releases open without a Gatekeeper warning
+| Mac | File |
+| --- | --- |
+| Apple Silicon | `Klew-x.y.z-macos-arm64.dmg` |
+| Intel | `Klew-x.y.z-macos-amd64.dmg` |
 
-> **Older unsigned builds:** right-click the app → **Open**, or allow it in **System Settings → Privacy & Security**.
+Open the DMG and drag **Klew** to Applications.
 
 ### Homebrew
 
 ```bash
 brew tap glnreddy421/klew
-brew trust glnreddy421/klew
 brew install klew
 open "$(brew --prefix)/opt/klew/Klew.app"
 ```
 
-## Using Klew
+## Quick start
 
-Open Klew and connect to a cluster via your kubeconfig. Pick a namespace, search for a workload, and start a live investigation.
+1. Launch Klew and select a **context** and **namespace**.
+2. Search for a workload (optional) and click **Investigate**.
+3. Move through Overview, Failures, Patterns, and Evidence as signals arrive.
 
-Namespace scope: **namespace is the investigation boundary**. Select or pin a namespace before searching; the query targets workloads inside that boundary only.
+**Namespace is the boundary.** Klew investigates workloads inside the selected namespace, not the namespace object itself.
 
-## Investigation views
+## Surfaces
 
-Each view answers a specific question during an incident:
+| Surface | Purpose |
+| --- | --- |
+| **Overview** | Status, leading signal, causal chain, and next steps |
+| **Failures** | Concrete runtime failures ranked by severity |
+| **Patterns** | Log and infrastructure event templates |
+| **Evidence** | Correlated signals and supporting observations |
+| **Resources** | Kubernetes catalog and entity detail |
+| **Graph** | Relationships between affected resources |
+| **Terminal** | Cluster shell for the active context |
+| **Live logs** | Tail container logs from investigation pods |
 
-1. **Incident** — What broke? Status, leading signal, hypothesis, confidence, impact, and ranked evidence.
-2. **Timeline** — How did it unfold? Correlated story with phase bookmarks and causal connectors.
-3. **Graph** — What is the blast radius? Propagation chain over a health-grouped investigation scope.
-4. **Failures** — Which runtime is failing? Severity-ranked pods and per-pod detail.
-5. **Resources** — Did CPU/memory contribute? Pressure, top consumers, nodes, and recommendations.
-6. **Evidence** — Why this verdict? Summary, grouped evidence, claims, cross-correlation, and gaps.
+## Keyboard shortcuts
 
-## Architecture
+| Shortcut | Action |
+| --- | --- |
+| ⌘K | Focus search |
+| ⌘N | New window |
+| ⌘R | Sync kubeconfig |
+| ⌘\` | Terminal |
+| ⌘⇧L | Live logs |
 
+## Build from source
+
+Requires Go 1.22+, Node 22+, and [Wails v2](https://wails.io).
+
+```bash
+git clone https://github.com/glnreddy421/klew.git
+cd klew/cmd/klew-desktop
+wails dev
 ```
-cmd/klew-desktop/     Wails + React desktop app
-internal/service/     live investigation backend
-internal/api/         JSON view for React
-internal/kube/        client-go (no kubectl shell-out)
-internal/investigation/  workload discovery + InvestigationScope + relationship graph
-internal/model/       InvestigationState, EvidenceEvent, verdict
-internal/engine/      evidence bus, reducer, snapshot, live session
-internal/bundle/      JSON bundle I/O
-internal/render/      charts, graph layout
-```
 
-Live flow: collectors publish `EvidenceEvent` → bus → reducer updates `InvestigationState` → desktop UI redraws.
+Release builds use `.github/scripts/build-macos.sh`.
 
-### Workload discovery & investigation scope
+## License
 
-Klew does **not** investigate namespaces — it investigates workloads; the
-namespace is only the search boundary. The `internal/investigation` package owns
-this foundation:
-
-- **Discovery** searches every namespace-scoped object (exact / prefix / contains
-  / label match) and groups results by workload (`WorkloadGroup`).
-- **Scope builder** expands a selected workload into an `InvestigationScope` — a
-  traversable relationship graph (`owns`, `selects`, `routes`, `mounts`,
-  `targets`, `binds`, `uses`, `schedules`, `related`) across resource tiers:
-  - **Tier 1** (always): Deployment/StatefulSet/DaemonSet/ReplicaSet/Pod,
-    Service/Endpoints/EndpointSlice/Ingress, Event, Node.
-  - **Tier 2** (only if referenced): ConfigMap, Secret (metadata only), PVC,
-    HPA, ServiceAccount, Role, RoleBinding, NetworkPolicy, PDB.
-  - **Tier 3** (operator detection): Istio, cert-manager, External Secrets, Argo
-    Rollouts, KEDA, Prometheus Operator, Knative, Tekton, Argo CD, Cilium — any
-    detected CRD instance related to the workload becomes a `RelatedCRD`.
-
-Unrelated namespace objects are never pulled in. The resulting scope is attached
-to `InvestigationState.Scope` so every downstream collector, correlation step and
-panel operates from one workload-centric source of truth — panels never talk to
-Kubernetes directly.
-
-## v1 scope
-
-- Deterministic signal scoring (OOMKilled, CrashLoopBackOff, zero endpoints, etc.)
-- Graceful degradation when RBAC permissions are missing
-- Metrics API optional (warning if unavailable)
-- No AI, no backend, no cloud dependencies
-
-## Naming
-
-Formerly **Solid** / **solid-k8s**; renamed to **Klew**. The Go module path is
-`github.com/glnreddy421/klew`.
+Apache 2.0 — see [LICENSE](LICENSE).

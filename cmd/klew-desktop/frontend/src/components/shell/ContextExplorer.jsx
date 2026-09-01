@@ -66,8 +66,6 @@ export function ContextExplorer({
             view={view}
             filter={explorerFilters.evidence}
             onFilterChange={(f) => onExplorerFiltersChange?.({ evidence: { ...explorerFilters.evidence, ...f } })}
-            prefs={prefs}
-            onPrefsChange={onPrefsChange}
           />
         )
       case 'graph':

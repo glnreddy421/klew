@@ -1,5 +1,7 @@
 # Klew desktop
 
-Native macOS app (Wails + React) for [Klew](https://github.com/glnreddy421/klew).
+macOS application shell for Klew. Install and usage: [../../README.md](../../README.md).
 
-Install: see the main [README](../README.md).
+```bash
+wails dev    # from this directory
+```

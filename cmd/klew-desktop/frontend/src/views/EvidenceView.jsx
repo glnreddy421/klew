@@ -1,41 +1,22 @@
 import { useMemo } from 'react'
-import { StatusBadge } from '../components/incident/StatusBadge'
 import { EvidenceBoardPanel } from '../components/evidence/EvidenceBoardPanel'
 import {
-  confidenceLabel,
   formatClock,
   getState,
   groupEvidence,
-  investigationWindowLabel,
   rankedVerdictSignals,
 } from '../lib/investigationViews'
 
 /**
- * Evidence — correlated pattern links first, then supporting claims & next checks.
+ * Evidence — correlated pattern links and supporting observations.
  */
 export function EvidenceView({ view, onFilterLogs, explorerFilter }) {
   const state = getState(view)
-  const verdict = state.verdict || {}
-  const healthy = String(verdict.status || '').toLowerCase() === 'healthy'
-    || String(verdict.status || '').toLowerCase() === 'ok'
-
-  const hypothesis = healthy
-    ? 'No active incident'
-    : (view?.hypothesis
-      || state.hypothesisLabel
-      || verdict.likelyTrigger
-      || 'Collecting evidence…')
-
-  const conf = verdict.confidence ?? 0
-  const confTrend = view?.confidenceTrend || state.confidenceTrend || ''
-  const confText = conf > 0
-    ? `${confidenceLabel(conf)}${confTrend ? ` · ${confTrend}` : ''}`
-    : '—'
 
   const signals = useMemo(() => {
-    const ranked = rankedVerdictSignals(verdict)
+    const ranked = rankedVerdictSignals(state.verdict || {})
     return ranked.length ? ranked : (view?.signals || [])
-  }, [verdict, view?.signals])
+  }, [state.verdict, view?.signals])
 
   const evidence = useMemo(() => {
     const raw = view?.evidence || state.liveEvidence || []
@@ -50,72 +31,30 @@ export function EvidenceView({ view, onFilterLogs, explorerFilter }) {
       return true
     })
   }, [view?.evidence, state.liveEvidence, explorerFilter?.type])
+
   const groups = useMemo(() => groupEvidence(evidence), [evidence])
-  const nextChecks = view?.nextChecks || state.nextChecks || verdict.recommendedNextChecks || []
-  const gaps = verdict.missingDataWarnings || state.warnings || []
-  const causal = view?.causalChain || state.causalChain || []
-  const correlation = view?.correlation || state.correlation || []
+  const nextChecks = view?.nextChecks || state.nextChecks || state.verdict?.recommendedNextChecks || []
+  const gaps = state.verdict?.missingDataWarnings || state.warnings || []
   const alts = view?.hypothesisAlternatives || state.hypothesisAlternatives || []
-  const patterns = view?.logPatterns || state.logPatterns || null
-  const evidenceBoard = patterns?.evidenceBoard || null
+  const evidenceBoard = (view?.logPatterns || state.logPatterns)?.evidenceBoard || null
 
   const supportItems = useMemo(() => {
     const out = []
     for (const e of groups.event || []) out.push({ ...e, _bucket: 'Event' })
     for (const e of groups.change || []) out.push({ ...e, _bucket: 'Change' })
     for (const e of groups.metric || []) out.push({ ...e, _bucket: 'Metric' })
-    return out.slice(0, 10)
+    return out.slice(0, 12)
   }, [groups])
-
-  const confPct = Math.min(100, Math.round((conf || 0) * 100))
-  const live = state.mode === 'live' && !state.paused
 
   return (
     <div className="inv-page evidence-page ev-revamp">
-      {/* One composition: status + hypothesis + confidence */}
-      <header className="ev-verdict">
-        <div className="ev-verdict-lead">
-          <StatusBadge
-            status={healthy ? 'healthy' : (conf >= 0.6 ? 'warning' : 'unknown')}
-            label={healthy ? 'HEALTHY' : 'INVESTIGATING'}
-          />
-          {live && <span className="ev-live-dot" title="Live">Live</span>}
-          <h2 className="ev-hypothesis">{hypothesis}</h2>
-        </div>
-        <div className="ev-verdict-meta">
-          <div className="ev-conf-inline">
-            <div className="ev-conf-track" aria-hidden="true">
-              <div className="ev-conf-fill" style={{ width: `${confPct}%` }} />
-            </div>
-            <span className="ev-conf-label">{confText}{conf > 0 ? ` · ${confPct}%` : ''}</span>
-          </div>
-          <span className="muted ev-window">{investigationWindowLabel(state)}</span>
-        </div>
-      </header>
-
       <EvidenceBoardPanel board={evidenceBoard} onFilterLogs={onFilterLogs} />
 
-      {(causal.length > 0 || correlation.length > 0) && (
-        <section className="ev-causal" aria-label="Causal notes">
-          {causal.length > 0 && (
-            <ol className="timeline-causal compact">
-              {causal.map((c, i) => <li key={`c-${i}`}>{c}</li>)}
-            </ol>
-          )}
-          {correlation.length > 0 && (
-            <ul className="corr-list">
-              {correlation.map((c, i) => <li key={i}>{c}</li>)}
-            </ul>
-          )}
-        </section>
-      )}
-
-      {/* Supporting: observations + claims */}
       <div className="ev-support">
         <section className="ev-panel" aria-labelledby="ev-obs-title">
           <h3 id="ev-obs-title">Observations</h3>
           {supportItems.length === 0 ? (
-            <p className="muted ev-panel-empty">No events or changes grouped yet.</p>
+            <p className="muted ev-panel-empty">Events and changes appear here as they arrive.</p>
           ) : (
             <ul className="ev-obs-list">
               {supportItems.map((e, i) => (
@@ -136,10 +75,10 @@ export function EvidenceView({ view, onFilterLogs, explorerFilter }) {
         <section className="ev-panel" aria-labelledby="ev-claims-title">
           <h3 id="ev-claims-title">Claims</h3>
           {signals.length === 0 ? (
-            <p className="muted ev-panel-empty">No scored signals yet.</p>
+            <p className="muted ev-panel-empty">Scored signals appear after the first correlation pass.</p>
           ) : (
             <ul className="ev-claims">
-              {signals.slice(0, 12).map((s, i) => (
+              {signals.slice(0, 10).map((s, i) => (
                 <li
                   key={s.id || `${s.label}-${i}`}
                   className={`ev-claim strength-${s.strength || 'medium'}`}
@@ -149,7 +88,6 @@ export function EvidenceView({ view, onFilterLogs, explorerFilter }) {
                     <span className="ev-claim-strength">{s.strength || 'signal'}</span>
                   </div>
                   {s.evidence && <p className="muted">{s.evidence}</p>}
-                  {s.source && <span className="muted ev-claim-src">{s.source}</span>}
                 </li>
               ))}
             </ul>

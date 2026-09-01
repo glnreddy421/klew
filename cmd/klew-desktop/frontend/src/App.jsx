@@ -18,7 +18,9 @@ import { emptyView } from './lib/constants'
 import { useCluster } from './hooks/useCluster'
 import { useClusterStatus } from './hooks/useClusterStatus'
 import { HOME_NAV, normalizeNavEntry, useNavigationHistory } from './hooks/useNavigationHistory'
-import { useStreamPanel, PANEL_NORMAL } from './hooks/useStreamPanel'
+import { useStreamPanel, PANEL_NORMAL, PANEL_CLOSED } from './hooks/useStreamPanel'
+import { useTerminalPanel } from './hooks/useTerminalPanel'
+import { useConsoleDock } from './hooks/useConsoleDock'
 import { useTheme } from './hooks/useTheme'
 import { usePreferences } from './hooks/usePreferences'
 import { startOptionsFromPreferences } from './lib/preferences'
@@ -28,7 +30,7 @@ import { AppShell } from './components/shell/AppShell.jsx'
 import { ResourcesWorkbenchRoot } from './views/ResourcesWorkbenchView'
 import { ScopeBrowseProvider } from './context/ScopeBrowseContext.jsx'
 import { defaultRelations } from './components/shell/explorers/ExplorerPanels.jsx'
-import { LiveStreamPanel } from './components/LiveStreamPanel'
+import { ConsoleDock } from './components/ConsoleDock'
 import { TerminalShellModal } from './components/TerminalShellModal'
 import { ScopePickerModal } from './components/incident/ScopePickerModal'
 import { MainContent } from './views/MainContent'
@@ -101,9 +103,10 @@ export default function App() {
   const { cluster, syncing, syncNow, setContext, setNamespace } = useCluster()
   const { clusterStatus } = useClusterStatus(cluster)
   const stream = useStreamPanel()
+  const terminal = useTerminalPanel()
+  const consoleDock = useConsoleDock({ stream, terminal })
   const [terminalShellPickerOpen, setTerminalShellPickerOpen] = useState(false)
-  const [terminalMounted, setTerminalMounted] = useState(false)
-  const [pendingNavAfterShell, setPendingNavAfterShell] = useState(null)
+  const [pendingShellPickerAction, setPendingShellPickerAction] = useState(null)
   const [terminalShellRestartToken, setTerminalShellRestartToken] = useState(0)
   const { themeId, setTheme } = useTheme()
   const { prefs, setPreferences } = usePreferences()
@@ -183,31 +186,27 @@ export default function App() {
       terminalShellPrompted: true,
     })
     setTerminalShellPickerOpen(false)
-    if (terminalMounted) {
+    if (terminal.open) {
       setTerminalShellRestartToken(Date.now())
     }
-    if (pendingNavAfterShell) {
-      if (pendingNavAfterShell.tab === 'terminal') {
-        setTerminalMounted(true)
-      }
-      navigateTo(pendingNavAfterShell)
-      setPendingNavAfterShell(null)
+    if (pendingShellPickerAction === 'openTerminal') {
+      consoleDock.openTerminal()
+      setPendingShellPickerAction(null)
     }
-  }, [setPreferences, terminalMounted, pendingNavAfterShell, navigateTo])
+  }, [setPreferences, terminal, pendingShellPickerAction, consoleDock])
 
-  const openShellPicker = useCallback((afterNav = null) => {
-    setPendingNavAfterShell(afterNav)
+  const openShellPicker = useCallback((action = null) => {
+    setPendingShellPickerAction(action)
     setTerminalShellPickerOpen(true)
   }, [])
 
-  const navigateToTerminal = useCallback(() => {
+  const toggleTerminal = useCallback(() => {
     if (!prefs.terminalShellPrompted) {
-      openShellPicker({ tab: 'terminal' })
+      openShellPicker('openTerminal')
       return
     }
-    setTerminalMounted(true)
-    navigateTo('terminal')
-  }, [prefs.terminalShellPrompted, openShellPicker, navigateTo])
+    consoleDock.openTerminal()
+  }, [prefs.terminalShellPrompted, openShellPicker, consoleDock])
 
   const handleOpenTerminalShellPicker = useCallback(() => {
     openShellPicker(null)
@@ -218,10 +217,10 @@ export default function App() {
   }, [applyTerminalShell])
 
   const handleTerminalShellChange = useCallback(() => {
-    if (terminalMounted) {
+    if (terminal.open) {
       setTerminalShellRestartToken(Date.now())
     }
-  }, [terminalMounted])
+  }, [terminal.open])
 
   const handleNavigate = useCallback((target) => {
     const entry = normalizeNavEntry(
@@ -229,18 +228,32 @@ export default function App() {
       { tab, nodesFocus, settingsSection },
     )
     if (entry.tab === 'terminal') {
-      navigateToTerminal()
+      toggleTerminal()
+      return
+    }
+    if (entry.tab === 'live-logs') {
+      consoleDock.openStream()
       return
     }
     navigateTo(entry)
-  }, [tab, nodesFocus, settingsSection, navigateTo, navigateToTerminal])
+  }, [tab, nodesFocus, settingsSection, navigateTo, toggleTerminal, consoleDock])
 
   useEffect(() => {
     const offTerminal = EventsOn('menu:terminal', () => {
-      navigateToTerminal()
+      toggleTerminal()
     })
-    return () => offTerminal?.()
-  }, [navigateToTerminal])
+    const offLiveLogs = EventsOn('menu:live-logs', () => {
+      consoleDock.openStream()
+    })
+    const offConsoleSplit = EventsOn('menu:console-split', () => {
+      consoleDock.openSplit()
+    })
+    return () => {
+      offTerminal?.()
+      offLiveLogs?.()
+      offConsoleSplit?.()
+    }
+  }, [toggleTerminal, consoleDock])
 
   const logTailEngaged = (view.state?.logTailPods?.length ?? 0) > 0
   const logTailPaused = Boolean(view.state?.logTailPaused)
@@ -324,10 +337,10 @@ export default function App() {
     setFocusKey(key)
     setFocusPinned(Boolean(opts.pinned))
     if (opts.pinned) {
-      stream.openPanel(PANEL_NORMAL)
+      consoleDock.openStream()
       stream.setFollow(true)
     }
-  }, [stream])
+  }, [stream, consoleDock])
 
   const handleClearFocus = useCallback(() => {
     setFocusPinned(false)
@@ -353,12 +366,12 @@ export default function App() {
     setFocusPinned(false)
     stream.resetFilters()
     if (prefs.openStreamOnInvestigate) {
-      stream.openPanel(PANEL_NORMAL)
+      consoleDock.openStream()
     }
     const next = await GetView()
     applyView(next)
     bumpActivity()
-  }, [cluster, stream, prefs, applyView, bumpActivity])
+  }, [cluster, stream, consoleDock, prefs, applyView, bumpActivity])
 
   const handleStartGather = useCallback(async ({ podNames, lineSearch }) => {
     setGatherBusy(true)
@@ -379,13 +392,13 @@ export default function App() {
       const allowed = next.state?.logTailPods?.length ? next.state.logTailPods : names
       stream.selectPods(allowed, { pinned: true })
       stream.setFollow(!q && Boolean(prefs.followLogsByDefault))
-      stream.openPanel(PANEL_NORMAL)
+      consoleDock.openStream()
     } catch (err) {
       setGatherError(String(err))
     } finally {
       setGatherBusy(false)
     }
-  }, [applyView, stream, prefs.followLogsByDefault])
+  }, [applyView, stream, consoleDock, prefs.followLogsByDefault])
 
   const handleStopGather = useCallback(async () => {
     try {
@@ -580,6 +593,13 @@ export default function App() {
       <AppShell
         tab={tab}
         onTabChange={handleNavigate}
+        terminalOpen={consoleDock.expanded && (consoleDock.activeView === 'terminal' || consoleDock.activeView === 'split')}
+        liveLogsOpen={consoleDock.expanded && (consoleDock.activeView === 'stream' || consoleDock.activeView === 'split')}
+        streamLive={{
+          running,
+          logTailEngaged,
+          logTailPaused,
+        }}
         onOpenSettings={() => navigateTo({ tab: 'settings', settingsSection: 'general' })}
         onOpenHelp={() => navigateTo({ tab: 'settings', settingsSection: 'help' })}
         topBarProps={{
@@ -596,6 +616,7 @@ export default function App() {
           activeQuery,
           onStart,
           onStop,
+          onNewWindow,
           prefs,
           onPrefsChange: setPreferences,
           live,
@@ -645,8 +666,8 @@ export default function App() {
     return shell
   }
 
-  const showStream = tab !== 'evidence' && tab !== 'graph' && tab !== 'patterns' && tab !== 'settings' && tab !== 'terminal'
-  const maximized = stream.panelState === 'maximized'
+  const showConsoleDock = running || starting || terminal.open || stream.panelState !== PANEL_CLOSED || consoleDock.expanded
+  const maximized = consoleDock.maximized
 
   const filterLogsFromPatterns = useCallback(async (term) => {
     const q = String(term || '').trim()
@@ -654,7 +675,7 @@ export default function App() {
     stream.setMode('logs')
     if (q) {
       stream.setFollow(false)
-      stream.openPanel(PANEL_NORMAL)
+      consoleDock.openStream()
       navigateTo('incident')
       if (running && !logTailEngaged) {
         const podNames = (view.state?.snapshot?.pods || [])
@@ -670,7 +691,7 @@ export default function App() {
         }
       }
     }
-  }, [stream, running, logTailEngaged, view.state?.snapshot?.pods, applyView])
+  }, [stream, consoleDock, running, logTailEngaged, view.state?.snapshot?.pods, applyView, navigateTo])
 
   return (
     <>
@@ -698,8 +719,6 @@ export default function App() {
         onTerminalShellChange={handleTerminalShellChange}
         onOpenTerminalShellPicker={handleOpenTerminalShellPicker}
         terminalShellRestartToken={terminalShellRestartToken}
-        terminalMounted={terminalMounted}
-        onTerminalMounted={() => setTerminalMounted(true)}
         settingsSection={settingsSection}
         onSettingsSectionChange={setSettingsSection}
         focusKey={focusKey}
@@ -720,56 +739,74 @@ export default function App() {
       />
 
       <div className="stream-dock">
-        {showStream && (
-          <LiveStreamPanel
-            evidence={view.evidence}
-            snapshotPods={view.state?.snapshot?.pods}
-            query={running ? activeQuery : query}
-            running={running}
-            logTailEngaged={logTailEngaged}
-            logTailPaused={logTailPaused}
-            tailPods={view.state?.logTailPods}
-            dropped={view.dropped}
-            updatedAt={view.updatedAt}
-            lastEventAt={view.state?.counters?.lastEventAt}
-            panelState={stream.panelState}
-            height={stream.height}
-            mode={stream.mode}
-            search={stream.search}
-            selectedPods={stream.selectedPods}
-            follow={stream.follow}
-            streamFontSize={prefs.streamFontSize}
-            streamDense={prefs.streamDense}
-            streamWrapLines={prefs.streamWrapLines}
-            onModeChange={stream.setMode}
-            onSearchChange={stream.setSearch}
-            onTogglePod={stream.togglePod}
-            onSelectMatched={stream.selectMatchedPods}
-            onSelectAllPods={stream.selectAllPods}
-            onFollowChange={stream.setFollow}
-            onToggleLogTailPause={handleToggleLogTailPause}
-            onMinimize={stream.minimize}
-            onMaximize={stream.maximize}
-            onRestore={stream.restore}
-            onClose={stream.close}
-            onOpen={stream.openPanel}
-            onResizeStart={stream.startResize}
-            onStartGather={handleStartGather}
-            onStopGather={handleStopGather}
-            onClearLogs={handleClearLogs}
-            gatherBusy={gatherBusy}
-            gatherError={gatherError}
-          />
-        )}
+        <ConsoleDock
+          visible={showConsoleDock}
+          activeView={consoleDock.activeView}
+          expanded={consoleDock.expanded}
+          height={consoleDock.height}
+          maximized={consoleDock.maximized}
+          onSelectView={consoleDock.selectView}
+          onMinimize={consoleDock.minimize}
+          onMaximize={consoleDock.maximize}
+          onRestore={consoleDock.restore}
+          onClose={consoleDock.closeAll}
+          onResizeStart={consoleDock.startResize}
+          streamLive={{
+            running,
+            logTailEngaged,
+            logTailPaused,
+          }}
+          streamProps={{
+            evidence: view.evidence,
+            snapshotPods: view.state?.snapshot?.pods,
+            query: running ? activeQuery : query,
+            running,
+            logTailEngaged,
+            logTailPaused,
+            tailPods: view.state?.logTailPods,
+            dropped: view.dropped,
+            updatedAt: view.updatedAt,
+            lastEventAt: view.state?.counters?.lastEventAt,
+            mode: stream.mode,
+            search: stream.search,
+            selectedPods: stream.selectedPods,
+            follow: stream.follow,
+            streamFontSize: prefs.streamFontSize,
+            streamDense: prefs.streamDense,
+            streamWrapLines: prefs.streamWrapLines,
+            onModeChange: stream.setMode,
+            onSearchChange: stream.setSearch,
+            onTogglePod: stream.togglePod,
+            onSelectMatched: stream.selectMatchedPods,
+            onSelectAllPods: stream.selectAllPods,
+            onFollowChange: stream.setFollow,
+            onToggleLogTailPause: handleToggleLogTailPause,
+            onStartGather: handleStartGather,
+            onStopGather: handleStopGather,
+            onClearLogs: handleClearLogs,
+            gatherBusy,
+            gatherError,
+          }}
+          terminalProps={{
+            cluster,
+            shellPref: prefs.terminalShell,
+            appearance: prefs.terminalAppearance,
+            onChangeShell: handleOpenTerminalShellPicker,
+            shellRestartToken: terminalShellRestartToken,
+          }}
+        />
       </div>
       </div>
 
       <TerminalShellModal
         open={terminalShellPickerOpen}
         initialChoice={prefs.terminalShell || 'system'}
-        confirmLabel={pendingNavAfterShell?.tab === 'terminal' ? 'Open terminal' : 'Save'}
+        confirmLabel={pendingShellPickerAction === 'openTerminal' ? 'Open terminal' : 'Save'}
         onConfirm={handleTerminalShellConfirm}
-        onCancel={() => setTerminalShellPickerOpen(false)}
+        onCancel={() => {
+          setTerminalShellPickerOpen(false)
+          setPendingShellPickerAction(null)
+        }}
       />
 
       <ScopePickerModal

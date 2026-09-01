@@ -22,6 +22,7 @@ export function TopBar({
   activeQuery = '',
   onStart,
   onStop,
+  onNewWindow,
   onOpenSettings,
   onOpenHelp,
   onNavBack,
@@ -178,6 +179,16 @@ export function TopBar({
               title={investigateTitle({ running, starting, queryChanged })}
             >
               {investigateLabel({ running, starting, queryChanged })}
+            </button>
+            <button
+              type="button"
+              className="topbar-search-new-window"
+              onClick={() => onNewWindow?.()}
+              title="Open a new window for another cluster (⌘N)"
+              aria-label="New window"
+            >
+              <span className="topbar-search-new-window-label">New window</span>
+              <kbd className="topbar-search-kbd" aria-hidden="true">⌘N</kbd>
             </button>
             {running && (
               <button

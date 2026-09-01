@@ -9,6 +9,7 @@ export const NAV_ITEMS = [
 export const NAV_ITEMS_SECONDARY = [
   { id: 'graph', label: 'Graph', navLabel: 'Graph', hint: 'Resource relationships' },
   { id: 'terminal', label: 'Terminal', navLabel: 'Terminal', hint: 'Context-aware cluster shell' },
+  { id: 'live-logs', label: 'Live logs', navLabel: 'Live logs', hint: 'Tail container logs from investigation pods' },
 ]
 
 export const SURFACE_META = {
@@ -30,11 +31,15 @@ export const SURFACE_META = {
   },
   evidence: {
     title: 'Evidence',
-    subtitle: 'Raw facts behind Klew conclusions',
+    subtitle: 'Correlated signals and supporting facts',
   },
   graph: {
     title: 'Graph',
     subtitle: 'How affected resources relate',
+  },
+  'live-logs': {
+    title: 'Live logs',
+    subtitle: 'Stream container logs from pods in scope',
   },
   terminal: {
     title: 'Terminal',
