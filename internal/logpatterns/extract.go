@@ -67,8 +67,9 @@ type mineHalf struct {
 }
 
 // Extract mines log patterns and event patterns in parallel (isolated Drain3 trees).
-// snapshot supplies Pod/Node/PVC events for Event Patterns independent of the live log ring.
-func Extract(events []model.EvidenceEvent, snapshot []model.EventRecord, opts Options) model.LogPatterns {
+// snap supplies Pod/Node/PVC events and container logs from the periodic snapshot so
+// pattern mining is not limited to the one-time ring seed or live tail.
+func Extract(events []model.EvidenceEvent, snap SnapshotInput, opts Options) model.LogPatterns {
 	opts = defaultOpts(opts)
 	out := emptyPatterns(opts)
 
@@ -77,11 +78,11 @@ func Extract(events []model.EvidenceEvent, snapshot []model.EventRecord, opts Op
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		logHalf = mineLogs(events, opts)
+		logHalf = mineLogs(mergeSnapshotLogs(events, snap, opts.MaxLines), opts)
 	}()
 	go func() {
 		defer wg.Done()
-		eventHalf = mineEvents(mergeInfraEvents(events, snapshot), opts)
+		eventHalf = mineEvents(mergeInfraEvents(events, snap.Events), opts)
 	}()
 	wg.Wait()
 

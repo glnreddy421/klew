@@ -20,6 +20,7 @@ export function TerminalPanel({
   onResizeStart,
   onChangeShell,
   shellRestartToken = 0,
+  embedded = false,
 }) {
   const isWorkspace = layout === 'workspace'
   const isOpen = open && panelState !== PANEL_CLOSED
@@ -53,8 +54,8 @@ export function TerminalPanel({
     return null
   }
 
-  const maximized = !isWorkspace && panelState === PANEL_MAXIMIZED
-  const minimized = !isWorkspace && panelState === PANEL_MINIMIZED
+  const maximized = !embedded && panelState === PANEL_MAXIMIZED
+  const minimized = !embedded && panelState === PANEL_MINIMIZED
   const appearanceId = normalizeTerminalAppearance(appearance)
 
   const handleTabState = (id, patch) => {
@@ -66,19 +67,20 @@ export function TerminalPanel({
       className={[
         'stream-panel',
         'terminal-panel',
+        embedded ? 'terminal-panel-embedded' : '',
         `terminal-theme-${appearanceId}`,
         isWorkspace ? 'terminal-panel-workspace' : '',
         maximized ? 'maximized' : '',
         minimized ? 'collapsed' : '',
       ].filter(Boolean).join(' ')}
       style={{
-        ...(!isWorkspace && !maximized && !minimized ? { height } : null),
+        ...(!maximized && !minimized && height ? { height } : null),
         ...terminalAppearanceStyle(appearanceId),
       }}
       aria-label="Cluster terminal"
     >
       <header className="stream-header terminal-header">
-        {!isWorkspace && !minimized && !maximized && (
+        {!minimized && !maximized && (
           <div
             className="stream-resize-handle"
             onMouseDown={onResizeStart}
@@ -115,19 +117,21 @@ export function TerminalPanel({
           >
             Restart
           </button>
-          {!isWorkspace && (
+          {onClose && !embedded ? (
+            <button type="button" className="stream-icon-btn" onClick={onClose} aria-label="Close terminal">×</button>
+          ) : null}
+          {!embedded && (
             <>
-              {minimized ? (
-                <button type="button" className="stream-icon-btn" onClick={onRestore} aria-label="Expand">▲</button>
-              ) : (
-                <button type="button" className="stream-icon-btn" onClick={onMinimize} aria-label="Minimize">▼</button>
-              )}
-              {!maximized ? (
-                <button type="button" className="stream-icon-btn" onClick={onMaximize} aria-label="Maximize">⛶</button>
-              ) : (
-                <button type="button" className="stream-icon-btn" onClick={onRestore} aria-label="Restore">⛶</button>
-              )}
-              <button type="button" className="stream-icon-btn" onClick={onClose} aria-label="Close terminal">×</button>
+          {minimized ? (
+            <button type="button" className="stream-icon-btn" onClick={onRestore} aria-label="Expand">▲</button>
+          ) : (
+            <button type="button" className="stream-icon-btn" onClick={onMinimize} aria-label="Minimize">▼</button>
+          )}
+          {!maximized ? (
+            <button type="button" className="stream-icon-btn" onClick={onMaximize} aria-label="Maximize">⛶</button>
+          ) : (
+            <button type="button" className="stream-icon-btn" onClick={onRestore} aria-label="Restore">⛶</button>
+          )}
             </>
           )}
         </div>

@@ -16,6 +16,9 @@ const INSPECTOR_AUTO_WIDTH = 440
 export function AppShell({
   tab,
   onTabChange,
+  terminalOpen = false,
+  liveLogsOpen = false,
+  streamLive = null,
   onOpenSettings,
   onOpenHelp,
   topBarProps,
@@ -200,6 +203,9 @@ export function AppShell({
       <div className="app-shell-body">
         <ActivityRail
           active={tab}
+          terminalOpen={terminalOpen}
+          liveLogsOpen={liveLogsOpen}
+          streamLive={streamLive}
           onSelect={onTabChange}
           collapsed={layout.railCollapsed}
           onToggleCollapse={toggleRail}
@@ -207,7 +213,7 @@ export function AppShell({
 
         <div className="app-shell-main">
           <div className={`app-shell-panes ${inspectorBottom ? 'inspector-bottom' : 'inspector-right'}`}>
-            {showExplorer && tab !== 'settings' && tab !== 'incident' && tab !== 'nodes' && tab !== 'terminal' && (
+            {showExplorer && tab !== 'settings' && tab !== 'incident' && tab !== 'nodes' && (
               <>
                 <ContextExplorer
                   tab={tab}

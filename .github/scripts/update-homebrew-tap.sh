@@ -58,7 +58,9 @@ class Klew < Formula
   end
 
   def install
-    app = if (buildpath/"Klew.app").directory?
+    app = if (buildpath/"Contents/MacOS").directory?
+      buildpath
+    elsif (buildpath/"Klew.app").directory?
       buildpath/"Klew.app"
     else
       buildpath.glob("*.app").first

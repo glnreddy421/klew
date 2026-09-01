@@ -12,7 +12,6 @@ import { NodesView } from './NodesView'
 import { FailuresView } from './FailuresView'
 import { EvidenceView } from './EvidenceView'
 import { SettingsView } from './SettingsView'
-import { TerminalView } from './TerminalView'
 import { WorkspaceChrome } from '../components/WorkspaceChrome'
 import { CollectingMatchesSplash } from '../components/incident/CollectingMatchesSplash'
 import { deriveMatchRows, getMatchedObjects } from '../lib/matches'
@@ -42,8 +41,6 @@ export function MainContent({
   onTerminalShellChange,
   onOpenTerminalShellPicker,
   terminalShellRestartToken = 0,
-  terminalMounted = false,
-  onTerminalMounted,
   settingsSection = 'general',
   onSettingsSectionChange,
   focusKey,
@@ -88,13 +85,7 @@ export function MainContent({
     onNavigate?.(target)
   }
 
-  useEffect(() => {
-    if (tab === 'terminal') {
-      onTerminalMounted?.()
-    }
-  }, [tab, onTerminalMounted])
-
-  if (!running && !starting && tab !== 'settings' && tab !== 'terminal') {
+  if (!running && !starting && tab !== 'settings') {
     const welcome = <WelcomePanel onOpenSettings={onOpenSettings} />
     return renderShell?.({ workspace: welcome, showInspector: false }) ?? welcome
   }
@@ -120,22 +111,20 @@ export function MainContent({
 
   const workspaceInner = (
     <>
-      {tab !== 'terminal' && (
-        <WorkspaceChrome
-          tab={tab}
-          cluster={cluster}
-          running={running}
-          view={view}
-          inspectKey={inspectKey}
-          inspectRow={inspectRow}
-          focusPinned={focusPinned}
-          drillDown={drillDown}
-          onClearFocus={onClearFocus}
-          timeWindowLabel={timeWindowLabel}
-          live={live}
-          compact
-        />
-      )}
+      <WorkspaceChrome
+        tab={tab}
+        cluster={cluster}
+        running={running}
+        view={view}
+        inspectKey={inspectKey}
+        inspectRow={inspectRow}
+        focusPinned={focusPinned}
+        drillDown={drillDown}
+        onClearFocus={onClearFocus}
+        timeWindowLabel={timeWindowLabel}
+        live={live}
+        compact
+      />
       <div className="content-body content-body-workbench">
         {tab === 'incident' && (
           <OverviewView
@@ -202,17 +191,7 @@ export function MainContent({
 
   const workspace = (
     <div className="main-content">
-      {tab !== 'terminal' && workspaceInner}
-      {terminalMounted && (
-        <TerminalView
-          cluster={cluster}
-          shellPref={prefs?.terminalShell}
-          appearance={prefs?.terminalAppearance}
-          onChangeShell={onOpenTerminalShellPicker}
-          shellRestartToken={terminalShellRestartToken}
-          hidden={tab !== 'terminal'}
-        />
-      )}
+      {workspaceInner}
     </div>
   )
 

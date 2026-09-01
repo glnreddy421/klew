@@ -5,20 +5,30 @@ export const TERMINAL_MINIMIZED = 'minimized'
 export const TERMINAL_NORMAL = 'normal'
 export const TERMINAL_MAXIMIZED = 'maximized'
 
-const DEFAULT_HEIGHT = 280
 const MIN_HEIGHT = 140
+const DEFAULT_HEIGHT_RATIO = 0.5
+const MAX_HEIGHT_RATIO = 0.85
 
-export function useTerminalPanel() {
-  const [open, setOpen] = useState(false)
-  const [panelState, setPanelState] = useState(TERMINAL_CLOSED)
-  const [height, setHeight] = useState(DEFAULT_HEIGHT)
+function defaultTerminalHeight() {
+  return Math.max(MIN_HEIGHT, Math.floor(window.innerHeight * DEFAULT_HEIGHT_RATIO))
+}
+
+function maxTerminalHeight() {
+  return Math.max(MIN_HEIGHT, Math.floor(window.innerHeight * MAX_HEIGHT_RATIO))
+}
+
+export function useTerminalPanel({ defaultOpen = false } = {}) {
+  const [open, setOpen] = useState(defaultOpen)
+  const [panelState, setPanelState] = useState(defaultOpen ? TERMINAL_NORMAL : TERMINAL_CLOSED)
+  const [height, setHeight] = useState(defaultTerminalHeight)
   const dragRef = useRef(null)
 
-  const maxHeight = () => Math.max(MIN_HEIGHT, Math.floor(window.innerHeight * 0.72))
+  const maxHeight = maxTerminalHeight
 
   const openPanel = useCallback(() => {
     setOpen(true)
     setPanelState(TERMINAL_NORMAL)
+    setHeight((h) => (h > 0 ? h : defaultTerminalHeight()))
   }, [])
 
   const close = useCallback(() => {
@@ -27,9 +37,14 @@ export function useTerminalPanel() {
   }, [])
 
   const toggle = useCallback(() => {
-    setOpen((v) => {
-      const next = !v
-      setPanelState(next ? TERMINAL_NORMAL : TERMINAL_CLOSED)
+    setOpen((wasOpen) => {
+      const next = !wasOpen
+      if (next) {
+        setPanelState(TERMINAL_NORMAL)
+        setHeight((h) => (h > 0 ? h : defaultTerminalHeight()))
+      } else {
+        setPanelState(TERMINAL_CLOSED)
+      }
       return next
     })
   }, [])

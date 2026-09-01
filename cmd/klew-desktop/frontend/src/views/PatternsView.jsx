@@ -100,11 +100,6 @@ export function PatternsView({
       )}
 
       <EvidenceBoardTeaser board={patterns?.evidenceBoard} onOpen={onOpenEvidence} />
-      <p className="patterns-kind-hint muted">
-        {kind === 'logs'
-          ? 'Templates from container logs. Click a pattern to expand samples; click a word or field to filter Live tail.'
-          : 'Templates from Pod, Node, and PVC Kubernetes events.'}
-      </p>
 
       <div className="patterns-kind-body">
         {filterEmpty ? (

@@ -220,7 +220,11 @@ func (r *StateStore) recompute() {
 	// the live ring is dominated by container log lines.
 	if r.lastPatternsAt.IsZero() || now.Sub(r.lastPatternsAt) >= logPatternsMinInterval {
 		patternEvents := events
-		lp := logpatterns.Extract(patternEvents, r.state.Snapshot.Events, logpatterns.Options{})
+		lp := logpatterns.Extract(patternEvents, logpatterns.SnapshotInput{
+			Events:       r.state.Snapshot.Events,
+			Logs:         r.state.Snapshot.Logs,
+			PreviousLogs: r.state.Snapshot.PreviousLogs,
+		}, logpatterns.Options{})
 		r.state.LogPatterns = &lp
 		r.lastPatternsAt = now
 	}

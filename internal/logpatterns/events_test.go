@@ -33,7 +33,7 @@ func TestExtractEventPatternsAllowlist(t *testing.T) {
 			Message: "api-1/app: dial tcp 10.0.0.1:5432: connection refused", Severity: model.SeverityHigh, Count: 1,
 		},
 	}
-	out := logpatterns.Extract(ev, nil, logpatterns.Options{})
+	out := logpatterns.Extract(ev, logpatterns.SnapshotInput{}, logpatterns.Options{})
 	if out.EventWindow.Scope != "infra" {
 		t.Fatalf("eventWindow.scope=%s", out.EventWindow.Scope)
 	}
@@ -73,7 +73,7 @@ func TestMergeSnapshotEventsFeedsExtract(t *testing.T) {
 		Timestamp: model.TimestampFrom(now), Reason: "ScalingReplicaSet", Message: "scaled", Count: 1,
 		InvolvedObject: model.ObjectRef{Kind: "Deployment", Name: "api", Namespace: "ns"},
 	}}
-	out := logpatterns.Extract(live, snap, logpatterns.Options{})
+	out := logpatterns.Extract(live, logpatterns.SnapshotInput{Events: snap}, logpatterns.Options{})
 	if len(out.EventTemplates) == 0 {
 		t.Fatalf("expected event templates from snapshot merge, got %#v", out)
 	}
@@ -89,7 +89,7 @@ func TestFormatEventPatternCompound(t *testing.T) {
 		Timestamp: model.TimestampFrom(now), SourceType: model.SourceK8sEvent, SourceKind: "Pod", SourceName: "p",
 		Reason: "BackOff", Message: "Back-off restarting failed container", Severity: model.SeverityHigh, Count: 1,
 	}}
-	out := logpatterns.Extract(ev, nil, logpatterns.Options{})
+	out := logpatterns.Extract(ev, logpatterns.SnapshotInput{}, logpatterns.Options{})
 	found := false
 	for _, tpl := range out.EventTemplates {
 		if strings.Contains(tpl.Template, "BackOff") || strings.Contains(tpl.Template, "Back-off") {
