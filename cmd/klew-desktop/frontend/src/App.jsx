@@ -12,6 +12,7 @@ import {
   ClearLogs,
   SetAutoRefresh,
   SetPollEverySec,
+  SetKubectlOptions,
 } from '../wailsjs/go/main/App'
 import { EventsOn } from '../wailsjs/runtime/runtime'
 import { emptyView } from './lib/constants'
@@ -111,6 +112,15 @@ export default function App() {
   const { themeId, setTheme } = useTheme()
   const { prefs, setPreferences } = usePreferences()
   const activeQueryRef = useRef('')
+
+  useEffect(() => {
+    if (typeof SetKubectlOptions !== 'function') return
+    SetKubectlOptions(
+      prefs.useBundledKubectl !== false,
+      prefs.useBundledKubectl ? '' : (prefs.kubectlPath || ''),
+      prefs.matchClusterKubectl !== false,
+    ).catch(() => {})
+  }, [prefs.useBundledKubectl, prefs.kubectlPath, prefs.matchClusterKubectl])
 
   useEffect(() => {
     activeQueryRef.current = activeQuery

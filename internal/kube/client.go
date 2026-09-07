@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -24,14 +25,24 @@ type Client struct {
 	ContextNamespace string
 }
 
+// configureLoadingRules mirrors configLoader: empty path uses KUBECONFIG env merge;
+// multi-file KUBECONFIG values must not be passed as ExplicitPath.
+func configureLoadingRules(kubeconfig string) *clientcmd.ClientConfigLoadingRules {
+	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	kubeconfig = strings.TrimSpace(kubeconfig)
+	if kubeconfig == "" {
+		return loadingRules
+	}
+	if strings.Contains(kubeconfig, string(os.PathListSeparator)) {
+		return loadingRules
+	}
+	loadingRules.ExplicitPath = kubeconfig
+	return loadingRules
+}
+
 // NewFromFlags builds a client from kubeconfig flags.
 func NewFromFlags(kubeconfig, context, namespace string) (*Client, error) {
-	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
-	if kubeconfig != "" {
-		loadingRules.ExplicitPath = kubeconfig
-	} else if home := homedir.HomeDir(); home != "" {
-		loadingRules.ExplicitPath = filepath.Join(home, ".kube", "config")
-	}
+	loadingRules := configureLoadingRules(kubeconfig)
 
 	overrides := &clientcmd.ConfigOverrides{}
 	if context != "" {

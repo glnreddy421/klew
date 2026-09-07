@@ -58,6 +58,13 @@ macos_sign_app() {
 
   binary="$app/Contents/MacOS/Klew"
   frameworks_dir="$app/Contents/Frameworks"
+  kubectl_bin="$app/Contents/Resources/kubectl/kubectl"
+
+  if [[ -f "$kubectl_bin" ]]; then
+    codesign --force --options runtime --timestamp \
+      --sign "$identity" \
+      "$kubectl_bin"
+  fi
 
   if [[ -d "$frameworks_dir" ]]; then
     while IFS= read -r -d '' item; do

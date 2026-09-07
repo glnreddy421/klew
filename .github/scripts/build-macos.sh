@@ -52,3 +52,9 @@ if [[ -z "${APP:-}" || ! -d "$APP" ]]; then
 fi
 
 echo "Built ${APP} (${GOARCH})"
+
+KUBECTL_DIR="${APP}/Contents/Resources/kubectl"
+mkdir -p "$KUBECTL_DIR"
+chmod +x "$SCRIPT_DIR/fetch-kubectl.sh"
+"$SCRIPT_DIR/fetch-kubectl.sh" "$GOARCH" "$KUBECTL_DIR/kubectl"
+echo "Bundled kubectl into ${KUBECTL_DIR}"

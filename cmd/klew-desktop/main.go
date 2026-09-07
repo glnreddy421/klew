@@ -4,6 +4,7 @@ import (
 	"embed"
 	"flag"
 
+	"github.com/glnreddy421/klew/internal/kube"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
@@ -18,6 +19,8 @@ func main() {
 	namespace := flag.String("namespace", "", "initial namespace for this window")
 	kubeconfig := flag.String("kubeconfig", "", "kubeconfig path override for this window")
 	flag.Parse()
+
+	kube.BootstrapLoginShellEnv()
 
 	app := NewApp(bootOptions{
 		Context:    *contextName,

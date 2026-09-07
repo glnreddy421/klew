@@ -4,7 +4,7 @@ import { WorkspaceLayoutPicker } from '../components/incident/WorkspaceLayoutPic
 import { TerminalShellSelect } from '../components/TerminalShellSelect'
 import { TerminalAppearancePicker } from '../components/TerminalAppearancePicker'
 import { SETTINGS_SECTIONS } from '../lib/preferences'
-import { OpenKubeconfigDir, SetKubeconfigPath } from '../../wailsjs/go/main/App'
+import { OpenKubeconfigDir, SetKubeconfigPath, GetKubectlInfo, SetKubectlOptions } from '../../wailsjs/go/main/App'
 import { BrowserOpenURL } from '../../wailsjs/runtime/runtime'
 
 const HELP_LINKS = [
@@ -37,10 +37,23 @@ export function SettingsView({
   const [kubeDraft, setKubeDraft] = useState(prefs.kubeconfigPath || cluster?.kubeconfigPath || '')
   const [kubeBusy, setKubeBusy] = useState(false)
   const [kubeMsg, setKubeMsg] = useState('')
+  const [kubectlDraft, setKubectlDraft] = useState(prefs.kubectlPath || '')
+  const [kubectlBusy, setKubectlBusy] = useState(false)
+  const [kubectlMsg, setKubectlMsg] = useState('')
+  const [kubectlInfo, setKubectlInfo] = useState(null)
 
   useEffect(() => {
     setKubeDraft(prefs.kubeconfigPath || cluster?.kubeconfigPath || '')
   }, [prefs.kubeconfigPath, cluster?.kubeconfigPath])
+
+  useEffect(() => {
+    setKubectlDraft(prefs.kubectlPath || '')
+  }, [prefs.kubectlPath])
+
+  useEffect(() => {
+    if (section !== 'kubernetes') return
+    GetKubectlInfo?.().then(setKubectlInfo).catch(() => {})
+  }, [section, cluster?.syncedAt, prefs.useBundledKubectl, prefs.kubectlPath, prefs.matchClusterKubectl])
 
   const setSection = (id) => onSectionChange?.(id)
 
@@ -61,6 +74,37 @@ export function SettingsView({
       setKubeMsg(err?.message || String(err) || 'Failed to apply kubeconfig')
     } finally {
       setKubeBusy(false)
+    }
+  }
+
+  const applyKubectl = async (patch = {}) => {
+    const useBundled = patch.useBundledKubectl ?? prefs.useBundledKubectl
+    const matchCluster = patch.matchClusterKubectl ?? prefs.matchClusterKubectl
+    const customPath = (patch.kubectlPath ?? kubectlDraft).trim()
+    setKubectlBusy(true)
+    setKubectlMsg('')
+    try {
+      set({
+        useBundledKubectl: useBundled,
+        matchClusterKubectl: matchCluster,
+        kubectlPath: useBundled ? '' : customPath,
+      })
+      if (typeof SetKubectlOptions === 'function') {
+        const info = await SetKubectlOptions(useBundled, useBundled ? '' : customPath, matchCluster)
+        setKubectlInfo(info)
+      }
+      await onClusterRefresh?.()
+      if (useBundled) {
+        setKubectlMsg('Using bundled kubectl.')
+      } else if (customPath) {
+        setKubectlMsg('Custom kubectl path applied.')
+      } else {
+        setKubectlMsg('Using kubectl from system PATH.')
+      }
+    } catch (err) {
+      setKubectlMsg(err?.message || String(err) || 'Failed to apply kubectl settings')
+    } finally {
+      setKubectlBusy(false)
     }
   }
 
@@ -126,7 +170,10 @@ export function SettingsView({
             <div className="settings-about">
               <h4>About</h4>
               <p className="muted">
-                Install: <code>brew tap glnreddy421/klew &amp;&amp; brew install klew</code>
+                Install: <code>brew tap glnreddy421/klew &amp;&amp; brew install --cask klew</code>
+              </p>
+              <p className="muted">
+                Upgrade: <code>brew update &amp;&amp; brew upgrade --cask klew</code>
               </p>
               <p className="muted">
                 Releases:{' '}
@@ -267,6 +314,58 @@ export function SettingsView({
               <ReadOnly k="Cluster" v={cluster?.cluster || '—'} />
               <ReadOnly k="User" v={cluster?.user || '—'} />
               <ReadOnly k="Namespace" v={cluster?.selectedNamespace || '—'} />
+            </div>
+
+            <h4 className="settings-subhead">kubectl binary</h4>
+            <Toggle
+              label="Use bundled kubectl (recommended)"
+              checked={prefs.useBundledKubectl}
+              onChange={(v) => applyKubectl({ useBundledKubectl: v })}
+            />
+            <Toggle
+              label="Download kubectl matching cluster version when needed"
+              checked={prefs.matchClusterKubectl}
+              disabled={!prefs.useBundledKubectl || kubectlBusy}
+              onChange={(v) => applyKubectl({ matchClusterKubectl: v })}
+            />
+            <p className="settings-note muted">
+              Only downloads when the cluster is more than one minor version away from the bundled kubectl (Kubernetes skew policy).
+            </p>
+            {!prefs.useBundledKubectl && (
+              <label className="settings-field">
+                <span className="settings-field-label">Custom kubectl path</span>
+                <div className="settings-field-row">
+                  <input
+                    type="text"
+                    className="settings-input"
+                    value={kubectlDraft}
+                    placeholder={kubectlInfo?.systemPath || '/opt/homebrew/bin/kubectl'}
+                    onChange={(e) => setKubectlDraft(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    disabled={kubectlBusy}
+                    onClick={() => applyKubectl()}
+                  >
+                    Apply
+                  </button>
+                </div>
+                <span className="settings-field-hint">
+                  Leave empty to use kubectl from your shell PATH.
+                </span>
+              </label>
+            )}
+            {kubectlMsg && <span className="settings-field-hint">{kubectlMsg}</span>}
+            <div className="settings-readonly">
+              <ReadOnly k="Active kubectl" v={kubectlInfo?.activePath || '—'} />
+              <ReadOnly k="Source" v={kubectlInfo?.source || '—'} />
+              <ReadOnly k="Version" v={kubectlInfo?.version || '—'} />
+              <ReadOnly k="Cluster version" v={kubectlInfo?.clusterVersion || '—'} />
+              <ReadOnly k="Skew detected" v={kubectlInfo?.clusterSkewDetected ? 'yes' : 'no'} />
+              <ReadOnly k="Bundled path" v={kubectlInfo?.bundledPath || '—'} />
+              <ReadOnly k="Cluster-matched path" v={kubectlInfo?.clusterMatchedPath || '—'} />
+              <ReadOnly k="System path" v={kubectlInfo?.systemPath || '—'} />
             </div>
 
             <Toggle

@@ -7,6 +7,7 @@ import (
 	"sort"
 	"time"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/tools/clientcmd"
 
 	"github.com/glnreddy421/klew/internal/model"
@@ -33,6 +34,7 @@ type ClusterState struct {
 	Namespaces        []string        `json:"namespaces"`
 	SyncedAt          model.Timestamp       `json:"syncedAt"`
 	SyncError         string          `json:"syncError,omitempty"`
+	SyncWarning       string          `json:"syncWarning,omitempty"`
 }
 
 // LoadKubeConfigSnapshot reads contexts from kubeconfig on disk (no cluster calls).
@@ -127,10 +129,27 @@ func RefreshClusterState(ctx context.Context, kubeconfigPath, selectedContext, s
 		return base
 	}
 
+	clusterVersion := ""
+	if ver, verr := client.Clientset.Discovery().ServerVersion(); verr == nil && ver != nil {
+		clusterVersion = ver.GitVersion
+	}
+
 	nss, err := ListNamespaces(ctx, client)
 	if err != nil {
-		base.SyncError = fmt.Sprintf("list namespaces: %v", err)
+		if fallback, kerr := ListNamespacesViaKubectl(ctx, base.KubeconfigPath, base.SelectedContext, clusterVersion); kerr == nil {
+			nss = fallback
+			err = nil
+		}
+	}
+	if err != nil {
 		base.Namespaces = fallbackNamespaces(base.SelectedNamespace)
+		if isNamespaceListRestricted(err) {
+			base.SyncWarning = "Cannot list all namespaces with this identity. Using the context namespace — type another namespace if needed."
+			base.SyncError = ""
+		} else {
+			base.SyncError = fmt.Sprintf("list namespaces: %v", err)
+			base.SyncWarning = ""
+		}
 		base.SyncedAt = model.TimestampFrom(time.Now().UTC())
 		return base
 	}
@@ -138,8 +157,13 @@ func RefreshClusterState(ctx context.Context, kubeconfigPath, selectedContext, s
 	base.Namespaces = nss
 	base.SelectedNamespace = pickNamespace(nss, base.SelectedNamespace)
 	base.SyncError = ""
+	base.SyncWarning = ""
 	base.SyncedAt = model.TimestampFrom(time.Now().UTC())
 	return base
+}
+
+func isNamespaceListRestricted(err error) bool {
+	return apierrors.IsForbidden(err) || apierrors.IsUnauthorized(err)
 }
 
 func configLoader(kubeconfigPath string) (clientcmd.ClientConfig, string, error) {

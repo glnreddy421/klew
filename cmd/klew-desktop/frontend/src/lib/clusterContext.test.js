@@ -41,6 +41,22 @@ test('buildClusterContext includes scope path and pod stats when running', () =>
   assert.ok(ctx.showBar)
 })
 
+test('buildClusterContext surfaces sync warnings without settings action', () => {
+  const ctx = buildClusterContext(
+    {
+      ...cluster,
+      syncWarning: 'Cannot list all namespaces',
+      syncedAt: new Date().toISOString(),
+    },
+    {},
+    { running: false },
+  )
+  const syncChip = ctx.chips.find((c) => c.id === 'sync')
+  assert.equal(syncChip.tone, 'warn')
+  assert.equal(syncChip.label, 'Limited namespace visibility')
+  assert.equal(syncChip.action, undefined)
+})
+
 test('buildClusterContext surfaces sync errors with settings action', () => {
   const ctx = buildClusterContext(
     { ...cluster, syncError: 'forbidden', syncedAt: null },

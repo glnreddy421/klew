@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/glnreddy421/klew/internal/kube"
+
 	"github.com/creack/pty"
 	"github.com/google/uuid"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -143,7 +145,7 @@ func (m *terminalManager) start(opts TerminalOptions) (TerminalInfo, error) {
 		namespace = "default"
 	}
 
-	cmd, err := buildClusterShellCommand(shell, kubeconfig, contextName, namespace)
+	cmd, err := buildClusterShellCommand(shell, kubeconfig, contextName, namespace, m.app.activeClusterVersion())
 	if err != nil {
 		return TerminalInfo{}, err
 	}
@@ -275,14 +277,14 @@ func (m *terminalManager) waitExit(id string, sess *terminalSession) {
 	}
 }
 
-func buildClusterShellCommand(shell, kubeconfig, contextName, namespace string) (*exec.Cmd, error) {
+func buildClusterShellCommand(shell, kubeconfig, contextName, namespace, clusterVersion string) (*exec.Cmd, error) {
 	shell = strings.TrimSpace(shell)
 	if shell == "" {
 		return nil, fmt.Errorf("no shell available")
 	}
 
 	if goruntime.GOOS == "windows" {
-		return buildWindowsShellCommand(shell, kubeconfig, contextName, namespace)
+		return buildWindowsShellCommand(shell, kubeconfig, contextName, namespace, clusterVersion)
 	}
 
 	script := buildUnixInitScript(shell, kubeconfig, contextName, namespace)
@@ -291,14 +293,16 @@ func buildClusterShellCommand(shell, kubeconfig, contextName, namespace string) 
 		wrapper = shell
 	}
 	cmd := exec.Command(wrapper, "-l", "-c", script)
-	cmd.Env = clusterShellEnv(kubeconfig, contextName, namespace)
+	cmd.Env = clusterShellEnv(kubeconfig, contextName, namespace, clusterVersion)
 	cmd.Dir = homeDir()
 	return cmd, nil
 }
 
 func buildUnixInitScript(shell, kubeconfig, contextName, namespace string) string {
 	var b strings.Builder
-	b.WriteString("export KUBECONFIG=" + shellQuote(kubeconfig) + "; ")
+	if kubeconfig != "" {
+		b.WriteString("export KUBECONFIG=" + shellQuote(kubeconfig) + "; ")
+	}
 	if contextName != "" {
 		b.WriteString("command -v kubectl >/dev/null 2>&1 && kubectl config use-context ")
 		b.WriteString(shellQuote(contextName))
@@ -334,19 +338,28 @@ func filepathBase(path string) string {
 	return path
 }
 
-func buildWindowsShellCommand(shell, kubeconfig, contextName, namespace string) (*exec.Cmd, error) {
+func buildWindowsShellCommand(shell, kubeconfig, contextName, namespace, clusterVersion string) (*exec.Cmd, error) {
 	ps := fmt.Sprintf(
 		"$env:KUBECONFIG=%q; if (Get-Command kubectl -ErrorAction SilentlyContinue) { kubectl config use-context %q 2>$null; kubectl config set-context --current --namespace=%q 2>$null }; Write-Host \"Klew cluster shell — context: %s · namespace: %s\"; %s",
 		kubeconfig, contextName, namespace, contextName, namespace, shell,
 	)
 	cmd := exec.Command("powershell.exe", "-NoLogo", "-NoExit", "-Command", ps)
-	cmd.Env = clusterShellEnv(kubeconfig, contextName, namespace)
+	cmd.Env = clusterShellEnv(kubeconfig, contextName, namespace, clusterVersion)
 	cmd.Dir = homeDir()
 	return cmd, nil
 }
 
-func clusterShellEnv(kubeconfig, contextName, namespace string) []string {
+func clusterShellEnv(kubeconfig, contextName, namespace, clusterVersion string) []string {
 	env := os.Environ()
+	if dir := kube.KubectlDirForCluster(clusterVersion); dir != "" {
+		path := os.Getenv("PATH")
+		if path == "" {
+			path = dir
+		} else {
+			path = dir + string(os.PathListSeparator) + path
+		}
+		env = appendEnv(env, "PATH="+path)
+	}
 	if kubeconfig != "" {
 		env = appendEnv(env, "KUBECONFIG="+kubeconfig)
 	}

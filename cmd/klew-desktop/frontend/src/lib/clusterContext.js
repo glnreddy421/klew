@@ -82,6 +82,13 @@ function buildSyncState(cluster, syncing) {
       action: 'settings',
     }
   }
+  if (cluster.syncWarning) {
+    return {
+      status: 'warn',
+      label: 'Limited namespace visibility',
+      title: cluster.syncWarning,
+    }
+  }
   if (cluster.syncedAt) {
     return {
       status: 'ok',
@@ -130,7 +137,7 @@ function buildChips({
   chips.push({
     id: 'sync',
     label: sync.label,
-    tone: sync.status === 'error' ? 'crit' : sync.status === 'ok' ? 'ok' : 'muted',
+    tone: sync.status === 'error' ? 'crit' : sync.status === 'warn' ? 'warn' : sync.status === 'ok' ? 'ok' : 'muted',
     title: sync.title || sync.label,
     action: sync.action,
   })

@@ -525,6 +525,7 @@ export namespace kube {
 	    namespaces: string[];
 	    syncedAt: string;
 	    syncError?: string;
+	    syncWarning?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new ClusterState(source);
@@ -542,6 +543,7 @@ export namespace kube {
 	        this.namespaces = source["namespaces"];
 	        this.syncedAt = source["syncedAt"];
 	        this.syncError = source["syncError"];
+	        this.syncWarning = source["syncWarning"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -561,6 +563,36 @@ export namespace kube {
 		    }
 		    return a;
 		}
+	}
+	export class KubectlInfo {
+	    activePath: string;
+	    bundledPath: string;
+	    systemPath: string;
+	    clusterMatchedPath?: string;
+	    source: string;
+	    version?: string;
+	    clusterVersion?: string;
+	    matchClusterKubectl: boolean;
+	    clusterSkewDetected: boolean;
+	    available: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new KubectlInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.activePath = source["activePath"];
+	        this.bundledPath = source["bundledPath"];
+	        this.systemPath = source["systemPath"];
+	        this.clusterMatchedPath = source["clusterMatchedPath"];
+	        this.source = source["source"];
+	        this.version = source["version"];
+	        this.clusterVersion = source["clusterVersion"];
+	        this.matchClusterKubectl = source["matchClusterKubectl"];
+	        this.clusterSkewDetected = source["clusterSkewDetected"];
+	        this.available = source["available"];
+	    }
 	}
 	export class ClusterVersionGroup {
 	    count: number;

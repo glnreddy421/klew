@@ -30,7 +30,7 @@ Built for engineers on call, SREs, and platform teams who already use `kubectl` 
 
 ## Install
 
-**Requirements:** macOS 12+, a valid kubeconfig (`~/.kube/config` by default).
+**Requirements:** macOS 12+, a valid kubeconfig (`~/.kube/config` or `KUBECONFIG` from your shell profile).
 
 ### Download
 
@@ -45,10 +45,30 @@ Open the DMG and drag **Klew** to Applications.
 
 ### Homebrew
 
+Installs **Klew.app** to `/Applications` (standard macOS cask).
+
 ```bash
 brew tap glnreddy421/klew
-brew install klew
-open "$(brew --prefix)/opt/klew/Klew.app"
+brew install --cask klew
+```
+
+**Upgrade** (after a new release):
+
+```bash
+brew update && brew upgrade --cask klew
+```
+
+**Uninstall:**
+
+```bash
+brew uninstall --cask klew
+```
+
+If you installed an older **formula** build (`brew install klew` without `--cask`), migrate once:
+
+```bash
+brew uninstall klew
+brew install --cask klew
 ```
 
 ## Quick start
