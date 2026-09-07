@@ -4,6 +4,13 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 
 ## [Unreleased]
 
+## [0.1.10] — 2026-09-07
+
+### Investigation UX
+
+- Default to **Resources** when an investigation starts so you can browse the catalog immediately.
+- Show a non-blocking “correlating in the background” banner while matches load; Overview still shows full progress if you switch there.
+
 ## [0.1.9] — 2026-09-07
 
 ### Investigation scope (large clusters)
@@ -105,6 +112,7 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 
 - Prior desktop and CLI improvements; see git history and GitHub releases.
 
+[0.1.10]: https://github.com/glnreddy421/klew/releases/tag/v0.1.10
 [0.1.9]: https://github.com/glnreddy421/klew/releases/tag/v0.1.9
 [0.1.8]: https://github.com/glnreddy421/klew/releases/tag/v0.1.8
 [0.1.7]: https://github.com/glnreddy421/klew/releases/tag/v0.1.7
