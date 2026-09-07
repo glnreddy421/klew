@@ -9,7 +9,7 @@ import { DEFAULT_TERMINAL_APPEARANCE, normalizeTerminalAppearance } from './term
 export const PREFS_STORAGE_KEY = 'klew.desktop.preferences'
 
 /** Bump when defaults change so existing localStorage picks up migrations once. */
-export const PREFS_VERSION = 7
+export const PREFS_VERSION = 8
 
 /** Investigation window lengths supported by the engine (minutes). */
 export const WINDOW_MIN_OPTIONS = [5, 15, 30, 60]
@@ -56,7 +56,6 @@ export function defaultPreferences() {
     useBundledKubectl: true,
     kubectlPath: '', // custom path when bundled is off; empty = system PATH
     matchClusterKubectl: true, // download kubectl when cluster skew exceeds bundled
-    allNamespaces: false,
     useMetricsServer: true,
     metricsApiGroup: 'metrics.k8s.io', // informational / future override
 
@@ -111,6 +110,7 @@ function migratePreferences(parsed) {
   if (version < 7) {
     next.matchClusterKubectl = true
   }
+  // v8: single-namespace investigations only (removed all-namespaces pref).
   return next
 }
 
@@ -169,7 +169,6 @@ export function normalizePreferences(p) {
     useBundledKubectl: bool(src.useBundledKubectl, d.useBundledKubectl),
     kubectlPath: String(src.kubectlPath ?? d.kubectlPath ?? '').trim(),
     matchClusterKubectl: bool(src.matchClusterKubectl, d.matchClusterKubectl),
-    allNamespaces: bool(src.allNamespaces, d.allNamespaces),
     useMetricsServer: bool(src.useMetricsServer, d.useMetricsServer),
     metricsApiGroup: String(src.metricsApiGroup || d.metricsApiGroup).trim() || d.metricsApiGroup,
 
@@ -189,7 +188,6 @@ export function startOptionsFromPreferences(prefs, base = {}) {
     namespace: base.namespace || '',
     context: base.context || '',
     kubeconfig: p.kubeconfigPath || base.kubeconfig || '',
-    allNamespaces: Boolean(p.allNamespaces),
     tail: p.tailLines,
     refreshSec: p.refreshSec,
     windowSec: p.windowMin * 60,

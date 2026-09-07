@@ -4,6 +4,16 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 
 ## [Unreleased]
 
+## [0.1.9] — 2026-09-07
+
+### Investigation scope (large clusters)
+
+- Searchable **context** and **namespace** pickers with type-to-filter and type-to-select.
+- Namespace picker: Enter or “Use namespace …” when the list is incomplete or RBAC-limited.
+- Scope picker: search resources, filter by kind, bulk actions (Workloads / Select visible / Clear).
+- Smart default selection — top workload matches instead of checking every resource in huge namespaces.
+- Remove “Search all namespaces” — investigations are single-namespace only (cross-namespace planned later).
+
 ## [0.1.8] — 2026-09-07
 
 ### Cluster connectivity (enterprise / read-only clusters)
@@ -95,6 +105,7 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 
 - Prior desktop and CLI improvements; see git history and GitHub releases.
 
+[0.1.9]: https://github.com/glnreddy421/klew/releases/tag/v0.1.9
 [0.1.8]: https://github.com/glnreddy421/klew/releases/tag/v0.1.8
 [0.1.7]: https://github.com/glnreddy421/klew/releases/tag/v0.1.7
 [0.1.6]: https://github.com/glnreddy421/klew/releases/tag/v0.1.6

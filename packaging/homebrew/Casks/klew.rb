@@ -1,13 +1,13 @@
 cask "klew" do
-  version "0.1.8"
+  version "0.1.9"
 
   on_arm do
     sha256 "REPLACE_ON_RELEASE"
-    url "https://github.com/glnreddy421/klew/releases/download/v0.1.8/Klew-0.1.8-macos-arm64.zip"
+    url "https://github.com/glnreddy421/klew/releases/download/v0.1.9/Klew-0.1.9-macos-arm64.zip"
   end
   on_intel do
     sha256 "REPLACE_ON_RELEASE"
-    url "https://github.com/glnreddy421/klew/releases/download/v0.1.8/Klew-0.1.8-macos-amd64.zip"
+    url "https://github.com/glnreddy421/klew/releases/download/v0.1.9/Klew-0.1.9-macos-amd64.zip"
   end
 
   name "Klew"

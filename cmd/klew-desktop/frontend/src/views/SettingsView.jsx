@@ -368,12 +368,6 @@ export function SettingsView({
               <ReadOnly k="System path" v={kubectlInfo?.systemPath || '—'} />
             </div>
 
-            <Toggle
-              label="Search all namespaces (advanced)"
-              checked={prefs.allNamespaces}
-              onChange={(v) => set({ allNamespaces: v })}
-            />
-
             <h4 className="settings-subhead">Metrics</h4>
             <Toggle
               label="Use metrics-server when available"

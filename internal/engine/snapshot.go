@@ -13,15 +13,11 @@ import (
 type SnapshotOptions struct {
 	Namespace string
 	Query     string
-	AllNS     bool
 	Tail      int
 }
 
 // CollectSnapshot performs initial read-only snapshot via kube collector.
 func CollectSnapshot(ctx context.Context, client *kube.Client, opts SnapshotOptions) (model.EvidenceBundle, []model.MatchedObject, error) {
-	if opts.AllNS {
-		return collectAllNamespaces(ctx, client, opts.Query)
-	}
 	ns := opts.Namespace
 	collector := &kube.Collector{Client: client}
 	bundle, err := collector.Collect(ctx, kube.CollectOptions{Namespace: ns, Query: opts.Query, LogLines: opts.Tail})
@@ -30,56 +26,6 @@ func CollectSnapshot(ctx context.Context, client *kube.Client, opts SnapshotOpti
 	}
 	bundle.Metrics = kube.CollectMetrics(ctx, client, bundle.Pods)
 	return bundle, bundle.MatchedObjects, nil
-}
-
-func collectAllNamespaces(ctx context.Context, client *kube.Client, query string) (model.EvidenceBundle, []model.MatchedObject, error) {
-	nss, err := kube.ListNamespaces(ctx, client)
-	if err != nil {
-		return model.EvidenceBundle{}, nil, err
-	}
-	collector := &kube.Collector{Client: client}
-	var merged model.EvidenceBundle
-	var matches []model.MatchedObject
-	for _, ns := range nss {
-		b, err := collector.Collect(ctx, kube.CollectOptions{Namespace: ns, Query: query})
-		if err != nil {
-			continue
-		}
-		if len(b.MatchedObjects) == 0 && len(b.Pods) == 0 && len(b.Workloads) == 0 {
-			continue
-		}
-		if merged.Namespace == "" {
-			merged = b
-			merged.Namespace = "*"
-		} else {
-			merged.MatchedObjects = append(merged.MatchedObjects, b.MatchedObjects...)
-			merged.Workloads = append(merged.Workloads, b.Workloads...)
-			merged.Pods = append(merged.Pods, b.Pods...)
-			merged.ReplicaSets = append(merged.ReplicaSets, b.ReplicaSets...)
-			merged.Services = append(merged.Services, b.Services...)
-			merged.Ingresses = append(merged.Ingresses, b.Ingresses...)
-			merged.Events = append(merged.Events, b.Events...)
-			merged.Logs = append(merged.Logs, b.Logs...)
-			merged.PreviousLogs = append(merged.PreviousLogs, b.PreviousLogs...)
-			merged.HPAs = append(merged.HPAs, b.HPAs...)
-			merged.Warnings = append(merged.Warnings, b.Warnings...)
-		}
-		matches = append(matches, b.MatchedObjects...)
-	}
-	if merged.Namespace == "" {
-		merged = model.EvidenceBundle{
-			CollectedAt: model.TimestampFrom(time.Now().UTC()),
-			Namespace:   "*",
-			Query:       query,
-			KubeContext: model.KubeContext{
-				Context: client.Context, Cluster: client.Cluster, User: client.User, Namespace: "*",
-			},
-			Warnings: []string{"no matching workloads found in any namespace"},
-		}
-	}
-	merged.MatchedObjects = matches
-	merged.Metrics = kube.CollectMetrics(ctx, client, merged.Pods)
-	return merged, matches, nil
 }
 
 // BootstrapState builds initial InvestigationState from snapshot.

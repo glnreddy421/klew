@@ -1,6 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { isBlankInvestigationQuery } from '../../lib/investigationQuery'
-import { defaultSelectedKeys, groupByKind, matchKey, normalizeMatches } from '../../lib/matches'
+import {
+  groupByKind,
+  matchKey,
+  normalizeMatches,
+  smartDefaultSelectedKeys,
+  WORKLOAD_ROOT_KINDS,
+} from '../../lib/matches'
+import { filterScopeMatches, kindFiltersForMatches } from '../../lib/scopeSearch'
 import { KindIcon } from '../KindIcon'
 
 export function ScopePickerModal({
@@ -13,19 +20,36 @@ export function ScopePickerModal({
   onConfirm,
   onCancel,
 }) {
-  const [selected, setSelected] = useState(() => defaultSelectedKeys(matches, undefined, { selectAll: true }))
+  const [selected, setSelected] = useState(() => new Set())
+  const [filter, setFilter] = useState('')
+  const [kindFilter, setKindFilter] = useState('')
+  const searchRef = useRef(null)
+
+  const list = normalizeMatches(matches)
+  const filteredList = useMemo(
+    () => filterScopeMatches(list, { text: filter, kind: kindFilter }),
+    [list, filter, kindFilter],
+  )
+  const groups = useMemo(() => groupByKind(filteredList), [filteredList])
+  const kindFilters = useMemo(() => kindFiltersForMatches(list), [list])
+  const visibleKeys = useMemo(
+    () => filteredList.map((m) => matchKey(m.ref)).filter(Boolean),
+    [filteredList],
+  )
 
   useEffect(() => {
-    if (open) {
-      setSelected(defaultSelectedKeys(matches, undefined, { selectAll: true }))
-    }
-  }, [open, matches])
+    if (!open) return
+    setFilter('')
+    setKindFilter('')
+    setSelected(smartDefaultSelectedKeys(list, query))
+    const t = window.setTimeout(() => searchRef.current?.focus(), 0)
+    return () => window.clearTimeout(t)
+  }, [open, matches, query])
 
   if (!open) return null
 
-  const list = normalizeMatches(matches)
-  const groups = groupByKind(list)
   const n = list.length
+  const visibleN = filteredList.length
 
   function toggle(key) {
     setSelected((prev) => {
@@ -36,6 +60,25 @@ export function ScopePickerModal({
     })
   }
 
+  function selectVisible() {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      for (const key of visibleKeys) next.add(key)
+      return next
+    })
+  }
+
+  function selectWorkloads() {
+    const keys = list
+      .filter((m) => WORKLOAD_ROOT_KINDS.includes(m.ref?.kind))
+      .map((m) => matchKey(m.ref))
+    setSelected(new Set(keys))
+  }
+
+  function clearSelection() {
+    setSelected(new Set())
+  }
+
   return (
     <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="scope-picker-title">
       <div className="modal scope-picker">
@@ -44,7 +87,7 @@ export function ScopePickerModal({
           <p className="scope-picker-meta">
             {isBlankInvestigationQuery(query) ? (
               <>
-                All {n} resource{n !== 1 ? 's' : ''} in {namespace}
+                {n} resource{n !== 1 ? 's' : ''} in {namespace}
               </>
             ) : (
               <>
@@ -52,18 +95,65 @@ export function ScopePickerModal({
               </>
             )}
             {contextLabel ? ` · ${contextLabel}` : ''}
+            {filter || kindFilter ? (
+              <span> · showing {visibleN}</span>
+            ) : null}
           </p>
         </header>
 
-        <div className="scope-picker-body">
-          {groups.length > 0 && (
-            <p className="scope-picker-section-label">Resource groups</p>
+        <div className="scope-picker-toolbar">
+          <input
+            ref={searchRef}
+            type="search"
+            className="scope-picker-search"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Search resources by name or kind…"
+            spellCheck={false}
+            autoComplete="off"
+            aria-label="Filter resources"
+          />
+          {kindFilters.length > 1 && (
+            <div className="scope-picker-kind-filters" role="tablist" aria-label="Filter by kind">
+              <button
+                type="button"
+                className={`scope-picker-kind-chip ${kindFilter === '' ? 'active' : ''}`}
+                onClick={() => setKindFilter('')}
+              >
+                All
+              </button>
+              {kindFilters.map((kind) => (
+                <button
+                  key={kind}
+                  type="button"
+                  className={`scope-picker-kind-chip ${kindFilter === kind ? 'active' : ''}`}
+                  onClick={() => setKindFilter(kindFilter === kind ? '' : kind)}
+                >
+                  {kind}
+                </button>
+              ))}
+            </div>
           )}
+          <div className="scope-picker-bulk-actions">
+            <button type="button" className="btn btn-ghost btn-sm" onClick={selectWorkloads}>
+              Workloads
+            </button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={selectVisible}>
+              Select visible
+            </button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={clearSelection}>
+              Clear
+            </button>
+          </div>
+        </div>
+
+        <div className="scope-picker-body">
           {groups.map((g) => (
             <section key={g.kind} className="scope-group">
               <h3>
                 <KindIcon kind={g.kind} size={13} />
                 <span>{g.label}</span>
+                <span className="scope-group-count muted">{g.items.length}</span>
               </h3>
               <ul className="scope-items">
                 {g.items.map((m) => {
@@ -78,7 +168,7 @@ export function ScopePickerModal({
                         />
                         <KindIcon kind={m.ref?.kind} size={13} />
                         <span className="scope-item-name">{m.ref.name}</span>
-                        { !isBlankInvestigationQuery(query) && m.score != null && (
+                        {!isBlankInvestigationQuery(query) && m.score != null && (
                           <span className="scope-item-score muted">{Math.round(m.score * 100)}%</span>
                         )}
                       </label>
@@ -90,16 +180,18 @@ export function ScopePickerModal({
           ))}
           {!groups.length && (
             <p className="muted">
-              {isBlankInvestigationQuery(query)
-                ? 'No resources found in this namespace.'
-                : 'No resources matched this query in the namespace.'}
+              {filter || kindFilter
+                ? 'No resources match the current filters.'
+                : isBlankInvestigationQuery(query)
+                  ? 'No resources found in this namespace.'
+                  : 'No resources matched this query in the namespace.'}
             </p>
           )}
         </div>
 
         {!isBlankInvestigationQuery(query) && (
           <p className="scope-picker-hint muted">
-            Tip: use deploy/name to target one kind
+            Tip: use deploy/name in the top bar to narrow before investigating
           </p>
         )}
 
@@ -117,7 +209,7 @@ export function ScopePickerModal({
             className="btn btn-outline"
             onClick={() => onConfirm({ selectedKeys: null, investigateAll: true })}
           >
-            Investigate all
+            Investigate all ({n})
           </button>
           <button type="button" className="btn btn-ghost" onClick={onCancel}>
             {mode === 'narrow' ? 'Back' : 'Cancel'}

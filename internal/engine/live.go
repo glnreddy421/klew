@@ -15,7 +15,6 @@ import (
 type LiveOptions struct {
 	Query          string
 	Namespace      string
-	AllNS          bool
 	PollEvery      time.Duration
 	AutoRefresh    bool
 	Window         time.Duration
@@ -74,17 +73,14 @@ func StartLive(ctx context.Context, client *kube.Client, opts LiveOptions) (*Liv
 	if opts.Tail <= 0 {
 		opts.Tail = 200
 	}
-	scope := kube.ScopeFromFlags(opts.Namespace, opts.AllNS, client.Namespace)
+	scope := kube.ScopeFromFlags(opts.Namespace, client.Namespace)
 	ns := scope.Primary
-	if scope.AllNamespaces {
-		ns = client.Namespace
-	}
 
 	ctx, cancel := context.WithCancel(ctx)
 	bus := NewBus(1024)
 	sink := func(e model.EvidenceEvent) { bus.Publish(e) }
 
-	bundle, _, err := CollectSnapshot(ctx, client, SnapshotOptions{Namespace: ns, Query: opts.Query, AllNS: opts.AllNS, Tail: opts.Tail})
+	bundle, _, err := CollectSnapshot(ctx, client, SnapshotOptions{Namespace: ns, Query: opts.Query, Tail: opts.Tail})
 	if err != nil {
 		cancel()
 		return nil, err

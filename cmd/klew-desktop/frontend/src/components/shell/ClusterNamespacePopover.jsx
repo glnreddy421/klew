@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { filterBySubstring } from '../../lib/scopeSearch.js'
 
 function usePopover() {
   const [open, setOpen] = useState(false)
@@ -23,6 +24,39 @@ function usePopover() {
   return { open, setOpen, rootRef }
 }
 
+function usePopoverFilter(open) {
+  const [filter, setFilter] = useState('')
+  const inputRef = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    setFilter('')
+    const t = window.setTimeout(() => inputRef.current?.focus(), 0)
+    return () => window.clearTimeout(t)
+  }, [open])
+
+  return { filter, setFilter, inputRef }
+}
+
+function PopoverSearch({ value, onChange, inputRef, placeholder, ariaLabel, onKeyDown }) {
+  return (
+    <div className="shell-popover-search">
+      <input
+        ref={inputRef}
+        type="search"
+        className="shell-popover-search-input"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={onKeyDown}
+        placeholder={placeholder}
+        spellCheck={false}
+        autoComplete="off"
+        aria-label={ariaLabel}
+      />
+    </div>
+  )
+}
+
 export function ContextPopover({
   cluster,
   disabled,
@@ -30,11 +64,16 @@ export function ContextPopover({
   onContextChange,
 }) {
   const { open, setOpen, rootRef } = usePopover()
+  const { filter, setFilter, inputRef } = usePopoverFilter(open)
   const contexts = cluster.contexts || []
   const ctx = cluster.selectedContext || cluster.currentContext || '—'
   const contextHint = contextLocked
     ? 'This window stays on the current cluster. Pick another context to open it in a new window.'
     : 'Kubernetes context for this window'
+
+  const filtered = filterBySubstring(contexts, filter, (c) =>
+    [c.name, c.cluster, c.user, c.namespace].filter(Boolean).join(' '),
+  )
 
   return (
     <div className="shell-popover-anchor shell-scope-anchor" ref={rootRef}>
@@ -53,8 +92,20 @@ export function ContextPopover({
       </button>
       {open && (
         <div className="shell-popover shell-scope-popover" role="listbox" aria-label="Context">
-          <ul className="shell-popover-list shell-popover-list-scroll">
-            {contexts.map((c) => {
+          <PopoverSearch
+            inputRef={inputRef}
+            value={filter}
+            onChange={setFilter}
+            placeholder="Search contexts…"
+            ariaLabel="Filter contexts"
+          />
+          {contexts.length > 8 && (
+            <p className="shell-popover-count muted">
+              {filtered.length} of {contexts.length}
+            </p>
+          )}
+          <ul className="shell-popover-list shell-popover-list-scroll shell-popover-list-tall">
+            {filtered.map((c) => {
               const active = c.name === ctx
               return (
                 <li key={c.name}>
@@ -63,18 +114,26 @@ export function ContextPopover({
                     role="option"
                     aria-selected={active}
                     className={`shell-popover-item ${active ? 'active' : ''}`}
-                    title={c.cluster}
+                    title={[c.cluster, c.user, c.namespace && `ns: ${c.namespace}`].filter(Boolean).join(' · ')}
                     onClick={() => {
                       onContextChange?.(c.name)
                       if (!contextLocked) setOpen(false)
                     }}
                   >
                     {active && <span className="shell-popover-check" aria-hidden="true">✓</span>}
-                    <span className="mono">{c.name}</span>
+                    <span className="shell-popover-item-stack">
+                      <span className="mono">{c.name}</span>
+                      {c.cluster && c.cluster !== c.name && (
+                        <span className="shell-popover-item-sub muted">{c.cluster}</span>
+                      )}
+                    </span>
                   </button>
                 </li>
               )
             })}
+            {filtered.length === 0 && (
+              <li className="shell-popover-empty muted">No contexts match &quot;{filter}&quot;</li>
+            )}
           </ul>
         </div>
       )}
@@ -82,24 +141,41 @@ export function ContextPopover({
   )
 }
 
+const NS_NAME_RE = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/
+
 export function NamespacePopover({
   cluster,
   disabled,
   onNamespaceChange,
 }) {
   const { open, setOpen, rootRef } = usePopover()
+  const { filter, setFilter, inputRef } = usePopoverFilter(open)
   const namespaces = cluster.namespaces || []
   const ns = cluster.selectedNamespace || '—'
-  const limited = Boolean(cluster.syncWarning) || namespaces.length <= 1
-  const [customNS, setCustomNS] = useState('')
+  const trimmed = filter.trim()
+  const filtered = filterBySubstring(namespaces, filter, (name) => name)
+  const exactMatch = trimmed && namespaces.includes(trimmed)
+  const canUseTyped = trimmed && NS_NAME_RE.test(trimmed) && !exactMatch
 
-  function applyCustom(e) {
-    e.preventDefault()
-    const name = customNS.trim()
-    if (!name) return
+  function pickNamespace(name) {
     onNamespaceChange?.(name)
-    setCustomNS('')
     setOpen(false)
+  }
+
+  function onSearchKeyDown(e) {
+    if (e.key !== 'Enter') return
+    e.preventDefault()
+    if (exactMatch) {
+      pickNamespace(trimmed)
+      return
+    }
+    if (canUseTyped) {
+      pickNamespace(trimmed)
+      return
+    }
+    if (filtered.length === 1) {
+      pickNamespace(filtered[0])
+    }
   }
 
   return (
@@ -122,8 +198,32 @@ export function NamespacePopover({
           {cluster.syncWarning && (
             <p className="shell-popover-hint">{cluster.syncWarning}</p>
           )}
-          <ul className="shell-popover-list shell-popover-list-scroll">
-            {namespaces.map((name) => {
+          <PopoverSearch
+            inputRef={inputRef}
+            value={filter}
+            onChange={setFilter}
+            placeholder="Search or type namespace…"
+            ariaLabel="Filter namespaces"
+            onKeyDown={onSearchKeyDown}
+          />
+          {namespaces.length > 8 && (
+            <p className="shell-popover-count muted">
+              {filtered.length} of {namespaces.length}
+            </p>
+          )}
+          <ul className="shell-popover-list shell-popover-list-scroll shell-popover-list-tall">
+            {canUseTyped && (
+              <li>
+                <button
+                  type="button"
+                  className="shell-popover-item shell-popover-item-use-typed"
+                  onClick={() => pickNamespace(trimmed)}
+                >
+                  <span className="mono">Use namespace &quot;{trimmed}&quot;</span>
+                </button>
+              </li>
+            )}
+            {filtered.map((name) => {
               const active = name === ns
               return (
                 <li key={name}>
@@ -132,10 +232,7 @@ export function NamespacePopover({
                     role="option"
                     aria-selected={active}
                     className={`shell-popover-item ${active ? 'active' : ''}`}
-                    onClick={() => {
-                      onNamespaceChange?.(name)
-                      setOpen(false)
-                    }}
+                    onClick={() => pickNamespace(name)}
                   >
                     {active && <span className="shell-popover-check" aria-hidden="true">✓</span>}
                     <span className="mono">{name}</span>
@@ -143,28 +240,12 @@ export function NamespacePopover({
                 </li>
               )
             })}
+            {filtered.length === 0 && !canUseTyped && (
+              <li className="shell-popover-empty muted">
+                {trimmed ? `No namespaces match "${trimmed}"` : 'No namespaces listed'}
+              </li>
+            )}
           </ul>
-          {limited && (
-            <form className="shell-popover-custom-ns" onSubmit={applyCustom}>
-              <input
-                type="text"
-                className="shell-popover-custom-ns-input"
-                placeholder="Type namespace…"
-                value={customNS}
-                onChange={(e) => setCustomNS(e.target.value)}
-                spellCheck={false}
-                autoComplete="off"
-                aria-label="Custom namespace"
-              />
-              <button
-                type="submit"
-                className="shell-popover-custom-ns-btn"
-                disabled={!customNS.trim()}
-              >
-                Go
-              </button>
-            </form>
-          )}
         </div>
       )}
     </div>

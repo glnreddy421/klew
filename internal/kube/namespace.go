@@ -46,13 +46,10 @@ func RequireNamespaceOrError(flagNS string, allNS bool) (string, bool, error) {
 	)
 }
 
-// ScopeFromFlags builds namespace scope for investigation.
-func ScopeFromFlags(flagNS string, allNamespaces bool, clientNS string) model.NamespaceScope {
-	if allNamespaces {
-		return model.NamespaceScope{AllNamespaces: true, Primary: "*"}
-	}
+// ScopeFromFlags builds single-namespace scope for investigation.
+func ScopeFromFlags(flagNS, clientNS string) model.NamespaceScope {
 	ns := ResolveNamespace(flagNS, clientNS)
-	return model.NamespaceScope{AllNamespaces: false, Primary: ns, Namespaces: []string{ns}}
+	return model.NamespaceScope{Primary: ns, Namespaces: []string{ns}}
 }
 
 // CollectNamespace returns the namespace passed to namespaced API calls.

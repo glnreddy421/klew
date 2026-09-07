@@ -44,9 +44,6 @@ func BuildIncidentSummary(st model.InvestigationState) IncidentSummary {
 		epTotal += s.TotalEndpoints
 	}
 	ns := st.NamespaceScope.Primary
-	if st.NamespaceScope.AllNamespaces {
-		ns = "*"
-	}
 	if ns == "" {
 		ns = b.Namespace
 	}
