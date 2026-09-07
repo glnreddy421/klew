@@ -1,9 +1,13 @@
 package kube
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 func TestLoadKubeConfigSnapshot(t *testing.T) {
@@ -58,5 +62,29 @@ func TestPickNamespace(t *testing.T) {
 	}
 	if got := pickNamespace([]string{"kube-system", "default"}, "klew-lab"); got != "default" {
 		t.Fatalf("preferred missing falls back to default: %q", got)
+	}
+}
+
+func TestIsNamespaceListRestricted(t *testing.T) {
+	forbidden := apierrors.NewForbidden(schema.GroupResource{Resource: "namespaces"}, "denied", errors.New("denied"))
+	if !isNamespaceListRestricted(forbidden) {
+		t.Fatal("expected forbidden to be restricted")
+	}
+	if isNamespaceListRestricted(errors.New("connection refused")) {
+		t.Fatal("expected connection error to be hard failure")
+	}
+}
+
+func TestConfigureLoadingRulesMultiPath(t *testing.T) {
+	multi := "/a/config" + string(os.PathListSeparator) + "/b/config"
+	rules := configureLoadingRules(multi)
+	if rules.ExplicitPath != "" {
+		t.Fatalf("multi-path kubeconfig must not set ExplicitPath, got %q", rules.ExplicitPath)
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config")
+	rules = configureLoadingRules(path)
+	if rules.ExplicitPath != path {
+		t.Fatalf("single path ExplicitPath = %q", rules.ExplicitPath)
 	}
 }

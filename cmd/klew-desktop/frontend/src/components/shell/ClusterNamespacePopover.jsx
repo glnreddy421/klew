@@ -90,6 +90,17 @@ export function NamespacePopover({
   const { open, setOpen, rootRef } = usePopover()
   const namespaces = cluster.namespaces || []
   const ns = cluster.selectedNamespace || '—'
+  const limited = Boolean(cluster.syncWarning) || namespaces.length <= 1
+  const [customNS, setCustomNS] = useState('')
+
+  function applyCustom(e) {
+    e.preventDefault()
+    const name = customNS.trim()
+    if (!name) return
+    onNamespaceChange?.(name)
+    setCustomNS('')
+    setOpen(false)
+  }
 
   return (
     <div className="shell-popover-anchor shell-scope-anchor" ref={rootRef}>
@@ -97,17 +108,20 @@ export function NamespacePopover({
         type="button"
         className="shell-scope-btn shell-scope-btn-namespace"
         onClick={() => setOpen((v) => !v)}
-        disabled={disabled || namespaces.length === 0}
+        disabled={disabled}
         aria-expanded={open}
         aria-haspopup="listbox"
         aria-label={`Namespace: ${ns}`}
-        title="Namespace for this window"
+        title={cluster.syncWarning || 'Namespace for this window'}
       >
         <span className="shell-scope-value mono">{ns}</span>
         <ChevronDown />
       </button>
       {open && (
         <div className="shell-popover shell-scope-popover" role="listbox" aria-label="Namespace">
+          {cluster.syncWarning && (
+            <p className="shell-popover-hint">{cluster.syncWarning}</p>
+          )}
           <ul className="shell-popover-list shell-popover-list-scroll">
             {namespaces.map((name) => {
               const active = name === ns
@@ -130,6 +144,27 @@ export function NamespacePopover({
               )
             })}
           </ul>
+          {limited && (
+            <form className="shell-popover-custom-ns" onSubmit={applyCustom}>
+              <input
+                type="text"
+                className="shell-popover-custom-ns-input"
+                placeholder="Type namespace…"
+                value={customNS}
+                onChange={(e) => setCustomNS(e.target.value)}
+                spellCheck={false}
+                autoComplete="off"
+                aria-label="Custom namespace"
+              />
+              <button
+                type="submit"
+                className="shell-popover-custom-ns-btn"
+                disabled={!customNS.trim()}
+              >
+                Go
+              </button>
+            </form>
+          )}
         </div>
       )}
     </div>

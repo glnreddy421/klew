@@ -752,3 +752,45 @@ func (a *App) SetKubeconfigPath(path string) kube.ClusterState {
 	a.emitCluster()
 	return st
 }
+
+// GetKubectlInfo returns the active kubectl binary and bundled/system paths.
+func (a *App) GetKubectlInfo() kube.KubectlInfo {
+	return kube.GetKubectlInfo(a.activeClusterVersion())
+}
+
+// SetKubectlOptions configures bundled vs custom kubectl for subprocesses and the terminal.
+func (a *App) SetKubectlOptions(useBundled bool, customPath string, matchClusterKubectl bool) kube.KubectlInfo {
+	kube.SetKubectlOptions(useBundled, customPath, matchClusterKubectl)
+
+	a.mu.Lock()
+	ctxName := a.cluster.SelectedContext
+	ns := a.cluster.SelectedNamespace
+	a.mu.Unlock()
+
+	st := a.refreshCluster(ctxName, ns)
+	a.mu.Lock()
+	a.cluster = st
+	a.mu.Unlock()
+	a.invalidateClusterStatusCache()
+	a.emitCluster()
+	return kube.GetKubectlInfo(a.activeClusterVersion())
+}
+
+func (a *App) activeClusterVersion() string {
+	a.mu.Lock()
+	path := a.cluster.KubeconfigPath
+	ctxName := a.cluster.SelectedContext
+	if ctxName == "" {
+		ctxName = a.cluster.CurrentContext
+	}
+	a.mu.Unlock()
+	if ctxName == "" {
+		return ""
+	}
+	c := a.ctx
+	if c == nil {
+		c = context.Background()
+	}
+	st := kube.CollectClusterStatus(c, path, ctxName)
+	return st.KubernetesVersion
+}

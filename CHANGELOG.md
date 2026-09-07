@@ -2,6 +2,29 @@
 
 All notable changes to Klew are documented here. Version tags follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+## [0.1.8] — 2026-09-07
+
+### Cluster connectivity (enterprise / read-only clusters)
+
+- Bootstrap login-shell environment at startup so GUI launches get the same `PATH`, `KUBECONFIG`, and cloud credential vars as Terminal, Lens, and K9s.
+- Align kubeconfig loading with kubectl (multi-file `KUBECONFIG`, default loading rules).
+- Soft-fail when namespace listing is RBAC-restricted; show a warning instead of a blocking sync error.
+- Allow typing a namespace manually when the list is incomplete.
+- Fall back to `kubectl get ns` when the in-process API client fails.
+
+### Bundled kubectl
+
+- Ship kubectl v1.31.4 inside `Klew.app/Contents/Resources/` (signed with the app).
+- Settings → Kubernetes: choose bundled, system PATH, or a custom kubectl path.
+- Conditionally download a cluster-matched kubectl when skew exceeds ± one minor version (cached under `~/Library/Application Support/Klew/binaries/`).
+- Terminal prepends the active kubectl directory to `PATH`.
+
+### Release
+
+- Switch Homebrew distribution from a formula to a cask so Klew installs to `/Applications` and upgrades with `brew upgrade --cask klew`.
+
 ## [0.1.7] — 2026-09-01
 
 ### Investigation engine
@@ -72,6 +95,7 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 
 - Prior desktop and CLI improvements; see git history and GitHub releases.
 
+[0.1.8]: https://github.com/glnreddy421/klew/releases/tag/v0.1.8
 [0.1.7]: https://github.com/glnreddy421/klew/releases/tag/v0.1.7
 [0.1.6]: https://github.com/glnreddy421/klew/releases/tag/v0.1.6
 [0.1.5]: https://github.com/glnreddy421/klew/releases/tag/v0.1.5

@@ -18,6 +18,7 @@ const emptyCluster = () => ({
   namespaces: [],
   syncedAt: null,
   syncError: '',
+  syncWarning: '',
 })
 
 export function useCluster() {

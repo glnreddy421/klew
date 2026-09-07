@@ -10963,6 +10963,49 @@ button.cluster-context-chip.is-link:hover {
 .shell-popover-item.active { background: var(--investigation-accent-dim); }
 .shell-popover-check { width: 14px; color: var(--investigation-accent); font-size: 11px; }
 
+.shell-popover-hint {
+  margin: 0;
+  padding: 8px 10px 6px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.shell-popover-custom-ns {
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.shell-popover-custom-ns-input {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  font-size: 12px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.shell-popover-custom-ns-btn {
+  padding: 5px 10px;
+  font-size: 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  background: var(--surface-hover);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.shell-popover-custom-ns-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .shell-time-btn {
   display: inline-flex;
   align-items: center;

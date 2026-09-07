@@ -37,55 +37,33 @@ git clone --depth 1 --branch "$TAP_BRANCH" \
   "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/${TAP_REPO}.git" \
   "$WORK/tap"
 
-cat > "$WORK/tap/Formula/klew.rb" <<EOF
-class Klew < Formula
-  desc "Klew — live Kubernetes incident investigation (desktop app)"
-  homepage "https://github.com/glnreddy421/klew"
-  license "Apache-2.0"
+mkdir -p "$WORK/tap/Casks"
+# Retire the legacy formula — GUI apps belong in Casks (installs to /Applications, clean upgrades).
+rm -f "$WORK/tap/Formula/klew.rb"
+rmdir "$WORK/tap/Formula" 2>/dev/null || true
+
+cat > "$WORK/tap/Casks/klew.rb" <<EOF
+cask "klew" do
   version "${VERSION}"
 
-  depends_on :macos
-
-  on_macos do
-    on_arm do
-      url "${ARM64_URL}"
-      sha256 "${ARM64_SHA256}"
-    end
-    on_intel do
-      url "${AMD64_URL}"
-      sha256 "${AMD64_SHA256}"
-    end
+  on_arm do
+    sha256 "${ARM64_SHA256}"
+    url "${ARM64_URL}"
+  end
+  on_intel do
+    sha256 "${AMD64_SHA256}"
+    url "${AMD64_URL}"
   end
 
-  def install
-    app = if (buildpath/"Contents/MacOS").directory?
-      buildpath
-    elsif (buildpath/"Klew.app").directory?
-      buildpath/"Klew.app"
-    else
-      buildpath.glob("*.app").first
-    end
-    odie "Klew.app not found under #{buildpath}" unless app&.directory?
+  name "Klew"
+  desc "Live Kubernetes incident investigation (desktop app)"
+  homepage "https://github.com/glnreddy421/klew"
 
-    cp_r app, prefix/"Klew.app"
-    # Homebrew sandbox metadata breaks the signed app bundle seal.
-    rm_rf prefix/"Klew.app/.brew_home"
-  end
+  app "Klew.app"
 
-  def caveats
-    <<~EOS
-      Klew.app is installed at:
-        #{prefix}/Klew.app
-
-      Launch from Finder or run:
-        open #{prefix}/Klew.app
-    EOS
-  end
-
-  test do
-    assert_path_exists prefix/"Klew.app"
-    assert_path_exists prefix/"Klew.app/Contents/MacOS/Klew"
-    system "codesign", "--verify", "--deep", "--strict", prefix/"Klew.app"
+  livecheck do
+    url "https://github.com/glnreddy421/klew/releases/latest"
+    strategy :github_latest
   end
 end
 EOF
@@ -93,12 +71,12 @@ EOF
 cd "$WORK/tap"
 git config user.name "github-actions[bot]"
 git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-git add Formula/klew.rb
+git add -A
 if git diff --staged --quiet; then
-  echo "Homebrew formula already up to date."
+  echo "Homebrew cask already up to date."
   exit 0
 fi
-git commit -m "klew ${VERSION}"
+git commit -m "klew ${VERSION} (cask)"
 git push origin "$TAP_BRANCH"
 
-echo "Updated ${TAP_REPO} to klew ${VERSION} (arm64 + Intel)."
+echo "Updated ${TAP_REPO} cask to klew ${VERSION} (arm64 + Intel)."
