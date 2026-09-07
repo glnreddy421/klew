@@ -564,36 +564,6 @@ export namespace kube {
 		    return a;
 		}
 	}
-	export class KubectlInfo {
-	    activePath: string;
-	    bundledPath: string;
-	    systemPath: string;
-	    clusterMatchedPath?: string;
-	    source: string;
-	    version?: string;
-	    clusterVersion?: string;
-	    matchClusterKubectl: boolean;
-	    clusterSkewDetected: boolean;
-	    available: boolean;
-	
-	    static createFrom(source: any = {}) {
-	        return new KubectlInfo(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.activePath = source["activePath"];
-	        this.bundledPath = source["bundledPath"];
-	        this.systemPath = source["systemPath"];
-	        this.clusterMatchedPath = source["clusterMatchedPath"];
-	        this.source = source["source"];
-	        this.version = source["version"];
-	        this.clusterVersion = source["clusterVersion"];
-	        this.matchClusterKubectl = source["matchClusterKubectl"];
-	        this.clusterSkewDetected = source["clusterSkewDetected"];
-	        this.available = source["available"];
-	    }
-	}
 	export class ClusterVersionGroup {
 	    count: number;
 	    label?: string;
@@ -698,6 +668,37 @@ export namespace kube {
 	}
 	
 	
+	
+	export class KubectlInfo {
+	    activePath: string;
+	    bundledPath: string;
+	    systemPath: string;
+	    clusterMatchedPath?: string;
+	    source: string;
+	    version?: string;
+	    clusterVersion?: string;
+	    matchClusterKubectl: boolean;
+	    clusterSkewDetected: boolean;
+	    available: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new KubectlInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.activePath = source["activePath"];
+	        this.bundledPath = source["bundledPath"];
+	        this.systemPath = source["systemPath"];
+	        this.clusterMatchedPath = source["clusterMatchedPath"];
+	        this.source = source["source"];
+	        this.version = source["version"];
+	        this.clusterVersion = source["clusterVersion"];
+	        this.matchClusterKubectl = source["matchClusterKubectl"];
+	        this.clusterSkewDetected = source["clusterSkewDetected"];
+	        this.available = source["available"];
+	    }
+	}
 
 }
 
@@ -792,7 +793,6 @@ export namespace main {
 	export class StartOptions {
 	    query: string;
 	    namespace: string;
-	    allNamespaces: boolean;
 	    kubeconfig: string;
 	    context: string;
 	    tail: number;
@@ -810,7 +810,6 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.query = source["query"];
 	        this.namespace = source["namespace"];
-	        this.allNamespaces = source["allNamespaces"];
 	        this.kubeconfig = source["kubeconfig"];
 	        this.context = source["context"];
 	        this.tail = source["tail"];

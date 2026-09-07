@@ -449,7 +449,6 @@ func (a *App) ListCatalogEntities(opts ListCatalogEntitiesOptions) (model.Catalo
 type StartOptions struct {
 	Query            string `json:"query"`
 	Namespace        string `json:"namespace"`
-	AllNamespaces    bool   `json:"allNamespaces"`
 	Kubeconfig       string `json:"kubeconfig"`
 	Context          string `json:"context"`
 	Tail             int    `json:"tail"`
@@ -519,8 +518,7 @@ func (a *App) StartInvestigation(opts StartOptions) error {
 		a.stopInvestigation()
 		return err
 	}
-	allNS := opts.AllNamespaces
-	if !allNS && ns == "" {
+	if ns == "" {
 		ns = client.ContextNamespace
 		if ns == "" {
 			ns = client.Namespace
@@ -529,7 +527,6 @@ func (a *App) StartInvestigation(opts StartOptions) error {
 	svc, err := service.Start(rootCtx, client, engine.LiveOptions{
 		Query:          opts.Query,
 		Namespace:      ns,
-		AllNS:          allNS,
 		Tail:           opts.Tail,
 		PollEvery:      refresh,
 		Window:         window,

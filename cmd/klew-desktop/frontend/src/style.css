@@ -4326,8 +4326,8 @@ body {
 }
 
 .modal.scope-picker {
-  width: min(520px, 100%);
-  max-height: min(80vh, 640px);
+  width: min(560px, 100%);
+  max-height: min(85vh, 720px);
   display: flex;
   flex-direction: column;
   background: var(--surface);
@@ -4351,6 +4351,60 @@ body {
   font-size: 12px;
   color: var(--text-secondary);
   line-height: 1.45;
+}
+
+.scope-picker-toolbar {
+  padding: 10px 20px 8px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.scope-picker-search {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.scope-picker-kind-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.scope-picker-kind-chip {
+  padding: 3px 8px;
+  font-size: 11px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.scope-picker-kind-chip.active {
+  border-color: var(--investigation-accent);
+  color: var(--investigation-accent);
+  background: var(--investigation-accent-dim);
+}
+
+.scope-picker-bulk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.scope-group-count {
+  margin-left: auto;
+  font-weight: 500;
+  font-size: 10px;
 }
 
 .scope-picker-body {
@@ -10943,6 +10997,57 @@ button.cluster-context-chip.is-link:hover {
 
 .shell-popover-list { list-style: none; margin: 0; padding: 0; }
 .shell-popover-list-scroll { max-height: 180px; overflow: auto; }
+.shell-popover-list-tall { max-height: 280px; }
+
+.shell-popover-search {
+  padding: 8px 8px 6px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.shell-popover-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.shell-popover-count {
+  margin: 0;
+  padding: 4px 10px 6px;
+  font-size: 11px;
+}
+
+.shell-popover-empty {
+  padding: 10px 12px;
+  font-size: 12px;
+  list-style: none;
+}
+
+.shell-popover-item-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  min-width: 0;
+}
+
+.shell-popover-item-sub {
+  font-size: 10px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shell-popover-item-use-typed {
+  color: var(--investigation-accent);
+  font-weight: 500;
+}
 
 .shell-popover-item {
   display: flex;

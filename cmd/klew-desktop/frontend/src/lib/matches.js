@@ -207,6 +207,21 @@ export function defaultSelectedKeys(matches, limit = DEFAULT_PRECHECK, opts = {}
   return keys
 }
 
+/** Pick a sensible initial scope — avoids checking hundreds of resources on large namespaces. */
+export function smartDefaultSelectedKeys(matches, query, { largeThreshold = 12 } = {}) {
+  const list = normalizeMatches(matches)
+  if (list.length === 0) return new Set()
+  if (list.length <= 5) {
+    return new Set(list.map((m) => matchKey(m.ref)))
+  }
+  const hasQuery = String(query || '').trim() !== ''
+  if (hasQuery && list.length <= largeThreshold) {
+    return new Set(list.map((m) => matchKey(m.ref)))
+  }
+  const limit = hasQuery ? 5 : 3
+  return defaultSelectedKeys(list, limit)
+}
+
 export function deriveMatchRows(view, matches) {
   const snap = view?.state?.snapshot || {}
   const workloads = snap.workloads || []
