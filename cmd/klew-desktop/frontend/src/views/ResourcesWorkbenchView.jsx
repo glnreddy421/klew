@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { ScopePanel } from '../components/incident/ScopePanel'
 import { InvestigationSignalsPanel } from '../components/incident/InvestigationSignalsPanel'
 import { CollectingMatchesSplash } from '../components/incident/CollectingMatchesSplash'
+import { InvestigationLoadingBanner } from '../components/incident/InvestigationLoadingBanner'
 import {
   deriveMatchRows,
   getMatchedObjects,
@@ -31,7 +32,8 @@ export function ResourcesWorkbenchRoot({
   focusPinned,
   onFocusChange,
   onClearFocus,
-  collecting,
+  investigationLoading = false,
+  onNavigate,
   layoutMode: layoutModeProp,
   inspectKey,
   onInspectKeyChange,
@@ -45,7 +47,8 @@ export function ResourcesWorkbenchRoot({
     focusPinned,
     onFocusChange,
     onClearFocus,
-    collecting,
+    investigationLoading,
+    onNavigate,
     layoutModeProp,
     inspectKey,
     onInspectKeyChange,
@@ -67,7 +70,8 @@ export function ResourcesWorkbenchView({ shellMode = false }) {
   const {
     allMatches,
     allRows,
-    collecting,
+    investigationLoading,
+    onNavigate,
     layoutMode,
     layout,
     focusPinned,
@@ -87,10 +91,13 @@ export function ResourcesWorkbenchView({ shellMode = false }) {
     onClearFocus,
   } = ctx
 
-  if (allMatches.length === 0 && !allRows.length) {
+  const clusterReady = Boolean(cluster?.selectedContext || cluster?.currentContext)
+  const hasInvestigationData = allMatches.length > 0 || allRows.length > 0
+
+  if (!hasInvestigationData && !clusterReady) {
     return (
       <div className="workbench-surface resources-workbench">
-        {collecting ? (
+        {investigationLoading ? (
           <CollectingMatchesSplash />
         ) : (
           <div className="workbench-empty">
@@ -102,8 +109,22 @@ export function ResourcesWorkbenchView({ shellMode = false }) {
     )
   }
 
+  if (!hasInvestigationData && !investigationLoading && !catalog && !catalogLoading) {
+    return (
+      <div className="workbench-surface resources-workbench">
+        <div className="workbench-empty">
+          <h3>No resources in scope</h3>
+          <p className="muted">Start an investigation or widen your query to browse Kubernetes objects.</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className={`workbench-surface resources-workbench layout-${layoutMode} ${shellMode ? 'resources-workbench-shell' : ''}`}>
+      {investigationLoading && (
+        <InvestigationLoadingBanner onOpenOverview={() => onNavigate?.('incident')} />
+      )}
       {shellMode && focusPinned && inspectRow && (
         <div className="workbench-inline-chrome workbench-inline-chrome-compact">
           <span className="muted mono">{inspectRow.kind}/{inspectRow.name}</span>
@@ -195,7 +216,8 @@ function useResourcesWorkbenchState({
   focusKey,
   focusPinned,
   onFocusChange,
-  collecting,
+  investigationLoading = false,
+  onNavigate,
   layoutModeProp,
   inspectKey,
   onInspectKeyChange,
@@ -366,7 +388,8 @@ function useResourcesWorkbenchState({
   return {
     allMatches,
     allRows,
-    collecting,
+    investigationLoading,
+    onNavigate,
     layoutMode,
     layout,
     focusPinned,

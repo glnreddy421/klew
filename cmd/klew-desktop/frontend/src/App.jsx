@@ -469,7 +469,7 @@ export default function App() {
     }
 
     setError('')
-    navigateTo('incident')
+    navigateTo('resources')
     beginInvestigationTransition(q)
     setStarting(true)
     try {
@@ -521,7 +521,7 @@ export default function App() {
     beginInvestigationTransition(effectiveQuery)
     setStarting(true)
     setRunning(true)
-    navigateTo('incident')
+    navigateTo('resources')
     try {
       await runInvestigation(effectiveQuery)
     } catch (err) {

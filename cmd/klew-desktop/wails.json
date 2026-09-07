@@ -11,7 +11,7 @@
   },
   "info": {
     "productName": "Klew",
-    "productVersion": "0.1.9"
+    "productVersion": "0.1.10"
   },
   "wailsjsdir": "./frontend",
   "assetdir": "./frontend/dist",

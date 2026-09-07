@@ -74,9 +74,10 @@ export function MainContent({
     }
   }, [prefs?.workspaceLayout])
 
-  const collecting = !scopePickerOpen && (
-    starting || (running && matchCount === 0 && tab === 'resources')
+  const investigationLoading = !scopePickerOpen && (
+    starting || (running && matchCount === 0)
   )
+  const overviewCollecting = investigationLoading
 
   const timeWindowLabel = prefs?.windowMin ? `Last ${prefs.windowMin}m` : 'Last 15m'
   const live = running && prefs?.autoRefresh !== false
@@ -133,7 +134,7 @@ export function MainContent({
             clusterStatus={clusterStatus}
             running={running}
             syncing={syncing}
-            collecting={collecting}
+            collecting={overviewCollecting}
             inspectRow={inspectRow}
             onNavigate={handleNavigate}
             onOpenEvidence={onOpenEvidence}
@@ -208,7 +209,8 @@ export function MainContent({
       focusPinned,
       onFocusChange,
       onClearFocus,
-      collecting,
+      investigationLoading,
+      onNavigate: handleNavigate,
       layoutMode,
       inspectKey,
       onInspectKeyChange,
