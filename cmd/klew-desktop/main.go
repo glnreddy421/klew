@@ -3,8 +3,10 @@ package main
 import (
 	"embed"
 	"flag"
+	"fmt"
 
 	"github.com/glnreddy421/klew/internal/kube"
+	"github.com/glnreddy421/klew/internal/version"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
@@ -39,7 +41,7 @@ func main() {
 			DisableZoom:          false,
 			About: &mac.AboutInfo{
 				Title:   "Klew",
-				Message: "Everything your cluster is saying. One screen.",
+				Message: fmt.Sprintf("Everything your cluster is saying. One screen.\n\nVersion %s", version.Version),
 			},
 		},
 		AssetServer: &assetserver.Options{

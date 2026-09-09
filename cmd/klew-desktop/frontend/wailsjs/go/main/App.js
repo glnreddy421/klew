@@ -14,6 +14,10 @@ export function DiscoverMatches(arg1) {
   return window['go']['main']['App']['DiscoverMatches'](arg1);
 }
 
+export function GetAppInfo() {
+  return window['go']['main']['App']['GetAppInfo']();
+}
+
 export function GetCluster() {
   return window['go']['main']['App']['GetCluster']();
 }

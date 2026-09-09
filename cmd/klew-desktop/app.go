@@ -17,6 +17,7 @@ import (
 	"github.com/glnreddy421/klew/internal/kube"
 	"github.com/glnreddy421/klew/internal/model"
 	"github.com/glnreddy421/klew/internal/service"
+	"github.com/glnreddy421/klew/internal/version"
 )
 
 // bootOptions seeds a window from CLI flags (used when cloning a window).
@@ -887,6 +888,11 @@ func (a *App) SetKubeconfigPath(path string) kube.ClusterState {
 	a.mu.Unlock()
 	a.emitCluster()
 	return st
+}
+
+// GetAppInfo returns Klew build metadata for Settings / About.
+func (a *App) GetAppInfo() version.Info {
+	return version.Get()
 }
 
 // GetKubectlInfo returns the active kubectl binary and bundled/system paths.

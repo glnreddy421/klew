@@ -6,6 +6,7 @@ import { TerminalAppearancePicker } from '../components/TerminalAppearancePicker
 import { SETTINGS_SECTIONS } from '../lib/preferences'
 import { OpenKubeconfigDir, SetKubeconfigPath, GetKubectlInfo, SetKubectlOptions } from '../../wailsjs/go/main/App'
 import { BrowserOpenURL } from '../../wailsjs/runtime/runtime'
+import { useAppInfo } from '../hooks/useAppInfo'
 
 const HELP_LINKS = [
   { label: 'Documentation & blog', url: 'https://klew.dev/blog' },
@@ -41,6 +42,7 @@ export function SettingsView({
   const [kubectlBusy, setKubectlBusy] = useState(false)
   const [kubectlMsg, setKubectlMsg] = useState('')
   const [kubectlInfo, setKubectlInfo] = useState(null)
+  const appInfo = useAppInfo()
 
   useEffect(() => {
     setKubeDraft(prefs.kubeconfigPath || cluster?.kubeconfigPath || '')
@@ -169,6 +171,17 @@ export function SettingsView({
             />
             <div className="settings-about">
               <h4>About</h4>
+              <p className="settings-about-version">
+                Klew {appInfo?.version ? `v${appInfo.version}` : '—'}
+              </p>
+              {appInfo?.commit && appInfo.commit !== 'none' && (
+                <div className="settings-readonly settings-readonly-compact">
+                  <ReadOnly k="Build" v={appInfo.commit} />
+                  {appInfo.date && appInfo.date !== 'unknown' && (
+                    <ReadOnly k="Built" v={appInfo.date} />
+                  )}
+                </div>
+              )}
               <p className="muted">
                 Install: <code>brew tap glnreddy421/klew &amp;&amp; brew install --cask klew</code>
               </p>
