@@ -26,6 +26,6 @@ test('navEntryKey distinguishes settings sections', () => {
   )
 })
 
-test('HOME_NAV points at overview', () => {
-  assert.equal(HOME_NAV.tab, 'incident')
+test('HOME_NAV points at resources', () => {
+  assert.equal(HOME_NAV.tab, 'resources')
 })

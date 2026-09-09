@@ -2,6 +2,7 @@ package kube
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -16,8 +17,9 @@ import (
 )
 
 const (
-	catalogListConcurrency = 8
-	catalogCountLimit      = 500
+	catalogListConcurrency  = 2
+	catalogCountLimit       = 500
+	catalogRequestTimeout   = 12 * time.Second
 )
 
 type rulesIndex struct {
@@ -188,20 +190,30 @@ func resolveAuthRules(ctx context.Context, client *Client, namespace string) (na
 	return nsRules, clRules, nil
 }
 
-func countResource(ctx context.Context, dyn dynamic.Interface, d DiscoveredResource, namespace string) *model.ResourceCount {
+func countResource(ctx context.Context, dyn dynamic.Interface, d DiscoveredResource, namespace string, allNamespaces bool) *model.ResourceCount {
+	reqCtx, cancel := context.WithTimeout(ctx, catalogRequestTimeout)
+	defer cancel()
+
 	gvr := schema.GroupVersionResource{Group: d.Group, Version: d.Version, Resource: d.Resource}
 	var res dynamic.ResourceInterface
 	if d.Namespaced {
-		res = dyn.Resource(gvr).Namespace(namespace)
+		if allNamespaces {
+			res = dyn.Resource(gvr)
+		} else {
+			res = dyn.Resource(gvr).Namespace(namespace)
+		}
 	} else {
 		res = dyn.Resource(gvr)
 	}
-	ul, err := res.List(ctx, metav1.ListOptions{Limit: catalogCountLimit})
+	ul, err := res.List(reqCtx, metav1.ListOptions{Limit: catalogCountLimit})
 	if err != nil {
 		if apierrors.IsForbidden(err) {
 			return &model.ResourceCount{State: "forbidden"}
 		}
 		if apierrors.IsNotFound(err) {
+			return &model.ResourceCount{State: "unavailable"}
+		}
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) || reqCtx.Err() != nil {
 			return &model.ResourceCount{State: "unavailable"}
 		}
 		if ctx.Err() != nil {
@@ -216,9 +228,51 @@ func countResource(ctx context.Context, dyn dynamic.Interface, d DiscoveredResou
 	return &model.ResourceCount{State: "loaded", Count: count}
 }
 
-func attachCounts(ctx context.Context, client *Client, namespace string, descriptors []model.KubernetesResourceDescriptor) []model.KubernetesResourceDescriptor {
-	dyn, err := dynamicClient(client)
-	if err != nil {
+func countResourceMulti(ctx context.Context, dyn dynamic.Interface, d DiscoveredResource, namespaces []string) *model.ResourceCount {
+	total := 0
+	allowed := 0
+	for _, ns := range namespaces {
+		if ctx.Err() != nil {
+			break
+		}
+		c := countResource(ctx, dyn, d, ns, false)
+		if c == nil {
+			continue
+		}
+		switch c.State {
+		case "loaded":
+			allowed++
+			total += c.Count
+		case "forbidden":
+			continue
+		default:
+			continue
+		}
+	}
+	if allowed == 0 {
+		return &model.ResourceCount{State: "forbidden"}
+	}
+	return &model.ResourceCount{State: "loaded", Count: total}
+}
+
+func shouldAttemptCatalogCount(d model.KubernetesResourceDescriptor) bool {
+	if !IsBrowsableCatalogResource(d.Resource) {
+		return false
+	}
+	if !descriptorSupportsList(d) {
+		return false
+	}
+	if d.AccessState == model.ResourceAccessForbidden {
+		return false
+	}
+	if d.Permissions.List != nil && !*d.Permissions.List {
+		return false
+	}
+	return true
+}
+
+func attachCounts(ctx context.Context, client *Client, namespace string, descriptors []model.KubernetesResourceDescriptor, allNamespaces bool, namespaces []string) []model.KubernetesResourceDescriptor {
+	if client == nil {
 		return descriptors
 	}
 	type job struct {
@@ -237,20 +291,11 @@ func attachCounts(ctx context.Context, client *Client, namespace string, descrip
 					return
 				}
 				d := descriptors[j.idx]
-				if d.AccessState != model.ResourceAccessAllowed {
+				if !shouldAttemptCatalogCount(d) {
 					continue
 				}
-				if d.Permissions.List != nil && !*d.Permissions.List {
-					continue
-				}
-				disc := DiscoveredResource{
-					Group: d.Group, Version: d.Version, Resource: d.Resource, Kind: d.Kind, Namespaced: d.Namespaced,
-				}
-				ns := namespace
-				if !d.Namespaced {
-					ns = ""
-				}
-				out[j.idx].Count = countResource(ctx, dyn, disc, ns)
+				scope := catalogEntityScopeForDescriptor(d, namespace, allNamespaces, namespaces)
+				out[j.idx].Count = CountCatalogEntities(ctx, client, d.ID, scope)
 				if out[j.idx].Count != nil && out[j.idx].Count.State == "forbidden" {
 					out[j.idx].AccessState = model.ResourceAccessForbidden
 				}
@@ -259,7 +304,7 @@ func attachCounts(ctx context.Context, client *Client, namespace string, descrip
 	}
 
 	for i, d := range descriptors {
-		if d.AccessState == model.ResourceAccessAllowed && d.Permissions.List != nil && *d.Permissions.List {
+		if shouldAttemptCatalogCount(d) {
 			jobs <- job{idx: i}
 		}
 	}
@@ -269,7 +314,7 @@ func attachCounts(ctx context.Context, client *Client, namespace string, descrip
 }
 
 // BuildResourceCatalog discovers API resources and evaluates RBAC for the namespace scope.
-func BuildResourceCatalog(ctx context.Context, client *Client, namespace string, includeCounts bool) (model.ResourceCatalog, error) {
+func BuildResourceCatalog(ctx context.Context, client *Client, namespace string, includeCounts bool, allNamespaces bool, namespaces []string) (model.ResourceCatalog, error) {
 	if client == nil || client.Clientset == nil {
 		return model.ResourceCatalog{}, fmt.Errorf("kubernetes client is required")
 	}
@@ -284,7 +329,11 @@ func BuildResourceCatalog(ctx context.Context, client *Client, namespace string,
 	discoveryMs := time.Since(start).Milliseconds()
 
 	authStart := time.Now()
-	nsRules, clRules, authErr := resolveAuthRules(ctx, client, namespace)
+	authNS := namespace
+	if allNamespaces || len(namespaces) > 1 {
+		authNS = ""
+	}
+	nsRules, clRules, authErr := resolveAuthRules(ctx, client, authNS)
 	authMs := time.Since(authStart).Milliseconds()
 
 	var descriptors []model.KubernetesResourceDescriptor
@@ -304,14 +353,22 @@ func BuildResourceCatalog(ctx context.Context, client *Client, namespace string,
 	}
 
 	if includeCounts && authErr == nil {
-		descriptors = attachCounts(ctx, client, namespace, descriptors)
+		descriptors = attachCounts(ctx, client, namespace, descriptors, allNamespaces, namespaces)
 	}
 
 	namespaced, extensions, cluster := partitionCatalog(descriptors)
+	catalogNS := namespace
+	if allNamespaces {
+		catalogNS = "*"
+	} else if len(namespaces) > 1 {
+		catalogNS = ""
+	}
 	catalog := model.ResourceCatalog{
 		Context:             client.Context,
 		Cluster:             client.Cluster,
-		Namespace:           namespace,
+		Namespace:           catalogNS,
+		AllNamespaces:       allNamespaces,
+		Namespaces:          append([]string(nil), namespaces...),
 		GeneratedAt:         time.Now(),
 		DiscoveryDurationMs: discoveryMs,
 		AuthDurationMs:      authMs,
@@ -325,8 +382,8 @@ func BuildResourceCatalog(ctx context.Context, client *Client, namespace string,
 }
 
 // RefreshResourceCatalog invalidates caches and rebuilds the catalog.
-func RefreshResourceCatalog(ctx context.Context, client *Client, namespace string, includeCounts bool) (model.ResourceCatalog, error) {
+func RefreshResourceCatalog(ctx context.Context, client *Client, namespace string, includeCounts bool, allNamespaces bool, namespaces []string) (model.ResourceCatalog, error) {
 	InvalidateCatalogDiscovery(client)
 	InvalidateCatalogAuth(client)
-	return BuildResourceCatalog(ctx, client, namespace, includeCounts)
+	return BuildResourceCatalog(ctx, client, namespace, includeCounts, allNamespaces, namespaces)
 }

@@ -1,10 +1,19 @@
-export const NAV_ITEMS = [
+export const NAV_ITEM_RESOURCES = {
+  id: 'resources',
+  label: 'Resources',
+  navLabel: 'Resources',
+  hint: 'Browse and inspect Kubernetes catalog',
+  primary: true,
+}
+
+export const NAV_ITEMS_INVESTIGATION = [
   { id: 'incident', label: 'Overview', navLabel: 'Overview', hint: 'Investigation command center' },
   { id: 'patterns', label: 'Patterns', navLabel: 'Patterns', hint: 'Repeated and correlated behavior' },
   { id: 'failures', label: 'Failures', navLabel: 'Failures', hint: 'Concrete runtime failures' },
-  { id: 'resources', label: 'Resources', navLabel: 'Resources', hint: 'Kubernetes catalog and entities' },
   { id: 'evidence', label: 'Evidence', navLabel: 'Evidence', hint: 'Raw facts behind conclusions' },
 ]
+
+export const NAV_ITEMS = [NAV_ITEM_RESOURCES, ...NAV_ITEMS_INVESTIGATION]
 
 export const NAV_ITEMS_SECONDARY = [
   { id: 'graph', label: 'Graph', navLabel: 'Graph', hint: 'Resource relationships' },
@@ -27,7 +36,11 @@ export const SURFACE_META = {
   },
   resources: {
     title: 'Resources',
-    subtitle: 'Kubernetes objects in scope',
+    subtitle: 'Browse and inspect Kubernetes objects',
+  },
+  workloads: {
+    title: 'Workloads',
+    subtitle: 'Health, counts, and capacity across workload types',
   },
   evidence: {
     title: 'Evidence',

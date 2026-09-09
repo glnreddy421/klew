@@ -24,6 +24,7 @@ const emptyCluster = () => ({
 export function useCluster() {
   const [cluster, setCluster] = useState(emptyCluster)
   const [syncing, setSyncing] = useState(false)
+  const [connecting, setConnecting] = useState(false)
 
   const apply = useCallback((st) => {
     if (st) setCluster(st)
@@ -45,16 +46,27 @@ export function useCluster() {
   }, [apply])
 
   const setContext = useCallback(async (name) => {
-    apply(await SelectContext(name))
+    setConnecting(true)
+    try {
+      apply(await SelectContext(name))
+    } finally {
+      setConnecting(false)
+    }
   }, [apply])
 
   const setNamespace = useCallback(async (name) => {
-    apply(await SelectNamespace(name))
+    setConnecting(true)
+    try {
+      apply(await SelectNamespace(name))
+    } finally {
+      setConnecting(false)
+    }
   }, [apply])
 
   return {
     cluster,
     syncing,
+    connecting,
     syncNow,
     setContext,
     setNamespace,

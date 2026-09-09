@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  CATEGORY_OVERVIEW_KIND,
   entitiesForKind,
   filterEntitiesBySearch,
+  isCategoryOverview,
   pickDefaultKindSelection,
   resolveKindSelection,
   visibleCategories,
@@ -97,6 +99,12 @@ export function useResourceNavigation(tree, { enabled = true } = {}) {
     })
   }, [])
 
+  const selectOverview = useCallback((groupId) => {
+    selectKind(groupId, CATEGORY_OVERVIEW_KIND, null)
+  }, [selectKind])
+
+  const isOverviewSelected = isCategoryOverview(selectedKind)
+
   const toggleShowEmpty = useCallback(() => {
     setShowEmptyKinds((v) => !v)
   }, [])
@@ -114,6 +122,8 @@ export function useResourceNavigation(tree, { enabled = true } = {}) {
     filteredEntities,
     toggleGroup,
     selectKind,
+    selectOverview,
+    isOverviewSelected,
     toggleShowEmpty,
     setEntitySearchQuery,
     pickDefault: () => pickDefaultKindSelection(tree, showEmptyKinds),

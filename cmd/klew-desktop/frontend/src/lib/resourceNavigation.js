@@ -1,5 +1,18 @@
 import { kindDisplayLabel } from './resourceCatalog.js'
 
+/** Virtual kind id for category overview pages (e.g. Workloads → Overview). */
+export const CATEGORY_OVERVIEW_KIND = '__overview__'
+
+export const CATEGORY_OVERVIEW_GROUPS = new Set(['workloads'])
+
+export function isCategoryOverview(kind) {
+  return kind === CATEGORY_OVERVIEW_KIND
+}
+
+export function categorySupportsOverview(categoryId) {
+  return CATEGORY_OVERVIEW_GROUPS.has(categoryId)
+}
+
 /**
  * Categories with optional empty-kind filtering.
  * Built-in presentation rows always remain visible.
@@ -10,6 +23,7 @@ export function visibleCategories(tree, showEmpty) {
     .map((cat) => ({
       ...cat,
       kinds: cat.kinds.filter((k) => {
+        if (k.virtual) return true
         if (k.discoveredOnly && !k.discovered) return false
         if (k.builtin && !k.discoveredOnly) return true
         if (!k.discovered) return false
@@ -28,7 +42,7 @@ export function visibleCategories(tree, showEmpty) {
  * Entity rows for a selected group + resource kind.
  */
 export function entitiesForKind(tree, groupId, kind, resourceId) {
-  if (!tree || !groupId || !kind) return []
+  if (!tree || !groupId || !kind || isCategoryOverview(kind)) return []
   const cat = tree.categories.find((c) => c.id === groupId)
   if (!cat) return []
   const kindGroup = cat.kinds.find((k) =>
@@ -51,9 +65,18 @@ export function filterEntitiesBySearch(entities, query) {
 }
 
 /**
- * Pick default group/kind — first kind with entities or accessible built-in.
+ * Pick default group/kind — Workloads opens on Overview; else first kind with entities.
  */
 export function pickDefaultKindSelection(tree, showEmpty) {
+  for (const cat of visibleCategories(tree, showEmpty)) {
+    if (categorySupportsOverview(cat.id)) {
+      return {
+        groupId: cat.id,
+        kind: CATEGORY_OVERVIEW_KIND,
+        resourceId: null,
+      }
+    }
+  }
   for (const cat of visibleCategories(tree, showEmpty)) {
     for (const kindGroup of cat.kinds) {
       if (kindGroup.matchCount > 0) {
@@ -82,6 +105,12 @@ export function pickDefaultKindSelection(tree, showEmpty) {
  */
 export function resolveKindSelection(tree, prev, showEmpty) {
   const { groupId, kind, resourceId } = prev || {}
+  if (groupId && isCategoryOverview(kind)) {
+    const cat = tree?.categories?.find((c) => c.id === groupId)
+    if (cat && categorySupportsOverview(groupId)) {
+      return { groupId, kind: CATEGORY_OVERVIEW_KIND, resourceId: null }
+    }
+  }
   if (groupId && kind) {
     const cat = tree?.categories?.find((c) => c.id === groupId)
     const kindGroup = cat?.kinds?.find((k) =>
@@ -98,6 +127,7 @@ export function resolveKindSelection(tree, prev, showEmpty) {
  * Entity list search placeholder.
  */
 export function entitySearchPlaceholder(kind, label) {
+  if (isCategoryOverview(kind)) return 'Overview'
   if (label) return `Search ${label.toLowerCase()}…`
   if (!kind) return 'Search resources…'
   return `Search ${kindDisplayLabel(kind).toLowerCase()}…`

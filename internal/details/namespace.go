@@ -2,6 +2,7 @@ package details
 
 import (
 	"context"
+	"strings"
 )
 
 type namespaceProvider struct{}
@@ -25,7 +26,22 @@ func (namespaceProvider) Build(ctx context.Context, req *Request) (*ObjectDetail
 		Summary:  fields("Phase", phase),
 	}
 	var sections []Section
+	finalizers := make([]string, 0, len(ns.Spec.Finalizers))
+	for _, f := range ns.Spec.Finalizers {
+		finalizers = append(finalizers, string(f))
+	}
+	sections = append(sections, sectionFields("spec", "Spec", GroupSpec, fields(
+		"Finalizers", strings.Join(finalizers, ", "),
+	)))
 	sections = append(sections, sectionFields("status", "Status", GroupStatus, fields("Phase", phase)))
+	if len(ns.Status.Conditions) > 0 {
+		var rows [][]string
+		for _, c := range ns.Status.Conditions {
+			rows = append(rows, []string{string(c.Type), string(c.Status), c.Reason, truncate(c.Message, 120)})
+		}
+		sections = append(sections, sectionTable("conditions", "Conditions", GroupStatus,
+			[]string{"Type", "Status", "Reason", "Message"}, rows))
+	}
 	var podRows [][]string
 	for _, p := range req.Snapshot.Pods {
 		if p.Namespace == ns.Name {

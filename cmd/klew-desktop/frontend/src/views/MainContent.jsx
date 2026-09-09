@@ -4,7 +4,6 @@ import {
   ResourcesWorkbenchRoot,
   ResourcesWorkbenchView,
   ResourcesWorkbenchInspector,
-  useResourcesCatalog,
 } from './ResourcesWorkbenchView'
 import { PatternsView } from './PatternsView'
 import { GraphView } from './GraphView'
@@ -17,6 +16,7 @@ import { CollectingMatchesSplash } from '../components/incident/CollectingMatche
 import { deriveMatchRows, getMatchedObjects } from '../lib/matches'
 import { inspectRowFromKey } from '../lib/investigationContext'
 import { loadLayoutMode } from '../lib/incidentLayout'
+import { normalizeBrowseScope } from '../lib/browseScope.js'
 import { defaultRelations } from '../components/shell/explorers/ExplorerPanels.jsx'
 
 export function MainContent({
@@ -28,6 +28,15 @@ export function MainContent({
   activeQuery = '',
   cluster,
   clusterStatus,
+  resourceCatalog,
+  browseScope,
+  onBrowseScopeChange,
+  browseScopeLocked = false,
+  savedBrowseScopeLabel = '',
+  investigationNs = '',
+  investigationSession = null,
+  resourcesBrowseLens = 'matches',
+  onResourcesBrowseLensChange,
   syncing = false,
   themeId,
   onThemeChange,
@@ -64,7 +73,18 @@ export function MainContent({
     [inspectKey, view, allRows],
   )
 
-  const resourcesCatalog = useResourcesCatalog(view, cluster)
+  const resourcesCatalog = useMemo(() => {
+    const allMatches = getMatchedObjects(view)
+    const allRows = deriveMatchRows(view, allMatches)
+    return {
+      allMatches,
+      allRows,
+      catalog: resourceCatalog?.catalog ?? null,
+      loading: resourceCatalog?.loading ?? false,
+      enriching: resourceCatalog?.enriching ?? false,
+      error: resourceCatalog?.error ?? '',
+    }
+  }, [view, resourceCatalog])
 
   const [layoutMode, setLayoutMode] = useState(() => loadLayoutMode(prefs))
 
@@ -74,10 +94,11 @@ export function MainContent({
     }
   }, [prefs?.workspaceLayout])
 
-  const investigationLoading = !scopePickerOpen && (
+  const overviewCollecting = !scopePickerOpen && (
     starting || (running && matchCount === 0)
   )
-  const overviewCollecting = investigationLoading
+  // Resources catalog is independent — only show correlation banner after discovery finishes.
+  const resourcesCorrelating = !scopePickerOpen && running && matchCount === 0
 
   const timeWindowLabel = prefs?.windowMin ? `Last ${prefs.windowMin}m` : 'Last 15m'
   const live = running && prefs?.autoRefresh !== false
@@ -86,7 +107,20 @@ export function MainContent({
     onNavigate?.(target)
   }
 
-  if (!running && !starting && tab !== 'settings') {
+  // Resources is the default surface — browse without investigating.
+  const normalizedBrowseScope = normalizeBrowseScope(browseScope)
+  const hasBrowseScope = Boolean(
+    (cluster?.selectedContext || cluster?.currentContext)
+    && (
+      normalizedBrowseScope.mode === 'all'
+      || (normalizedBrowseScope.mode === 'multi' && normalizedBrowseScope.namespaces.length > 0)
+      || normalizedBrowseScope.namespace
+      || cluster?.selectedNamespace
+    ),
+  )
+  const showWelcome = !running && !starting && !scopePickerOpen && tab !== 'settings' && !hasBrowseScope
+
+  if (showWelcome) {
     const welcome = <WelcomePanel onOpenSettings={onOpenSettings} />
     return renderShell?.({ workspace: welcome, showInspector: false }) ?? welcome
   }
@@ -127,6 +161,9 @@ export function MainContent({
         compact
       />
       <div className="content-body content-body-workbench">
+        {tab === 'resources' && (
+          <ResourcesWorkbenchView shellMode />
+        )}
         {tab === 'incident' && (
           <OverviewView
             view={view}
@@ -143,9 +180,6 @@ export function MainContent({
             timeWindowLabel={timeWindowLabel}
             live={live}
           />
-        )}
-        {tab === 'resources' && (
-          <ResourcesWorkbenchView shellMode />
         )}
         {tab === 'patterns' && (
           <PatternsView
@@ -205,16 +239,27 @@ export function MainContent({
       cluster,
       catalog: resourcesCatalog.catalog,
       rows: resourcesCatalog.allRows,
+      catalogLoading: resourcesCatalog.loading,
+      catalogEnriching: resourcesCatalog.enriching,
+      catalogError: resourcesCatalog.error,
       focusKey,
       focusPinned,
       onFocusChange,
       onClearFocus,
-      investigationLoading,
+      investigationLoading: resourcesCorrelating,
       onNavigate: handleNavigate,
       layoutMode,
       inspectKey,
       onInspectKeyChange,
       shellMode: true,
+      browseScope,
+      onBrowseScopeChange,
+      browseScopeLocked,
+      savedBrowseScopeLabel,
+      investigationNs,
+      investigationSession,
+      resourcesBrowseLens,
+      onResourcesBrowseLensChange,
     } : null,
   }
 

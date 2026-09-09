@@ -22,13 +22,14 @@ export function useLazyResourceCounts(baseTree, { clusterKey, kindGroup, lazy })
       })
       return
     }
-    if (lazy.accessState === 'forbidden' || lazy.accessState === 'unavailable') {
+    if (lazy.accessState === 'forbidden' || lazy.accessState === 'unavailable' || lazy.accessState === 'error') {
       setLazyCounts((prev) => {
         const existing = prev[kindGroup.resourceId]
-        if (existing?.accessState === lazy.accessState) return prev
+        const accessState = lazy.accessState === 'error' ? 'unavailable' : lazy.accessState
+        if (existing?.accessState === accessState && existing?.count === 0) return prev
         return {
           ...prev,
-          [kindGroup.resourceId]: { count: 0, accessState: lazy.accessState },
+          [kindGroup.resourceId]: { count: 0, accessState },
         }
       })
     }
@@ -42,7 +43,11 @@ export function useLazyResourceCounts(baseTree, { clusterKey, kindGroup, lazy })
 
 export function clusterScopeKey(cluster) {
   const ctx = cluster?.selectedContext || cluster?.currentContext || ''
-  const ns = cluster?.selectedNamespace || ''
   const kubeconfig = cluster?.kubeconfigPath || ''
-  return `${kubeconfig}|${ctx}|${ns}`
+  const scope = cluster?.scope ?? cluster?.browseScope
+  let nsKey = cluster?.selectedNamespace || ''
+  if (scope?.mode === 'all') nsKey = '*'
+  else if (scope?.mode === 'multi') nsKey = (scope.namespaces || []).join(',')
+  else if (scope?.namespace) nsKey = scope.namespace
+  return `${kubeconfig}|${ctx}|${nsKey}`
 }

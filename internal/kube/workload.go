@@ -54,7 +54,7 @@ func (col *Collector) Collect(ctx context.Context, opts CollectOptions) (model.E
 	bundle.Permissions = perms
 	bundle.Warnings = append(bundle.Warnings, permWarnings...)
 
-	matches, err := DiscoverMatches(ctx, col.Client, ns, opts.Query)
+	matches, err := DiscoverMatches(ctx, col.Client, model.NamespaceScope{Primary: ns, Namespaces: []string{ns}}, opts.Query)
 	if err != nil {
 		bundle.Warnings = append(bundle.Warnings, err.Error())
 	} else {
@@ -351,9 +351,11 @@ func containerFromStatus(podName string, cs corev1.ContainerStatus, pod corev1.P
 	} else if cs.State.Waiting != nil {
 		out.State = "waiting"
 		out.Reason = cs.State.Waiting.Reason
+		out.Message = cs.State.Waiting.Message
 	} else if cs.State.Terminated != nil {
 		out.State = "terminated"
 		out.Reason = cs.State.Terminated.Reason
+		out.Message = cs.State.Terminated.Message
 		out.ExitCode = cs.State.Terminated.ExitCode
 		out.FinishedAt = model.TimestampPtrFrom(&cs.State.Terminated.FinishedAt.Time)
 	}

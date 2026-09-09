@@ -124,7 +124,7 @@ func RefreshClusterState(ctx context.Context, kubeconfigPath, selectedContext, s
 
 	client, err := NewFromFlags(base.KubeconfigPath, base.SelectedContext, "")
 	if err != nil {
-		base.SyncError = err.Error()
+		base.SyncError = FormatConnectionError("load cluster client", err)
 		base.SyncedAt = model.TimestampFrom(time.Now().UTC())
 		return base
 	}
@@ -147,7 +147,7 @@ func RefreshClusterState(ctx context.Context, kubeconfigPath, selectedContext, s
 			base.SyncWarning = "Cannot list all namespaces with this identity. Using the context namespace — type another namespace if needed."
 			base.SyncError = ""
 		} else {
-			base.SyncError = fmt.Sprintf("list namespaces: %v", err)
+			base.SyncError = FormatConnectionError("list namespaces", err)
 			base.SyncWarning = ""
 		}
 		base.SyncedAt = model.TimestampFrom(time.Now().UTC())

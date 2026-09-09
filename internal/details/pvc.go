@@ -2,6 +2,7 @@ package details
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -65,8 +66,26 @@ func (pvcProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, erro
 		"PersistentVolume", pvc.Spec.VolumeName,
 		"Volume Mode", vm,
 	)))
-	sections = append(sections, sectionFields("accessModes", "Access Modes", GroupSpec, fields(
-		"Modes", strings.Join(modes, ", "),
+	request := ""
+	if q, ok := pvc.Spec.Resources.Requests[corev1.ResourceStorage]; ok {
+		request = q.String()
+	}
+	selector := ""
+	if pvc.Spec.Selector != nil {
+		selector = labelSelectorSummary(pvc.Spec.Selector)
+	}
+	dataSource := ""
+	if pvc.Spec.DataSource != nil {
+		dataSource = fmt.Sprintf("%s/%s", pvc.Spec.DataSource.Kind, pvc.Spec.DataSource.Name)
+	}
+	sections = append(sections, sectionFields("spec", "Spec", GroupSpec, fields(
+		"Storage Class", sc,
+		"Volume Name", pvc.Spec.VolumeName,
+		"Access Modes", strings.Join(modes, ", "),
+		"Volume Mode", vm,
+		"Storage Request", request,
+		"Selector", selector,
+		"Data Source", dataSource,
 	)))
 	if len(usedBy) > 0 {
 		var rows [][]string

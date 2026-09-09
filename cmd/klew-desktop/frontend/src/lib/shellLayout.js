@@ -9,7 +9,7 @@ const DEFAULT = {
   inspectorWidth: 400,
   inspectorPlacement: 'right',
   explorerCollapsed: false,
-  inspectorCollapsed: false,
+  inspectorCollapsed: true,
   /** Activity rail — false shows icon + label, true shows icons only */
   railCollapsed: false,
   /** Per-activity default collapse — Overview hides the explorer entirely */
@@ -32,6 +32,8 @@ export function loadShellLayout() {
     return {
       ...DEFAULT,
       ...parsed,
+      // Inspector open/close is per-session — always start collapsed.
+      inspectorCollapsed: DEFAULT.inspectorCollapsed,
       explorerCollapsedByTab: {
         ...DEFAULT.explorerCollapsedByTab,
         ...(parsed.explorerCollapsedByTab || {}),
@@ -45,7 +47,8 @@ export function loadShellLayout() {
 export function saveShellLayout(patch) {
   try {
     const prev = loadShellLayout()
-    localStorage.setItem(SHELL_LAYOUT_KEY, JSON.stringify({ ...prev, ...patch }))
+    const { inspectorCollapsed: _collapsed, ...persistedPatch } = patch
+    localStorage.setItem(SHELL_LAYOUT_KEY, JSON.stringify({ ...prev, ...persistedPatch }))
   } catch {
     // ignore
   }

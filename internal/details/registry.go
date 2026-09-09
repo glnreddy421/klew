@@ -44,6 +44,7 @@ func init() {
 	register(&statefulSetProvider{})
 	register(&daemonSetProvider{})
 	register(&serviceProvider{})
+	register(&endpointsProvider{})
 	register(&ingressProvider{})
 	register(&endpointSliceProvider{})
 	register(&nodeProvider{})
@@ -66,6 +67,15 @@ func init() {
 	register(&httpRouteProvider{})
 	register(&kyvernoProvider{kind: "ClusterPolicy"})
 	register(&kyvernoProvider{kind: "Policy"})
+	register(&replicationControllerProvider{})
+	register(&ingressClassProvider{})
+	register(&pdbProvider{})
+	register(&leaseProvider{})
+	register(&resourceQuotaProvider{})
+	register(&limitRangeProvider{})
+	register(&webhookConfigurationProvider{kind: "MutatingWebhookConfiguration", mutating: true})
+	register(&webhookConfigurationProvider{kind: "ValidatingWebhookConfiguration", mutating: false})
+	register(&helmReleaseProvider{})
 	register(&genericProvider{})
 }
 
@@ -154,12 +164,24 @@ func normalizeKind(kind string) string {
 		return "Ingress"
 	case "svc", "service":
 		return "Service"
+	case "ep", "endpoints":
+		return "Endpoints"
 	case "cm", "configmap":
 		return "ConfigMap"
 	case "cj", "cronjob":
 		return "CronJob"
 	case "ns", "namespace":
 		return "Namespace"
+	case "rc", "replicationcontroller":
+		return "ReplicationController"
+	case "pdb", "poddisruptionbudget":
+		return "PodDisruptionBudget"
+	case "ingressclass":
+		return "IngressClass"
+	case "quota", "resourcequota":
+		return "ResourceQuota"
+	case "limits", "limitrange":
+		return "LimitRange"
 	default:
 		return kind
 	}
@@ -168,7 +190,12 @@ func normalizeKind(kind string) string {
 func isClusterScopedKind(kind string) bool {
 	switch kind {
 	case "Node", "Namespace", "PersistentVolume", "StorageClass",
-		"ClusterRole", "ClusterRoleBinding", "ClusterPolicy":
+		"ClusterRole", "ClusterRoleBinding", "ClusterPolicy",
+		"IngressClass", "PriorityClass", "RuntimeClass",
+		"CSIDriver", "CSINode", "VolumeAttachment",
+		"CustomResourceDefinition", "APIService",
+		"MutatingWebhookConfiguration", "ValidatingWebhookConfiguration",
+		"ValidatingAdmissionPolicy":
 		return true
 	default:
 		return false

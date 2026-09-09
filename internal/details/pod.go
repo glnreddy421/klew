@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -58,15 +59,19 @@ func (podProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, erro
 	)))
 
 	if rows := containerStateRows(pod.Status.ContainerStatuses); len(rows) > 0 {
-		sections = append(sections, sectionTable("containerStates", "Container States", GroupStatus,
-			[]string{"Name", "Ready", "Restarts", "State", "Reason", "Exit"}, rows))
+		sections = append(sections, sectionTable("containerStates", "Container States", GroupContainers,
+			[]string{"Name", "Ready", "Restarts", "State", "Reason", "Exit", "Image", "Image ID", "Container ID", "Started", "Alloc CPU", "Alloc Mem"}, rows))
 	}
 	if rows := initContainerStateRows(pod.Status.InitContainerStatuses); len(rows) > 0 {
-		sections = append(sections, sectionTable("initContainerStates", "Init Container States", GroupStatus,
-			[]string{"Name", "Ready", "Restarts", "State", "Reason", "Exit", "Image"}, rows))
+		sections = append(sections, sectionTable("initContainerStates", "Init Container States", GroupContainers,
+			[]string{"Name", "Ready", "Restarts", "State", "Reason", "Exit", "Image", "Image ID", "Container ID", "Started"}, rows))
+	}
+	if rows := containerStatusVolumeMountRows(pod.Status.ContainerStatuses); len(rows) > 0 {
+		sections = append(sections, sectionTable("containerVolumeMounts", "Container Volume Mounts (status)", GroupContainers,
+			[]string{"Container", "Volume", "Mount Path", "Read Only", "Recursive RO"}, rows))
 	}
 	if rows := restartHistoryRows(pod.Status.ContainerStatuses); len(rows) > 0 {
-		sections = append(sections, sectionTable("restartHistory", "Restart History", GroupRuntime,
+		sections = append(sections, sectionTable("restartHistory", "Restart History", GroupContainers,
 			[]string{"Name", "Restarts", "Last State", "Last Reason", "Last Exit"}, rows))
 	}
 	if rows := podConditionRows(pod.Status.Conditions); len(rows) > 0 {
@@ -96,15 +101,15 @@ func (podProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, erro
 	)))
 
 	if rows := containerRows(pod.Spec.Containers); len(rows) > 0 {
-		sections = append(sections, sectionTable("containers", "Containers", GroupSpec,
+		sections = append(sections, sectionTable("containers", "Containers", GroupContainers,
 			[]string{"Name", "Image", "Req CPU", "Req Mem", "Lim CPU", "Lim Mem", "Ports"}, rows))
 	}
 	if rows := containerSpecRows(allContainers); len(rows) > 0 {
-		sections = append(sections, sectionTable("containerSpec", "Container Spec", GroupSpec,
+		sections = append(sections, sectionTable("containerSpec", "Container Spec", GroupContainers,
 			[]string{"Name", "Image", "Pull Policy", "Command", "Args", "Working Dir"}, rows))
 	}
 	if rows := containerResourceRows(pod); len(rows) > 0 {
-		sections = append(sections, sectionTable("resources", "Resources", GroupRuntime,
+		sections = append(sections, sectionTable("resources", "Resources", GroupContainers,
 			[]string{"Container", "Req CPU", "Req Mem", "Lim CPU", "Lim Mem"}, rows))
 	}
 	if rows := volumeRows(pod.Spec.Volumes); len(rows) > 0 {
@@ -112,31 +117,31 @@ func (podProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, erro
 			[]string{"Name", "Source"}, rows))
 	}
 	if rows := volumeMountRows(allContainers); len(rows) > 0 {
-		sections = append(sections, sectionTable("volumeMounts", "Volume Mounts", GroupSpec,
+		sections = append(sections, sectionTable("volumeMounts", "Volume Mounts", GroupContainers,
 			[]string{"Container", "Volume", "Mount Path", "Sub Path", "Read Only"}, rows))
 	}
 	if rows := probeRows(allContainers); len(rows) > 0 {
-		sections = append(sections, sectionTable("probes", "Probes", GroupSpec,
+		sections = append(sections, sectionTable("probes", "Probes", GroupContainers,
 			[]string{"Container", "Probe", "Type", "Target", "Initial Delay", "Period", "Timeout", "Failures"}, rows))
 	}
 	if rows := securityContextRows(allContainers); len(rows) > 0 {
-		sections = append(sections, sectionTable("securityContext", "Security Context", GroupSpec,
+		sections = append(sections, sectionTable("securityContext", "Security Context", GroupContainers,
 			[]string{"Container", "Run As User", "Run As Group", "Privileged", "Read Only Root FS"}, rows))
 	}
 	if rows := containerRows(pod.Spec.InitContainers); len(rows) > 0 {
-		sections = append(sections, sectionTable("initContainers", "Init Containers", GroupRuntime,
+		sections = append(sections, sectionTable("initContainers", "Init Containers (spec)", GroupContainers,
 			[]string{"Name", "Image", "Req CPU", "Req Mem", "Lim CPU", "Lim Mem", "Ports"}, rows))
 	}
 	if rows := sidecarRows(pod.Spec.Containers); len(rows) > 0 {
-		sections = append(sections, sectionTable("sidecars", "Sidecars", GroupRuntime,
+		sections = append(sections, sectionTable("sidecars", "Sidecars", GroupContainers,
 			[]string{"Name", "Image", "Restart Policy"}, rows))
 	}
 	if rows := envRowsDetailed(allContainers, configResolver); len(rows) > 0 {
-		sections = append(sections, sectionTable("environment", "Environment", GroupSpec,
+		sections = append(sections, sectionTable("environment", "Environment", GroupContainers,
 			[]string{"Container", "Name", "Source", "Value"}, rows))
 	}
 	if rows, notes := resolvedSecretEnvRows(allContainers, secretResolver); len(rows) > 0 {
-		sec := sectionSensitiveTable("resolvedSecretEnv", "Resolved Secret Environment", GroupSpec,
+		sec := sectionSensitiveTable("resolvedSecretEnv", "Resolved Secret Environment", GroupContainers,
 			[]string{"Container", "Name", "Secret Key", "Value"}, rows, 3)
 		sec.Notes = notes
 		sections = append(sections, sec)
@@ -144,12 +149,12 @@ func (podProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, erro
 		sections = append(sections, Section{
 			ID:    "resolvedSecretEnv",
 			Title: "Secret Environment",
-			Group: GroupSpec,
+			Group: GroupContainers,
 			Notes: notes,
 		})
 	}
 	if rows := imagePullSecretRows(pod.Spec.ImagePullSecrets); len(rows) > 0 {
-		sections = append(sections, sectionTable("imagePullSecrets", "Image Pull Secrets", GroupRelationships,
+		sections = append(sections, sectionTable("imagePullSecrets", "Image Pull Secrets", GroupContainers,
 			[]string{"Name"}, rows))
 	}
 
@@ -234,11 +239,80 @@ func containerStateRows(sts []corev1.ContainerStatus) [][]string {
 	var rows [][]string
 	for _, s := range sts {
 		state, reason, exit := describeContainerState(s.State)
+		started := ""
+		if s.Started != nil {
+			started = boolStr(*s.Started)
+		}
+		allocCPU, allocMem := allocatedResourceStrings(s.AllocatedResources)
 		rows = append(rows, []string{
-			s.Name, boolStr(s.Ready), fmtInt32(s.RestartCount), state, reason, exit,
+			s.Name,
+			boolStr(s.Ready),
+			fmtInt32(s.RestartCount),
+			state,
+			reason,
+			exit,
+			s.Image,
+			displayImageRef(s.ImageID),
+			displayContainerID(s.ContainerID),
+			started,
+			allocCPU,
+			allocMem,
 		})
 	}
 	return rows
+}
+
+func containerStatusVolumeMountRows(sts []corev1.ContainerStatus) [][]string {
+	var rows [][]string
+	for _, s := range sts {
+		for _, m := range s.VolumeMounts {
+			rows = append(rows, []string{
+				s.Name,
+				m.Name,
+				m.MountPath,
+				boolStr(m.ReadOnly),
+				recursiveReadOnlyString(m.RecursiveReadOnly),
+			})
+		}
+	}
+	return rows
+}
+
+func allocatedResourceStrings(list corev1.ResourceList) (cpu, mem string) {
+	if len(list) == 0 {
+		return "", ""
+	}
+	if q, ok := list[corev1.ResourceCPU]; ok {
+		cpu = q.String()
+	}
+	if q, ok := list[corev1.ResourceMemory]; ok {
+		mem = q.String()
+	}
+	return cpu, mem
+}
+
+// displayContainerID returns the full runtime container ID without the CRI scheme prefix.
+func displayContainerID(id string) string {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return ""
+	}
+	if i := strings.Index(id, "://"); i >= 0 {
+		return id[i+3:]
+	}
+	return id
+}
+
+// displayImageRef returns the full resolved image reference from container status.
+func displayImageRef(ref string) string {
+	return strings.TrimSpace(ref)
+}
+
+func recursiveReadOnlyString(mode *corev1.RecursiveReadOnlyMode) string {
+	if mode == nil {
+		return ""
+	}
+	return string(*mode)
 }
 
 func restartHistoryRows(sts []corev1.ContainerStatus) [][]string {

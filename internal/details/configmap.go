@@ -2,6 +2,7 @@ package details
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"sort"
 	"strings"
@@ -39,15 +40,18 @@ func (configMapProvider) Build(ctx context.Context, req *Request) (*ObjectDetail
 		var rows [][]string
 		for _, k := range keys {
 			size := ""
+			value := ""
 			if v, ok := cm.Data[k]; ok {
+				value = v
 				size = fmt.Sprintf("%d bytes", len(v))
 			} else if b, ok := cm.BinaryData[strings.TrimSuffix(k, " (binary)")]; ok {
+				value = base64.StdEncoding.EncodeToString(b)
 				size = fmt.Sprintf("%d bytes", len(b))
 			}
-			rows = append(rows, []string{k, size})
+			rows = append(rows, []string{k, value, size})
 		}
 		sections = append(sections, sectionTable("dataKeys", "Data Keys", GroupSpec,
-			[]string{"Key", "Size"}, rows))
+			[]string{"Key", "Value", "Size"}, rows))
 	}
 	if len(consumers) > 0 {
 		var rows [][]string

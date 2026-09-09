@@ -2,6 +2,7 @@ package details
 
 import (
 	"context"
+	"strings"
 )
 
 type storageClassProvider struct{}
@@ -36,9 +37,18 @@ func (storageClassProvider) Build(ctx context.Context, req *Request) (*ObjectDet
 		"Provisioner", sc.Provisioner,
 		"Allow Volume Expansion", boolStrPtr(sc.AllowVolumeExpansion),
 	)))
+	defaultClass := ""
+	if v, ok := sc.Annotations["storageclass.kubernetes.io/is-default-class"]; ok {
+		defaultClass = strings.TrimSpace(v)
+	} else if v, ok := sc.Annotations["storageclass.beta.kubernetes.io/is-default-class"]; ok {
+		defaultClass = strings.TrimSpace(v)
+	}
 	sections = append(sections, sectionFields("spec", "Spec", GroupSpec, fields(
+		"Provisioner", sc.Provisioner,
 		"Reclaim Policy", reclaim,
 		"Volume Binding Mode", binding,
+		"Default Class", defaultClass,
+		"Allow Volume Expansion", boolStrPtr(sc.AllowVolumeExpansion),
 	)))
 	if kv := kvMap(sc.Parameters); len(kv) > 0 {
 		sections = append(sections, sectionKV("parameters", "Parameters", GroupSpec, kv))

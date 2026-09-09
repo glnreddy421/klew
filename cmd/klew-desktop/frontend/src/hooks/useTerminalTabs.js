@@ -13,10 +13,12 @@ export function createTerminalTab(overrides = {}) {
     error: '',
     contextName: overrides.contextName || '',
     namespace: overrides.namespace || '',
+    initialInput: overrides.initialInput || '',
+    initialInputSent: false,
   }
 }
 
-export function useTerminalTabs(cluster, { open = false, persist = false, onEmpty } = {}) {
+export function useTerminalTabs(cluster, { open = false, persist = false, onEmpty, skipInitialSeed = false } = {}) {
   const [tabs, setTabs] = useState([])
   const [activeId, setActiveId] = useState(null)
   const seededRef = useRef(false)
@@ -50,7 +52,11 @@ export function useTerminalTabs(cluster, { open = false, persist = false, onEmpt
         const pick = next[Math.min(idx, next.length - 1)]
         return pick.id
       })
-      if (next.length === 0) onEmpty?.()
+      if (next.length === 0) {
+        // User closed the last tab — don't auto-spawn a blank shell (e.g. after closing log tail).
+        seededRef.current = true
+        onEmpty?.()
+      }
       return next
     })
   }, [onEmpty])
@@ -88,11 +94,11 @@ export function useTerminalTabs(cluster, { open = false, persist = false, onEmpt
       }
       return
     }
-    if (tabs.length === 0 && !seededRef.current) {
+    if (tabs.length === 0 && !seededRef.current && !skipInitialSeed) {
       seededRef.current = true
       addTab()
     }
-  }, [open, persist, tabs.length, addTab])
+  }, [open, persist, skipInitialSeed, tabs.length, addTab])
 
   const activeTab = tabs.find((t) => t.id === activeId) || null
 

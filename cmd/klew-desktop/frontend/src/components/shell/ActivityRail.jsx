@@ -1,4 +1,4 @@
-import { NAV_ITEMS, NAV_ITEMS_SECONDARY } from '../../lib/constants.js'
+import { NAV_ITEMS_INVESTIGATION, NAV_ITEM_RESOURCES, NAV_ITEMS_SECONDARY } from '../../lib/constants.js'
 import { StreamLiveBadge } from '../StreamLiveBadge.jsx'
 
 export function ActivityRail({
@@ -13,11 +13,23 @@ export function ActivityRail({
   return (
     <aside
       className={`activity-rail ${collapsed ? 'is-collapsed' : ''}`}
-      aria-label="Investigation surfaces"
+      aria-label="Main navigation"
     >
       <div className="activity-rail-inner">
-        <nav className="activity-rail-nav" aria-label="Primary surfaces">
-          {NAV_ITEMS.map((item) => (
+        <nav className="activity-rail-nav activity-rail-nav-primary" aria-label="Resources">
+          <ActivityRailItem
+            item={NAV_ITEM_RESOURCES}
+            active={active === NAV_ITEM_RESOURCES.id}
+            collapsed={collapsed}
+            onClick={() => onSelect?.(NAV_ITEM_RESOURCES.id)}
+            prominent
+          />
+        </nav>
+
+        <div className="activity-rail-divider activity-rail-divider-primary" aria-hidden="true" />
+
+        <nav className="activity-rail-nav" aria-label="Investigation surfaces">
+          {NAV_ITEMS_INVESTIGATION.map((item) => (
             <ActivityRailItem
               key={item.id}
               item={item}
@@ -73,14 +85,18 @@ export function ActivityRail({
   )
 }
 
-function ActivityRailItem({ item, active, collapsed, onClick, trailing = null }) {
+function ActivityRailItem({ item, active, collapsed, onClick, trailing = null, prominent = false }) {
   const label = item.navLabel || item.label
   const tip = item.hint || item.label
 
   return (
     <button
       type="button"
-      className={`activity-rail-item ${active ? 'is-active' : ''}`}
+      className={[
+        'activity-rail-item',
+        active ? 'is-active' : '',
+        prominent ? 'is-primary' : '',
+      ].filter(Boolean).join(' ')}
       onClick={onClick}
       title={tip}
       aria-label={item.label}

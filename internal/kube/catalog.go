@@ -96,6 +96,9 @@ func parseDiscoveredResources(lists []*metav1.APIResourceList, failedGroups []st
 			if isSubresource(r.Name) {
 				continue
 			}
+			if !IsBrowsableCatalogResource(r.Name) {
+				continue
+			}
 			if r.Kind == "" || r.Name == "" {
 				continue
 			}

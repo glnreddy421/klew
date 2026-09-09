@@ -210,8 +210,8 @@ func containerSpecRows(containers []corev1.Container) [][]string {
 			c.Name,
 			c.Image,
 			pull,
-			truncate(strings.Join(c.Command, " "), 80),
-			truncate(strings.Join(c.Args, " "), 80),
+			strings.Join(c.Command, " "),
+			strings.Join(c.Args, " "),
 			c.WorkingDir,
 		})
 	}
@@ -317,8 +317,21 @@ func initContainerStateRows(sts []corev1.ContainerStatus) [][]string {
 	var rows [][]string
 	for _, s := range sts {
 		state, reason, exit := describeContainerState(s.State)
+		started := ""
+		if s.Started != nil {
+			started = boolStr(*s.Started)
+		}
 		rows = append(rows, []string{
-			s.Name, boolStr(s.Ready), fmtInt32(s.RestartCount), state, reason, exit, s.Image,
+			s.Name,
+			boolStr(s.Ready),
+			fmtInt32(s.RestartCount),
+			state,
+			reason,
+			exit,
+			s.Image,
+			displayImageRef(s.ImageID),
+			displayContainerID(s.ContainerID),
+			started,
 		})
 	}
 	return rows

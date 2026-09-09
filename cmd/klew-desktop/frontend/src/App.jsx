@@ -16,8 +16,23 @@ import {
 } from '../wailsjs/go/main/App'
 import { EventsOn } from '../wailsjs/runtime/runtime'
 import { emptyView } from './lib/constants'
+import { TerminalLaunchProvider } from './context/TerminalLaunchContext.jsx'
 import { useCluster } from './hooks/useCluster'
 import { useClusterStatus } from './hooks/useClusterStatus'
+import { useClusterConnection } from './hooks/useClusterConnection'
+import { useResourceCatalog } from './hooks/useResourceCatalog'
+import {
+  allBrowseScope,
+  browseScopeLabel,
+  discoverOptionsFromScope,
+  investigationLockScope,
+  investigationNamespace,
+  normalizeInvestigationScope,
+  normalizeBrowseScope,
+  RESOURCES_BROWSE_LENS,
+  scopeSupportsInvestigate,
+  singleBrowseScope,
+} from './lib/browseScope.js'
 import { HOME_NAV, normalizeNavEntry, useNavigationHistory } from './hooks/useNavigationHistory'
 import { useStreamPanel, PANEL_NORMAL, PANEL_CLOSED } from './hooks/useStreamPanel'
 import { useTerminalPanel } from './hooks/useTerminalPanel'
@@ -26,6 +41,7 @@ import { useTheme } from './hooks/useTheme'
 import { usePreferences } from './hooks/usePreferences'
 import { startOptionsFromPreferences } from './lib/preferences'
 import { resolveTerminalShellPref } from './lib/terminalShell'
+import { buildKubectlLogsCommand, podLogsTabTitle } from './lib/podLogsTerminal'
 import { useIdleAutoStop, formatIdleDuration } from './hooks/useIdleAutoStop'
 import { AppShell } from './components/shell/AppShell.jsx'
 import { ResourcesWorkbenchRoot } from './views/ResourcesWorkbenchView'
@@ -35,6 +51,7 @@ import { ConsoleDock } from './components/ConsoleDock'
 import { TerminalShellModal } from './components/TerminalShellModal'
 import { ScopePickerModal } from './components/incident/ScopePickerModal'
 import { MainContent } from './views/MainContent'
+import { ClusterConnectionBanner } from './components/shell/ClusterConnectionBanner'
 import {
   pickDefaultFocus,
   deriveMatchRows,
@@ -50,7 +67,7 @@ import {
 
 export default function App() {
   const [view, setView] = useState(emptyView())
-  const [tab, setTab] = useState('incident')
+  const [tab, setTab] = useState('resources')
   const [nodesFocus, setNodesFocus] = useState('cluster')
   const [settingsSection, setSettingsSection] = useState('general')
   const navigation = useNavigationHistory(HOME_NAV)
@@ -101,14 +118,112 @@ export default function App() {
   const [focusPinned, setFocusPinned] = useState(false)
   const [inspectKey, setInspectKey] = useState(null)
 
-  const { cluster, syncing, syncNow, setContext, setNamespace } = useCluster()
-  const { clusterStatus } = useClusterStatus(cluster)
+  const { cluster, syncing, connecting, syncNow, setContext, setNamespace } = useCluster()
+  const [investigationScope, setInvestigationScope] = useState(() => singleBrowseScope(''))
+  const [browseScope, setBrowseScope] = useState(() => allBrowseScope())
+  const savedBrowseScopeRef = useRef(null)
+  const [investigationNs, setInvestigationNs] = useState('')
+  const [lockedResourcesScope, setLockedResourcesScope] = useState(null)
+  const [savedBrowseScopeLabel, setSavedBrowseScopeLabel] = useState('')
+  const [resourcesBrowseLens, setResourcesBrowseLens] = useState(RESOURCES_BROWSE_LENS.MATCHES)
+  const prevContextRef = useRef('')
+
+  useEffect(() => {
+    const ctx = cluster.selectedContext || cluster.currentContext || ''
+    if (prevContextRef.current && prevContextRef.current !== ctx) {
+      const ns = cluster.selectedNamespace || ''
+      setInvestigationScope(singleBrowseScope(ns))
+      setBrowseScope(allBrowseScope())
+    }
+    prevContextRef.current = ctx
+  }, [cluster.selectedContext, cluster.currentContext, cluster.selectedNamespace])
+
+  useEffect(() => {
+    const ns = cluster.selectedNamespace || ''
+    if (!ns) return
+    setInvestigationScope((prev) => {
+      const current = normalizeBrowseScope(prev)
+      if (current.namespace) return prev
+      return singleBrowseScope(ns)
+    })
+    setBrowseScope((prev) => {
+      const current = normalizeBrowseScope(prev)
+      if (current.mode === 'all' || current.mode === 'multi') return prev
+      if (current.namespace) return prev
+      return singleBrowseScope(ns)
+    })
+  }, [cluster.selectedContext, cluster.selectedNamespace])
+
+  const normalizedInvestigationScope = useMemo(
+    () => normalizeInvestigationScope(investigationScope, { fallbackNamespace: cluster.selectedNamespace }),
+    [investigationScope, cluster.selectedNamespace],
+  )
+  const normalizedBrowseScope = useMemo(() => normalizeBrowseScope(browseScope), [browseScope])
+
+  const investigationScopeLocked = running || starting
+  const resourcesInvestigationActive = Boolean(lockedResourcesScope)
+  const resourcesNamespaceLocked = resourcesInvestigationActive
+    && resourcesBrowseLens === RESOURCES_BROWSE_LENS.MATCHES
+
+  const displayInvestigationScope = useMemo(() => {
+    if (investigationScopeLocked && investigationNs) return singleBrowseScope(investigationNs)
+    return normalizedInvestigationScope
+  }, [investigationScopeLocked, investigationNs, normalizedInvestigationScope])
+
+  const effectiveBrowseScope = useMemo(() => {
+    if (resourcesNamespaceLocked && lockedResourcesScope) {
+      return normalizeBrowseScope(lockedResourcesScope)
+    }
+    return normalizedBrowseScope
+  }, [resourcesNamespaceLocked, lockedResourcesScope, normalizedBrowseScope])
+
+  const lockResourcesForInvestigation = useCallback((scope, sessionNs = '') => {
+    setResourcesBrowseLens(RESOURCES_BROWSE_LENS.MATCHES)
+    setLockedResourcesScope(investigationLockScope(scope, sessionNs))
+    if (!savedBrowseScopeRef.current) {
+      savedBrowseScopeRef.current = normalizedBrowseScope
+      setSavedBrowseScopeLabel(browseScopeLabel(normalizedBrowseScope, { namespaces: cluster.namespaces }))
+    }
+  }, [normalizedBrowseScope, cluster.namespaces])
+
+  const unlockResourcesFromInvestigation = useCallback(() => {
+    const saved = savedBrowseScopeRef.current
+    const lens = resourcesBrowseLens
+    savedBrowseScopeRef.current = null
+    setLockedResourcesScope(null)
+    setInvestigationNs('')
+    setSavedBrowseScopeLabel('')
+    setResourcesBrowseLens(RESOURCES_BROWSE_LENS.MATCHES)
+    if (saved && lens === RESOURCES_BROWSE_LENS.MATCHES) setBrowseScope(saved)
+  }, [resourcesBrowseLens])
+
+  const scopedCluster = useMemo(
+    () => ({
+      ...cluster,
+      scope: effectiveBrowseScope,
+      browseScope: effectiveBrowseScope,
+    }),
+    [cluster, effectiveBrowseScope],
+  )
+  const resourceCatalog = useResourceCatalog(cluster, effectiveBrowseScope)
+  const { clusterStatus, statusLoading, refreshClusterStatus } = useClusterStatus(cluster)
+  const { connection, reconnect, reconnectBusy } = useClusterConnection({
+    cluster,
+    syncing,
+    connecting,
+    clusterStatus,
+    statusLoading,
+    syncNow,
+    refreshClusterStatus,
+  })
   const stream = useStreamPanel()
   const terminal = useTerminalPanel()
   const consoleDock = useConsoleDock({ stream, terminal })
   const [terminalShellPickerOpen, setTerminalShellPickerOpen] = useState(false)
   const [pendingShellPickerAction, setPendingShellPickerAction] = useState(null)
   const [terminalShellRestartToken, setTerminalShellRestartToken] = useState(0)
+  const [terminalLaunchRequest, setTerminalLaunchRequest] = useState(null)
+  const pendingPodLogsLaunchRef = useRef(null)
   const { themeId, setTheme } = useTheme()
   const { prefs, setPreferences } = usePreferences()
   const activeQueryRef = useRef('')
@@ -125,6 +240,18 @@ export default function App() {
   useEffect(() => {
     activeQueryRef.current = activeQuery
   }, [activeQuery])
+
+  useEffect(() => {
+    if (!error) return undefined
+    const t = window.setTimeout(() => setError(''), 5000)
+    return () => window.clearTimeout(t)
+  }, [error])
+
+  useEffect(() => {
+    if (!notice) return undefined
+    const t = window.setTimeout(() => setNotice(''), 5000)
+    return () => window.clearTimeout(t)
+  }, [notice])
 
   // Live investigations emit state very often (log lines). Coalesce UI updates so
   // React is not forced to reconcile the whole shell on every tick.
@@ -203,7 +330,21 @@ export default function App() {
       consoleDock.openTerminal()
       setPendingShellPickerAction(null)
     }
-  }, [setPreferences, terminal, pendingShellPickerAction, consoleDock])
+    if (pendingShellPickerAction === 'openPodLogs') {
+      const target = pendingPodLogsLaunchRef.current
+      pendingPodLogsLaunchRef.current = null
+      if (target) {
+        setTerminalLaunchRequest({
+          id: Date.now(),
+          title: podLogsTabTitle(target.podName, target.container),
+          namespace: target.namespace || cluster.selectedNamespace || '',
+          initialInput: buildKubectlLogsCommand(target),
+        })
+      }
+      consoleDock.openTerminal()
+      setPendingShellPickerAction(null)
+    }
+  }, [setPreferences, terminal, pendingShellPickerAction, consoleDock, cluster.selectedNamespace])
 
   const openShellPicker = useCallback((action = null) => {
     setPendingShellPickerAction(action)
@@ -231,6 +372,33 @@ export default function App() {
       setTerminalShellRestartToken(Date.now())
     }
   }, [terminal.open])
+
+  const handleOpenPodLogs = useCallback((target) => {
+    if (!target?.podName) return
+    if (!prefs.terminalShellPrompted) {
+      pendingPodLogsLaunchRef.current = target
+      openShellPicker('openPodLogs')
+      return
+    }
+    setTerminalLaunchRequest({
+      id: Date.now(),
+      title: podLogsTabTitle(target.podName, target.container),
+      namespace: target.namespace || cluster.selectedNamespace || '',
+      initialInput: buildKubectlLogsCommand(target),
+    })
+    consoleDock.openTerminal()
+  }, [prefs.terminalShellPrompted, openShellPicker, consoleDock, cluster.selectedNamespace])
+
+  const launchTerminalCommand = useCallback((opts) => {
+    if (!opts?.initialInput) return
+    setTerminalLaunchRequest({
+      id: Date.now(),
+      title: opts.title || 'Terminal',
+      namespace: opts.namespace || cluster.selectedNamespace || '',
+      initialInput: opts.initialInput,
+    })
+    consoleDock.openTerminal()
+  }, [consoleDock, cluster.selectedNamespace])
 
   const handleNavigate = useCallback((target) => {
     const entry = normalizeNavEntry(
@@ -272,6 +440,7 @@ export default function App() {
 
   finishStopRef.current = async ({ idleMessage } = {}) => {
     await StopInvestigation()
+    unlockResourcesFromInvestigation()
     setRunning(false)
     setStarting(false)
     setGatherError('')
@@ -357,17 +526,23 @@ export default function App() {
     setFocusKey(null)
   }, [])
 
-  const runInvestigation = useCallback(async (q) => {
+  const runInvestigation = useCallback(async (q, matches = []) => {
     const trimmed = normalizeInvestigationQuery(q)
+    const ns = investigationNamespace(normalizedInvestigationScope, matches)
+    if (!ns) {
+      throw new Error('Could not determine namespace for investigation')
+    }
     setNotice('')
     setView(emptyView())
     const opts = startOptionsFromPreferences(prefs, {
       query: trimmed,
-      namespace: cluster.selectedNamespace,
+      namespace: ns,
       context: cluster.selectedContext,
       kubeconfig: cluster.kubeconfigPath,
     })
     // StartInvestigation stops any prior session — no separate Stop click needed.
+    lockResourcesForInvestigation(normalizedInvestigationScope, ns)
+    setInvestigationNs(ns)
     await StartInvestigation(opts)
     setRunning(true)
     setGatherError('')
@@ -381,7 +556,7 @@ export default function App() {
     const next = await GetView()
     applyView(next)
     bumpActivity()
-  }, [cluster, stream, consoleDock, prefs, applyView, bumpActivity])
+  }, [cluster, normalizedInvestigationScope, lockResourcesForInvestigation, stream, consoleDock, prefs, applyView, bumpActivity])
 
   const handleStartGather = useCallback(async ({ podNames, lineSearch }) => {
     setGatherBusy(true)
@@ -461,23 +636,33 @@ export default function App() {
   async function onStart(e) {
     e?.preventDefault?.()
     if (starting) return
-    if (!cluster.selectedNamespace) return
+    if (!scopeSupportsInvestigate(normalizedInvestigationScope)) return
 
     const q = normalizeInvestigationQuery(query)
     if (q !== query) {
       setQuery(q)
     }
 
+    const scopeLabel = browseScopeLabel(normalizedInvestigationScope, { namespaces: cluster.namespaces })
+    const discoverBase = discoverOptionsFromScope(normalizedInvestigationScope, {
+      context: cluster.selectedContext,
+      kubeconfig: cluster.kubeconfigPath,
+    })
+
     setError('')
     navigateTo('resources')
     beginInvestigationTransition(q)
+    lockResourcesForInvestigation(
+      normalizedInvestigationScope,
+      normalizedInvestigationScope.mode === 'single' ? normalizedInvestigationScope.namespace : '',
+    )
     setStarting(true)
+
+    let matches = []
     try {
-      const matches = await DiscoverMatches({
+      matches = await DiscoverMatches({
         query: q,
-        namespace: cluster.selectedNamespace,
-        context: cluster.selectedContext,
-        kubeconfig: cluster.kubeconfigPath,
+        ...discoverBase,
       })
 
       if (isBlankInvestigationQuery(q)) {
@@ -491,21 +676,38 @@ export default function App() {
       }
 
       if (!matches.length) {
-        setError(`No resources matched "${q}" in ${cluster.selectedNamespace}.`)
+        setError(`No resources matched "${q}" in ${scopeLabel}.`)
         setActiveQuery('')
         setView(emptyView())
+        savedBrowseScopeRef.current = null
+        setLockedResourcesScope(null)
+        setInvestigationNs('')
+        setSavedBrowseScopeLabel('')
         return
       }
-
-      setRunning(true)
-      await runInvestigation(q)
     } catch (err) {
       setError(String(err))
       setRunning(false)
       setActiveQuery('')
       setView(emptyView())
+      savedBrowseScopeRef.current = null
+      setLockedResourcesScope(null)
+      setInvestigationNs('')
+      setSavedBrowseScopeLabel('')
+      return
     } finally {
       setStarting(false)
+    }
+
+    setRunning(true)
+    try {
+      await runInvestigation(q, matches)
+    } catch (err) {
+      setError(String(err))
+      setRunning(false)
+      setActiveQuery('')
+      setView(emptyView())
+      unlockResourcesFromInvestigation()
     }
   }
 
@@ -519,23 +721,31 @@ export default function App() {
     )
     setError('')
     beginInvestigationTransition(effectiveQuery)
-    setStarting(true)
-    setRunning(true)
     navigateTo('resources')
+    lockResourcesForInvestigation(
+      normalizedInvestigationScope,
+      normalizedInvestigationScope.mode === 'single' ? normalizedInvestigationScope.namespace : '',
+    )
+    setRunning(true)
     try {
-      await runInvestigation(effectiveQuery)
+      await runInvestigation(effectiveQuery, matches)
     } catch (err) {
       setError(String(err))
       setRunning(false)
       setActiveQuery('')
       setView(emptyView())
-    } finally {
-      setStarting(false)
+      unlockResourcesFromInvestigation()
     }
   }
 
   function onScopeCancel() {
     setScopePicker((prev) => ({ ...prev, open: false }))
+    if (!running) {
+      savedBrowseScopeRef.current = null
+      setLockedResourcesScope(null)
+      setInvestigationNs('')
+      setSavedBrowseScopeLabel('')
+    }
   }
 
   async function onStop() {
@@ -566,13 +776,22 @@ export default function App() {
     }
   }
 
-  async function onNamespaceChange(name) {
-    try {
-      await setNamespace(name)
-    } catch (err) {
-      setError(String(err))
-    }
+  function onInvestigationScopeChange(nextScope) {
+    if (investigationScopeLocked) return
+    const next = normalizeInvestigationScope(nextScope, { fallbackNamespace: cluster.selectedNamespace })
+    if (!next.namespace) return
+    setInvestigationScope(next)
+    setNamespace(next.namespace).catch((err) => setError(String(err)))
   }
+
+  function onBrowseScopeChange(nextScope) {
+    if (resourcesNamespaceLocked) return
+    setBrowseScope(normalizeBrowseScope(nextScope))
+  }
+
+  const onResourcesBrowseLensChange = useCallback((lens) => {
+    setResourcesBrowseLens(lens)
+  }, [])
 
   async function onNewWindow() {
     try {
@@ -614,10 +833,15 @@ export default function App() {
         onOpenHelp={() => navigateTo({ tab: 'settings', settingsSection: 'help' })}
         topBarProps={{
           cluster,
+          scope: displayInvestigationScope,
+          scopeLocked: investigationScopeLocked,
+          savedScopeLabel: '',
+          investigationNs,
+          onScopeChange: onInvestigationScopeChange,
+          scopeVariant: 'investigate',
           syncing,
           onSync: syncNow,
           onContextChange,
-          onNamespaceChange,
           query,
           onQueryChange: setQuery,
           onQueryClear: () => setQuery(''),
@@ -635,8 +859,11 @@ export default function App() {
           onNavHome: handleNavHome,
           canNavBack: navigation.canGoBack,
           canNavForward: navigation.canGoForward,
+          connection,
+          onReconnect: reconnect,
+          reconnectBusy,
         }}
-        showExplorer={running || starting}
+        showExplorer={running || starting || scopePicker.open || tab === 'resources'}
         showInspector={payload.showInspector}
         inspector={payload.inspector}
         view={view}
@@ -647,6 +874,7 @@ export default function App() {
         prefs={prefs}
         onPrefsChange={setPreferences}
         inspectRow={inspectRowForToolbar}
+        onOpenPodLogs={handleOpenPodLogs}
         explorerFilters={explorerFilters}
         onExplorerFiltersChange={setExplorerFilters}
         graphRelations={graphRelations}
@@ -665,6 +893,7 @@ export default function App() {
           cluster={rw.cluster}
           rows={rw.rows}
           chain={rw.focusPinned}
+          browseLens={rw.resourcesBrowseLens}
         >
           <ResourcesWorkbenchRoot {...rw}>
             {shell}
@@ -705,10 +934,25 @@ export default function App() {
 
   return (
     <>
-      {notice && <div className="banner-info banner-float">{notice}</div>}
-      {error && <div className="banner-error banner-float">{error}</div>}
+      {notice && (
+        <div className="banner-info banner-float" role="status" onClick={() => setNotice('')}>
+          {notice}
+        </div>
+      )}
+      {error && (
+        <div className="banner-error banner-float" role="alert" onClick={() => setError('')}>
+          {error}
+        </div>
+      )}
 
+      <TerminalLaunchProvider launch={launchTerminalCommand}>
       <div className={`app-root ${maximized ? 'stream-maximized' : ''}`}>
+      <ClusterConnectionBanner
+        connection={connection}
+        onReconnect={reconnect}
+        onOpenSettings={() => navigateTo({ tab: 'settings', settingsSection: 'kubernetes' })}
+        reconnectBusy={reconnectBusy}
+      />
       <MainContent
         tab={tab}
         view={view}
@@ -716,8 +960,24 @@ export default function App() {
         starting={starting}
         scopePickerOpen={scopePicker.open}
         activeQuery={activeQuery}
-        cluster={cluster}
+        cluster={scopedCluster}
         clusterStatus={clusterStatus}
+        resourceCatalog={resourceCatalog}
+        browseScope={effectiveBrowseScope}
+        onBrowseScopeChange={onBrowseScopeChange}
+        browseScopeLocked={resourcesNamespaceLocked}
+        savedBrowseScopeLabel={savedBrowseScopeLabel}
+        investigationNs={investigationNs}
+        resourcesBrowseLens={resourcesBrowseLens}
+        onResourcesBrowseLensChange={onResourcesBrowseLensChange}
+        investigationSession={{
+          active: resourcesInvestigationActive,
+          namespaceLabel: lockedResourcesScope
+            ? browseScopeLabel(lockedResourcesScope, { namespaces: cluster.namespaces })
+            : '',
+          query: activeQuery || ((starting || scopePicker.open) ? query : ''),
+          starting,
+        }}
         syncing={syncing}
         themeId={themeId}
         onThemeChange={setTheme}
@@ -803,10 +1063,13 @@ export default function App() {
             appearance: prefs.terminalAppearance,
             onChangeShell: handleOpenTerminalShellPicker,
             shellRestartToken: terminalShellRestartToken,
+            launchRequest: terminalLaunchRequest,
+            onLaunchHandled: () => setTerminalLaunchRequest(null),
           }}
         />
       </div>
       </div>
+      </TerminalLaunchProvider>
 
       <TerminalShellModal
         open={terminalShellPickerOpen}
@@ -822,7 +1085,7 @@ export default function App() {
       <ScopePickerModal
         open={scopePicker.open}
         query={scopePicker.query}
-        namespace={cluster.selectedNamespace}
+        namespace={browseScopeLabel(displayInvestigationScope, { namespaces: cluster.namespaces })}
         contextLabel={cluster.selectedContext}
         matches={scopePicker.matches}
         mode={scopePicker.mode}

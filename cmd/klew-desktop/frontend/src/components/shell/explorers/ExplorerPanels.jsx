@@ -22,6 +22,7 @@ export function ResourcesExplorer() {
       selectedResourceId={nav.selectedResourceId}
       onToggleGroup={nav.toggleGroup}
       onSelectKind={nav.selectKind}
+      onSelectOverview={nav.selectOverview}
     />
   )
 }

@@ -118,6 +118,7 @@ export function blastRadiusCounts(snapshot) {
   let healthy = 0
   let podsFailing = 0
   for (const p of pods) {
+    if (!p) continue
     const h = podHealthLabel(p)
     if (h === 'critical') { critical++; podsFailing++ }
     else if (h === 'warning') { warning++; podsFailing++ }
@@ -125,12 +126,14 @@ export function blastRadiusCounts(snapshot) {
     else warning++
   }
   for (const w of snapshot?.workloads || []) {
+    if (!w) continue
     const ready = w.ready ?? w.readyReplicas ?? 0
     const desired = w.replicas ?? w.desired ?? 0
     if (desired > 0 && ready < desired) warning++
     else if (desired > 0) healthy++
   }
   for (const svc of snapshot?.services || []) {
+    if (!svc) continue
     const er = svc.endpointsReady ?? svc.readyEndpoints
     const et = svc.endpointsTotal ?? svc.totalEndpoints
     if (et != null && er != null && et > 0 && er < et) warning++

@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
 
 export const HOME_NAV = {
-  tab: 'incident',
+  tab: 'resources',
   nodesFocus: 'cluster',
   settingsSection: 'general',
 }

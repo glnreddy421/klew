@@ -1,9 +1,11 @@
 import { createContext, useContext, useMemo } from 'react'
-import { buildCatalogScopeTree } from '../lib/resourceCatalog.js'
-import { visibleCategories } from '../lib/resourceNavigation.js'
+import { buildCatalogScopeTree, catalogTreeSignature } from '../lib/resourceCatalog.js'
+import { isCategoryOverview, visibleCategories } from '../lib/resourceNavigation.js'
 import { useResourceNavigation } from '../hooks/useResourceNavigation.js'
 import { useCatalogEntities } from '../hooks/useCatalogEntities.js'
 import { clusterScopeKey, useLazyResourceCounts } from '../hooks/useLazyResourceCounts.js'
+import { isResourcesBrowseAll, RESOURCES_BROWSE_LENS } from '../lib/browseScope.js'
+import { canLoadCatalogEntities, resolveDisplayEntities } from '../lib/catalogDisplay.js'
 
 const ScopeBrowseContext = createContext(null)
 
@@ -13,42 +15,45 @@ export function ScopeBrowseProvider({
   cluster,
   rows = [],
   chain = false,
+  browseLens = RESOURCES_BROWSE_LENS.MATCHES,
   children,
 }) {
   const pods = view?.state?.snapshot?.pods || []
+  const catalogAll = isResourcesBrowseAll(browseLens)
+  const treeRows = useMemo(
+    () => (catalogAll ? [] : rows),
+    [catalogAll, rows],
+  )
 
   const rowSig = useMemo(
-    () => rows.map((r) => `${r.key}:${r.status}:${r.ready}:${r.total}:${r.restarts}`).join('|'),
-    [rows],
+    () => treeRows.map((r) => `${r.key}:${r.status}:${r.ready}:${r.total}:${r.restarts}`).join('|'),
+    [treeRows],
   )
   const podSig = useMemo(
     () => pods.map((p) => `${p.name}:${p.ready ? 1 : 0}:${p.restartCount || 0}`).join('|'),
     [pods],
   )
-  const catalogSig = useMemo(
-    () => (catalog ? `${catalog.generatedAt}:${catalog.resources?.length || 0}` : ''),
-    [catalog],
-  )
+  const catalogSig = useMemo(() => catalogTreeSignature(catalog), [catalog])
 
   const baseTree = useMemo(
-    () => buildCatalogScopeTree(catalog, rows, pods),
+    () => buildCatalogScopeTree(catalog, treeRows, pods),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [rowSig, podSig, catalogSig],
   )
 
   const nav = useResourceNavigation(baseTree, { enabled: !chain })
 
+  const isOverviewSelected = isCategoryOverview(nav.selectedKind)
   const investigationEntities = nav.entities
   const kindGroup = nav.selectedKindGroup
-  const canLazyLoad = Boolean(
-    kindGroup?.resourceId
-    && kindGroup.accessState !== 'forbidden'
-    && kindGroup.countState?.state !== 'forbidden'
-    && kindGroup.discovered
-    && investigationEntities.length === 0,
-  )
+  const canLazyLoad = !isOverviewSelected && canLoadCatalogEntities(kindGroup)
 
-  const lazy = useCatalogEntities({ cluster, kindGroup, enabled: !chain && canLazyLoad })
+  const lazy = useCatalogEntities({
+    cluster,
+    kindGroup,
+    browseScope: cluster?.browseScope,
+    enabled: !chain && canLazyLoad,
+  })
   const tree = useLazyResourceCounts(baseTree, {
     clusterKey: clusterScopeKey(cluster),
     kindGroup,
@@ -68,14 +73,18 @@ export function ScopeBrowseProvider({
   }, [nav, tree])
 
   const displayEntities = useMemo(
-    () => (investigationEntities.length ? investigationEntities : lazy.entities),
-    [investigationEntities, lazy.entities],
+    () => resolveDisplayEntities({
+      catalogAll,
+      investigationEntities,
+      lazyEntities: lazy.entities,
+    }),
+    [catalogAll, investigationEntities, lazy.entities],
   )
 
   const effectiveKindGroup = useMemo(() => {
     const group = navWithCounts.selectedKindGroup || kindGroup
     if (!group) return null
-    if (investigationEntities.length > 0) {
+    if (!catalogAll && investigationEntities.length > 0) {
       return {
         ...group,
         accessState: 'allowed',
@@ -96,7 +105,7 @@ export function ScopeBrowseProvider({
       return { ...group, accessState: 'unavailable', countState: { state: 'unavailable' } }
     }
     return group
-  }, [navWithCounts.selectedKindGroup, kindGroup, lazy.accessState, lazy.entities.length, investigationEntities.length])
+  }, [navWithCounts.selectedKindGroup, kindGroup, lazy.accessState, lazy.entities.length, investigationEntities.length, catalogAll])
 
   const value = useMemo(() => ({
     tree,
@@ -107,7 +116,8 @@ export function ScopeBrowseProvider({
     lazy,
     canLazyLoad,
     chain,
-  }), [tree, navWithCounts, pods, displayEntities, effectiveKindGroup, lazy, canLazyLoad, chain])
+    browseLens,
+  }), [tree, navWithCounts, pods, displayEntities, effectiveKindGroup, lazy, canLazyLoad, chain, browseLens])
 
   return (
     <ScopeBrowseContext.Provider value={value}>

@@ -1,11 +1,16 @@
 package details
 
-import "github.com/glnreddy421/klew/internal/model"
+import (
+	"strings"
+
+	"github.com/glnreddy421/klew/internal/model"
+)
 
 // Canonical section group IDs. Not every Kind emits every group.
 const (
 	GroupSummary       = "summary"
 	GroupStatus        = "status"
+	GroupContainers    = "containers"
 	GroupRelationships = "relationships"
 	GroupSpec          = "spec"
 	GroupRuntime       = "runtime"
@@ -37,8 +42,11 @@ type Section struct {
 	Group     string     `json:"group,omitempty"`
 	Fields    []Field    `json:"fields,omitempty"`
 	Table     *Table     `json:"table,omitempty"`
-	KeyValues []KeyValue `json:"keyValues,omitempty"`
-	Notes     []string   `json:"notes,omitempty"`
+	KeyValues      []KeyValue `json:"keyValues,omitempty"`
+	Notes          []string   `json:"notes,omitempty"`
+	Code           string     `json:"code,omitempty"`
+	AltCode        string     `json:"altCode,omitempty"`
+	AltToggleLabel string     `json:"altToggleLabel,omitempty"`
 }
 
 // Field is a single key/value row.
@@ -73,6 +81,9 @@ func (s Section) Empty() bool {
 		return false
 	}
 	if len(s.Notes) > 0 {
+		return false
+	}
+	if strings.TrimSpace(s.Code) != "" || strings.TrimSpace(s.AltCode) != "" {
 		return false
 	}
 	return true

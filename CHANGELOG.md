@@ -4,6 +4,43 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 
 ## [Unreleased]
 
+## [2.0.0] — 2026-09-09
+
+Major release: redesigned **Resources** workbench, shell inspector, terminal workspace, and cluster catalog — the “klew-ui” line.
+
+### Resources workbench
+
+- New **Resources** explorer with category navigation, lazy counts, and browse scope (cluster / namespace).
+- **Entity tables** with kind-specific columns, column picker, and richer cell renderers (nodes, containers, deployment conditions, service endpoints).
+- **Inspector panel** — slide-out detail view with manifest tab, relationship graph, and workload overview; starts collapsed on launch.
+- Clickable inspect links (Node, ServiceAccount, etc.) with visible hover/focus states across themes.
+- **Container inspect** — full image refs, container/image IDs, ports, command/args (no truncation).
+- **Relationship graph** for workloads, services, ingress, and related objects.
+- **Resource manifest** view via kubectl-equivalent fetch.
+
+### Helm
+
+- **Helm → Releases** — list releases from cluster Secrets with chart, revision, status, and updated time.
+- Read-only release inspector (values summary, backing Secret ref); manifest resolves to the release Secret.
+- Remove virtual **Helm Charts** tab (invalid manifest target).
+
+### Terminal
+
+- Per-tab **close** (×) on every tab, including single log-tail sessions.
+- Right-click tab → **split** right or down when two or more tabs are open.
+- **⌘F find** in terminal output (log tails and shells) with match navigation.
+
+### Cluster connectivity
+
+- Connection status dot and banner when the API is unreachable or credentials expire.
+- Clearer connection error messages from the backend.
+
+### Catalog & details (backend)
+
+- Browse API with table fields, node enrichment, and builtin kind providers.
+- Endpoints, webhook configurations, Helm release details, and generic unstructured body support.
+- Virtual resource dispatch and kubectl manifest resolution for inspect targets.
+
 ## [0.1.10] — 2026-09-07
 
 ### Investigation UX
@@ -112,6 +149,7 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 
 - Prior desktop and CLI improvements; see git history and GitHub releases.
 
+[2.0.0]: https://github.com/glnreddy421/klew/releases/tag/v2.0.0
 [0.1.10]: https://github.com/glnreddy421/klew/releases/tag/v0.1.10
 [0.1.9]: https://github.com/glnreddy421/klew/releases/tag/v0.1.9
 [0.1.8]: https://github.com/glnreddy421/klew/releases/tag/v0.1.8

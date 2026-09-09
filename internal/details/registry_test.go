@@ -36,8 +36,11 @@ func TestPruneEmptySections(t *testing.T) {
 
 func TestRegistryHasCoreKinds(t *testing.T) {
 	kinds := []string{
-		"Pod", "Deployment", "Service", "Ingress", "RoleBinding",
+		"Pod", "Deployment", "Service", "Endpoints", "EndpointSlice", "Ingress", "RoleBinding",
 		"PersistentVolumeClaim", "HorizontalPodAutoscaler", "NetworkPolicy",
+		"ReplicationController", "IngressClass", "PodDisruptionBudget", "Lease",
+		"ResourceQuota", "LimitRange",
+		"MutatingWebhookConfiguration", "ValidatingWebhookConfiguration",
 	}
 	for _, k := range kinds {
 		key := strings.ToLower(normalizeKind(k))

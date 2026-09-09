@@ -112,8 +112,9 @@ func CollectClusterStatus(ctx context.Context, kubeconfigPath, selectedContext s
 	client, err := NewFromFlags(kubeconfigPath, selectedContext, "")
 	if err != nil {
 		return ClusterStatus{
-			CollectedAt: now,
-			Error:       err.Error(),
+			CollectedAt:  now,
+			APIReachable: false,
+			Error:        FormatConnectionError("load cluster client", err),
 		}
 	}
 
@@ -127,7 +128,11 @@ func CollectClusterStatus(ctx context.Context, kubeconfigPath, selectedContext s
 
 	ver, err := client.Clientset.Discovery().ServerVersion()
 	if err != nil {
-		st.Error = fmt.Sprintf("api server: %v", err)
+		if IsAuthConnectionError(err) {
+			InvalidateClusterStatus(kubeconfigPath, client)
+		}
+		st.APIReachable = false
+		st.Error = FormatConnectionError("api server", err)
 		return st
 	}
 

@@ -8,7 +8,25 @@ import {
   isExtensionGroup,
   defaultNamespaced,
   isDiscoveredOnlyEntry,
+  isVirtualPresentationEntry,
 } from './resourcePresentation.js'
+import { buildInspectKey } from './matches.js'
+import { parseJobCompletionSignal, parseWorkloadReplicaSignal } from './entityTable.js'
+
+/** Ephemeral auth review APIs — create-only, not meaningful in the resource browser. */
+const NON_BROWSABLE_CATALOG_RESOURCES = new Set([
+  'subjectaccessreviews',
+  'selfsubjectaccessreviews',
+  'selfsubjectrulesreviews',
+  'localsubjectaccessreviews',
+  'tokenreviews',
+  'subjectrulesreviews',
+  'selfsubjectreviews',
+])
+
+export function isBrowsableCatalogResource(resource) {
+  return Boolean(resource) && !NON_BROWSABLE_CATALOG_RESOURCES.has(resource)
+}
 
 export function kindDisplayLabel(kind, fallback) {
   if (fallback) return fallback
@@ -26,6 +44,22 @@ function flattenCatalogResources(catalog) {
     ...(catalog.extensions || []),
     ...(catalog.clusterScoped || []),
   ]
+}
+
+/** Invalidate nav trees when catalog structure or per-kind counts change. */
+export function catalogTreeSignature(catalog) {
+  if (!catalog) return ''
+  const resources = flattenCatalogResources(catalog)
+  let loaded = 0
+  let totalCount = 0
+  for (const d of resources) {
+    if (d.count?.state === 'loaded') {
+      loaded += 1
+      totalCount += d.count.count ?? 0
+    }
+  }
+  const gen = catalog.generatedAt != null ? String(catalog.generatedAt) : ''
+  return `${gen}|${resources.length}|${loaded}|${totalCount}`
 }
 
 /** Index discovered descriptors by presentation key (group/resource). */
@@ -78,8 +112,37 @@ function deriveCountState(desc, matchCount) {
   return { state: 'unknown' }
 }
 
+function mergeVirtualEntry(entry, matchEntities) {
+  const key = presentationKey(entry.group, entry.resource)
+  const matchCount = matchEntities?.length ?? null
+  const countState = matchCount != null && matchCount > 0
+    ? { state: 'loaded', value: matchCount }
+    : { state: 'unknown' }
+  return {
+    presentationKey: key,
+    resourceId: entry.resourceId || null,
+    kind: entry.kind,
+    label: entry.displayName,
+    sortOrder: entry.sortOrder,
+    group: entry.group,
+    resource: entry.resource,
+    namespaced: entry.namespaced ?? true,
+    builtin: true,
+    virtual: true,
+    discovered: true,
+    accessState: matchCount > 0 ? 'allowed' : 'unknown',
+    countState,
+    matchCount: matchCount ?? 0,
+    count: matchCount > 0 ? matchCount : 0,
+    items: (matchEntities || []).map((row) => ({ row, children: [] })),
+  }
+}
+
 function mergeBuiltinEntry(entry, discovered, matchEntities) {
   const key = presentationKey(entry.group, entry.resource)
+  if (isVirtualPresentationEntry(entry)) {
+    return mergeVirtualEntry(entry, matchEntities)
+  }
   const desc = discovered.get(key)
   if (isDiscoveredOnlyEntry(entry) && !desc) {
     return null
@@ -104,6 +167,7 @@ function mergeBuiltinEntry(entry, discovered, matchEntities) {
     resourceId: desc?.id || null,
     kind: desc?.kind || entry.kind,
     label: entry.displayName,
+    legacy: Boolean(entry.legacy),
     sortOrder: entry.sortOrder,
     apiVersion: desc?.apiVersion,
     group: entry.group,
@@ -259,6 +323,7 @@ export function buildCatalogScopeTree(catalog, rows, pods) {
   const otherKinds = []
 
   for (const desc of flattenCatalogResources(catalog)) {
+    if (!isBrowsableCatalogResource(desc.resource)) continue
     const key = presentationKey(desc.group, desc.resource)
     if (assignedKeys.has(key)) continue
     assignedKeys.add(key)
@@ -446,11 +511,73 @@ export function isUnavailable(kindGroup) {
     || kindGroup.countState?.state === 'unavailable'
 }
 
-export function catalogEntityToRow(entity) {
-  const kind = entity.kind || 'Resource'
-  const ns = entity.namespace || ''
-  const key = ns ? `${kind}/${ns}/${entity.name}` : `${kind}/${entity.name}`
+function hydrateCatalogServiceFields(row) {
+  if (row.kind !== 'Service') return row
   return {
+    ...row,
+    serviceType: row.serviceType || row.signal || '',
+    clusterIP: row.clusterIP || '',
+    externalIPs: row.externalIPs || [],
+    ports: row.ports || [],
+    selector: row.selector || '',
+    readyEndpoints: row.readyEndpoints,
+    totalEndpoints: row.totalEndpoints,
+  }
+}
+
+function hydrateCatalogWorkloadFields(row) {
+  const parsed = parseWorkloadReplicaSignal(row.signal)
+  if (!parsed) return row
+
+  if (row.kind === 'DaemonSet') {
+    return {
+      ...row,
+      desiredReplicas: row.desiredReplicas ?? parsed.current,
+      currentReplicas: row.currentReplicas ?? parsed.current,
+      readyReplicas: row.readyReplicas ?? parsed.ready,
+      updatedReplicas: row.updatedReplicas ?? parsed.ready,
+      availableReplicas: row.availableReplicas ?? parsed.ready,
+      misscheduled: row.misscheduled ?? 0,
+    }
+  }
+
+  if (row.kind === 'Deployment' || row.kind === 'StatefulSet' || row.kind === 'ReplicaSet') {
+    return {
+      ...row,
+      desiredReplicas: row.desiredReplicas ?? parsed.current,
+      currentReplicas: row.currentReplicas ?? parsed.current,
+      readyReplicas: row.readyReplicas ?? parsed.ready,
+    }
+  }
+
+  if (row.kind === 'Job') {
+    const jobParsed = parseJobCompletionSignal(row.signal)
+    if (!jobParsed) return row
+    return {
+      ...row,
+      succeeded: row.succeeded ?? jobParsed.succeeded,
+      completions: row.completions ?? jobParsed.completions,
+    }
+  }
+
+  if (row.kind === 'CronJob') {
+    return {
+      ...row,
+      schedule: row.schedule || row.signal || '',
+      suspend: row.suspend ?? false,
+      activeJobs: row.activeJobs ?? 0,
+    }
+  }
+
+  return row
+}
+
+export function catalogEntityToRow(entity, fallbackKind) {
+  const kind = entity.kind || fallbackKind || 'Resource'
+  const ns = entity.namespace || ''
+  const key = buildInspectKey(kind, entity.name, ns)
+  const hint = entity.statusHint || ''
+  return hydrateCatalogServiceFields(hydrateCatalogWorkloadFields({
     key,
     kind,
     name: entity.name,
@@ -463,7 +590,91 @@ export function catalogEntityToRow(entity) {
       namespace: ns,
       uid: entity.uid,
     },
-    status: 'unknown',
-    signal: entity.statusHint || '',
+    status: catalogStatusTone(hint),
+    signal: hint,
+    creationTimestamp: entity.creationTimestamp || '',
+    node: entity.nodeName || '',
+    nodeName: entity.nodeName || '',
+    containerNames: entity.containerNames || [],
+    containerStatuses: entity.containers || [],
+    restartCount: entity.restartCount,
+    ownerKind: entity.ownerKind || '',
+    ownerName: entity.ownerName || '',
+    qosClass: entity.qosClass || '',
+    desiredReplicas: entity.desiredReplicas,
+    currentReplicas: entity.currentReplicas,
+    readyReplicas: entity.readyReplicas,
+    availableReplicas: entity.availableReplicas,
+    updatedReplicas: entity.updatedReplicas,
+    unavailableReplicas: entity.unavailableReplicas,
+    misscheduled: entity.misscheduled,
+    succeeded: entity.succeeded,
+    completions: entity.completions,
+    schedule: entity.schedule || '',
+    suspend: entity.suspend,
+    activeJobs: entity.activeJobs,
+    lastScheduleTime: entity.lastScheduleTime || '',
+    conditions: entity.conditions || [],
+    serviceType: entity.serviceType || '',
+    clusterIP: entity.clusterIP || '',
+    externalIPs: entity.externalIPs || [],
+    ports: entity.ports || [],
+    selector: entity.selector || '',
+    readyEndpoints: entity.readyEndpoints,
+    totalEndpoints: entity.totalEndpoints,
+    endpointSummary: entity.endpointSummary || '',
+    serviceName: entity.serviceName || '',
+    addressType: entity.addressType || '',
+    loadBalancers: entity.loadBalancers || [],
+    ingressRulesSummary: entity.ingressRulesSummary || '',
+    ingressController: entity.ingressController || '',
+    parameterAPIGroup: entity.parameterAPIGroup || '',
+    parameterScope: entity.parameterScope || '',
+    parameterKind: entity.parameterKind || '',
+    parameterNamespace: entity.parameterNamespace || '',
+    policyTypes: entity.policyTypes || [],
+    provisioner: entity.provisioner || '',
+    reclaimPolicy: entity.reclaimPolicy || '',
+    volumeBindingMode: entity.volumeBindingMode || '',
+    isDefault: typeof entity.isDefault === 'boolean' ? entity.isDefault : undefined,
+    volumeName: entity.volumeName || '',
+    storageClassName: entity.storageClassName || '',
+    capacity: entity.capacity || '',
+    accessModes: entity.accessModes || [],
+    claimRef: entity.claimRef || '',
+    dataKeys: entity.dataKeys,
+    configMapData: entity.configMapData || [],
+    secretType: entity.secretType || '',
+    scaleTarget: entity.scaleTarget || '',
+    metricsSummary: entity.metricsSummary || '',
+    minReplicas: entity.minReplicas,
+    maxReplicas: entity.maxReplicas,
+    pdbMinAvailable: entity.pdbMinAvailable || '',
+    pdbMaxUnavailable: entity.pdbMaxUnavailable || '',
+    pdbDisruptionsAllowed: entity.pdbDisruptionsAllowed,
+    leaseHolder: entity.leaseHolder || '',
+    nodeResources: entity.nodeResources || null,
+    tableFields: entity.tableFields || {},
+    helmStorageKind: entity.helmStorageKind || '',
+    helmStorageName: entity.helmStorageName || '',
+  }))
+}
+
+function catalogStatusTone(hint) {
+  const h = String(hint || '').toLowerCase()
+  if (!h) return 'unknown'
+  if (h === 'external') return 'healthy'
+  if (h.includes('no endpoints')) return 'critical'
+  const readyFrac = h.match(/(\d+)\/(\d+)\s*ready/)
+  if (readyFrac) {
+    const ready = Number(readyFrac[1])
+    const total = Number(readyFrac[2])
+    if (total > 0 && ready < total) return 'degraded'
+    if (total > 0 && ready >= total) return 'healthy'
   }
+  if (h === 'running' || h === 'active' || h === 'bound' || h.startsWith('1/1')) return 'healthy'
+  if (h === 'deployed' || h === 'superseded') return 'healthy'
+  if (h === 'pending' || h.includes('progress') || h.includes('pending-')) return 'degraded'
+  if (h === 'failed' || h === 'error' || h.includes('crash') || h === 'uninstalled' || h === 'uninstalling') return 'critical'
+  return 'unknown'
 }

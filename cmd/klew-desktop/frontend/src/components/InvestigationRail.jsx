@@ -1,10 +1,19 @@
-import { NAV_ITEMS, NAV_ITEMS_SECONDARY } from '../lib/constants'
+import { NAV_ITEMS, NAV_ITEMS_INVESTIGATION, NAV_ITEM_RESOURCES, NAV_ITEMS_SECONDARY } from '../lib/constants'
 
 export function InvestigationRail({ active, onSelect }) {
   return (
     <aside className="investigation-rail" aria-label="Investigation surfaces">
       <nav className="rail-nav rail-nav-primary">
-        {NAV_ITEMS.map((item) => (
+        <RailItem
+          item={NAV_ITEM_RESOURCES}
+          active={active === NAV_ITEM_RESOURCES.id}
+          onSelect={onSelect}
+          prominent
+        />
+      </nav>
+      <div className="rail-divider" aria-hidden="true" />
+      <nav className="rail-nav rail-nav-primary">
+        {NAV_ITEMS_INVESTIGATION.map((item) => (
           <RailItem
             key={item.id}
             item={item}
@@ -28,12 +37,16 @@ export function InvestigationRail({ active, onSelect }) {
   )
 }
 
-function RailItem({ item, active, onSelect }) {
+function RailItem({ item, active, onSelect, prominent = false }) {
   const short = item.navLabel || item.label
   return (
     <button
       type="button"
-      className={`rail-item ${active ? 'active' : ''}`}
+      className={[
+        'rail-item',
+        active ? 'active' : '',
+        prominent ? 'is-primary' : '',
+      ].filter(Boolean).join(' ')}
       onClick={() => onSelect(item.id)}
       title={item.hint || item.label}
       aria-current={active ? 'page' : undefined}

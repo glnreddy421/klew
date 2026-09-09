@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
+import { SearchAddon } from '@xterm/addon-search'
 import '@xterm/xterm/css/xterm.css'
+import { buildTerminalFindOptions, countTerminalMatches } from '../lib/terminalFind'
 import {
   CloseTerminal,
   ResizeTerminal,
@@ -18,15 +20,18 @@ import { normalizeTerminalAppearance, terminalXtermTheme } from '../lib/terminal
 export function TerminalTabPane({
   tab,
   active,
+  focused = true,
   open,
   cluster,
   shellPref = '',
   appearance = 'midnight',
   onStateChange,
+  onSearchRegister,
 }) {
   const containerRef = useRef(null)
   const termRef = useRef(null)
   const fitRef = useRef(null)
+  const searchRef = useRef(null)
   const sessionRef = useRef(null)
   const pendingInputRef = useRef('')
   const startGenRef = useRef(0)
@@ -37,6 +42,35 @@ export function TerminalTabPane({
   activeRef.current = active
   shellPrefRef.current = shellPref
   appearanceRef.current = normalizeTerminalAppearance(appearance)
+
+  const onSearchRegisterRef = useRef(onSearchRegister)
+  onSearchRegisterRef.current = onSearchRegister
+
+  const publishSearchApi = useCallback(() => {
+    const search = searchRef.current
+    const term = termRef.current
+    const fit = fitRef.current
+    if (!search || !term) return
+    onSearchRegisterRef.current?.({
+      findNext: (query, overrides) => {
+        fit?.fit()
+        return search.findNext(
+          query,
+          buildTerminalFindOptions(appearanceRef.current, overrides),
+        )
+      },
+      findPrevious: (query, overrides) => {
+        fit?.fit()
+        return search.findPrevious(
+          query,
+          buildTerminalFindOptions(appearanceRef.current, overrides),
+        )
+      },
+      clearDecorations: () => search.clearDecorations(),
+      onResults: (cb) => search.onDidChangeResults(cb),
+      countMatches: (query, options) => countTerminalMatches(term, query, options),
+    })
+  }, [])
 
   const contextName = tab.contextName || cluster?.selectedContext || cluster?.currentContext || ''
   const namespace = tab.namespace || cluster?.selectedNamespace || ''
@@ -115,6 +149,10 @@ export function TerminalTabPane({
       sessionRef.current = info.id
       term.reset()
       flushPendingInput(info.id)
+      if (tab.initialInput && !tab.initialInputSent) {
+        await WriteTerminal(info.id, tab.initialInput).catch(() => {})
+        report({ initialInputSent: true })
+      }
       term.focus()
       report({
         sessionId: info.id,
@@ -141,11 +179,15 @@ export function TerminalTabPane({
       disableStdin: false,
     })
     const fit = new FitAddon()
+    const search = new SearchAddon()
     term.loadAddon(fit)
+    term.loadAddon(search)
     term.open(el)
     fit.fit()
     termRef.current = term
     fitRef.current = fit
+    searchRef.current = search
+    publishSearchApi()
     mountedRef.current = true
 
     const onData = term.onData((data) => {
@@ -186,9 +228,11 @@ export function TerminalTabPane({
       offExit?.()
       ro.disconnect()
       closeSession()
+      onSearchRegister?.(null)
       term.dispose()
       termRef.current = null
       fitRef.current = null
+      searchRef.current = null
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- mount once per tab
   }, [open, tab.id])
@@ -203,10 +247,10 @@ export function TerminalTabPane({
       if (id && term.cols && term.rows) {
         ResizeTerminal(id, term.cols, term.rows).catch(() => {})
       }
-      term.focus()
+      if (focused) term.focus()
     })
     return () => cancelAnimationFrame(frame)
-  }, [open, active])
+  }, [open, active, focused])
 
   useEffect(() => {
     if (!open || tab.restartToken == null) return undefined

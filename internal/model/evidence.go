@@ -103,6 +103,7 @@ type ContainerStatus struct {
 	RestartCount int32      `json:"restartCount"`
 	State        string     `json:"state"` // running, waiting, terminated
 	Reason       string     `json:"reason,omitempty"`
+	Message      string     `json:"message,omitempty"`
 	ExitCode     int32      `json:"exitCode,omitempty"`
 	StartedAt    *Timestamp `json:"startedAt,omitempty"`
 	FinishedAt   *Timestamp `json:"finishedAt,omitempty"`
