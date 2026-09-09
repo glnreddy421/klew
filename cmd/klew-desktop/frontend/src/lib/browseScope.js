@@ -26,6 +26,7 @@ export function normalizeBrowseScope(raw) {
 }
 
 export function browseScopeLabel(scope, { namespaces = [] } = {}) {
+  const nsList = Array.isArray(namespaces) ? namespaces : []
   const s = normalizeBrowseScope(scope)
   if (s.mode === 'all') return 'All namespaces'
   if (s.mode === 'multi') {
@@ -34,7 +35,7 @@ export function browseScopeLabel(scope, { namespaces = [] } = {}) {
     if (n === 1) return s.namespaces[0]
     return `${n} namespaces`
   }
-  return s.namespace || (namespaces[0] || 'Namespace')
+  return s.namespace || (nsList[0] || 'Namespace')
 }
 
 export function browseScopeApiParams(scope) {

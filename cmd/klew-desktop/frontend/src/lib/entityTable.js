@@ -657,9 +657,16 @@ function formatControlledBy(row, pod) {
   return resolveControlledBy(row, pod).label
 }
 
+const STATIC_ACCESS_KINDS = new Set([
+  'ServiceAccount', 'Role', 'RoleBinding', 'ClusterRole', 'ClusterRoleBinding',
+])
+
 export function statusLabelForRow(row, pod) {
   if (row.kind === 'HelmRelease') {
     return formatHelmReleaseStatus(row.signal || row.tableFields?.status || row.status)
+  }
+  if (STATIC_ACCESS_KINDS.has(row.kind) && (!row.status || row.status === 'unknown')) {
+    return 'Active'
   }
   if (row.kind === 'Service') return serviceStatusLabel(row)
   if (pod?.phase) return pod.phase

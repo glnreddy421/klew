@@ -27,7 +27,13 @@ export function useCluster() {
   const [connecting, setConnecting] = useState(false)
 
   const apply = useCallback((st) => {
-    if (st) setCluster(st)
+    if (!st) return
+    setCluster({
+      ...emptyCluster(),
+      ...st,
+      contexts: Array.isArray(st.contexts) ? st.contexts : [],
+      namespaces: Array.isArray(st.namespaces) ? st.namespaces : [],
+    })
   }, [])
 
   useEffect(() => {

@@ -27,6 +27,17 @@ func enrichBuiltinCatalogEntity(resource string, entity *model.CatalogEntity, ob
 		enrichPDBCatalogEntity(entity, obj)
 	case "leases":
 		enrichLeaseCatalogEntity(entity, obj)
+	case "serviceaccounts":
+		enrichServiceAccountCatalogEntity(entity, obj)
+	}
+}
+
+func enrichServiceAccountCatalogEntity(entity *model.CatalogEntity, obj map[string]interface{}) {
+	if entity == nil || obj == nil {
+		return
+	}
+	if entity.StatusHint == "" {
+		entity.StatusHint = "Active"
 	}
 }
 

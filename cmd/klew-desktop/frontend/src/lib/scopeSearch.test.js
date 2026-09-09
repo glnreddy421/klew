@@ -3,6 +3,7 @@
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { browseScopeLabel } from './browseScope.js'
 import { filterBySubstring, filterScopeMatches, kindFiltersForMatches } from './scopeSearch.js'
 
 test('filterBySubstring matches case-insensitively', () => {
@@ -11,6 +12,15 @@ test('filterBySubstring matches case-insensitively', () => {
     filterBySubstring(items, 'COM', (x) => x),
     ['comms-api'],
   )
+})
+
+test('filterBySubstring tolerates null items', () => {
+  assert.deepEqual(filterBySubstring(null, '', (x) => x), [])
+})
+
+test('browseScopeLabel tolerates null namespaces list', () => {
+  assert.equal(browseScopeLabel('', { namespaces: null }), 'Namespace')
+  assert.equal(browseScopeLabel('', { namespaces: ['prod'] }), 'prod')
 })
 
 test('filterScopeMatches filters by kind and text', () => {
