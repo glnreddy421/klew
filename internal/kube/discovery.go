@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 
@@ -104,9 +105,8 @@ var discoverTargets = []struct {
 	{schema.GroupVersionResource{Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "rolebindings"}, "RoleBinding"},
 }
 
-// DiscoverMatches finds objects matching the query in a namespace by name
-// substring across core Kubernetes kinds (workloads, networking, config, RBAC).
-func DiscoverMatches(ctx context.Context, c *Client, namespace, query string) ([]model.MatchedObject, error) {
+// DiscoverMatches finds objects matching the query by name substring across core kinds.
+func DiscoverMatches(ctx context.Context, c *Client, scope model.NamespaceScope, query string) ([]model.MatchedObject, error) {
 	if c == nil || c.Clientset == nil {
 		return nil, fmt.Errorf("kubernetes client is required")
 	}
@@ -142,55 +142,87 @@ func DiscoverMatches(ctx context.Context, c *Client, namespace, query string) ([
 		sem     = make(chan struct{}, 3)
 	)
 
-	for _, t := range targets {
-		t := t
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
+	listItems := func(gvr schema.GroupVersionResource, kindLabel string) {
+		defer wg.Done()
+		sem <- struct{}{}
+		defer func() { <-sem }()
 
-			ul, err := dyn.Resource(t.gvr).Namespace(namespace).List(ctx, metav1.ListOptions{})
+		var items []unstructured.Unstructured
+		switch {
+		case scope.AllNamespaces:
+			ul, err := dyn.Resource(gvr).List(ctx, metav1.ListOptions{})
 			if err != nil {
 				return
 			}
-			var local []model.MatchedObject
-			for _, item := range ul.Items {
-				n := item.GetName()
-				if needle != "" && !strings.Contains(strings.ToLower(n), needle) {
+			items = ul.Items
+		case len(scope.Namespaces) > 1:
+			for _, ns := range scope.Namespaces {
+				if ctx.Err() != nil {
+					return
+				}
+				ul, err := dyn.Resource(gvr).Namespace(ns).List(ctx, metav1.ListOptions{})
+				if err != nil {
 					continue
 				}
-				k := item.GetKind()
-				if k == "" {
-					k = t.kind
-				}
-				matchBy := "name"
-				score := scoreNameMatch(n, needle)
-				if needle == "" {
-					matchBy = "namespace"
-				}
-				if name != "" && strings.EqualFold(n, name) {
-					matchBy = "exact"
-					score = 1.0
-				}
-				local = append(local, model.MatchedObject{
-					Ref: model.ObjectRef{
-						Kind:      k,
-						Name:      n,
-						Namespace: item.GetNamespace(),
-						UID:       string(item.GetUID()),
-					},
-					MatchBy: matchBy,
-					Score:   score,
-				})
+				items = append(items, ul.Items...)
 			}
-			if len(local) == 0 {
+		default:
+			ns := scope.Primary
+			if ns == "" {
+				ns = c.Namespace
+				if ns == "" {
+					ns = c.ContextNamespace
+				}
+			}
+			ul, err := dyn.Resource(gvr).Namespace(ns).List(ctx, metav1.ListOptions{})
+			if err != nil {
 				return
 			}
-			mu.Lock()
-			matches = append(matches, local...)
-			mu.Unlock()
-		}()
+			items = ul.Items
+		}
+
+		var local []model.MatchedObject
+		for _, item := range items {
+			n := item.GetName()
+			if needle != "" && !strings.Contains(strings.ToLower(n), needle) {
+				continue
+			}
+			k := item.GetKind()
+			if k == "" {
+				k = kindLabel
+			}
+			matchBy := "name"
+			score := scoreNameMatch(n, needle)
+			if needle == "" {
+				matchBy = "namespace"
+			}
+			if name != "" && strings.EqualFold(n, name) {
+				matchBy = "exact"
+				score = 1.0
+			}
+			local = append(local, model.MatchedObject{
+				Ref: model.ObjectRef{
+					Kind:      k,
+					Name:      n,
+					Namespace: item.GetNamespace(),
+					UID:       string(item.GetUID()),
+				},
+				MatchBy: matchBy,
+				Score:   score,
+			})
+		}
+		if len(local) == 0 {
+			return
+		}
+		mu.Lock()
+		matches = append(matches, local...)
+		mu.Unlock()
+	}
+
+	for _, t := range targets {
+		t := t
+		wg.Add(1)
+		go listItems(t.gvr, t.kind)
 	}
 	wg.Wait()
 
@@ -239,7 +271,7 @@ func dedupeMatches(in []model.MatchedObject) []model.MatchedObject {
 	seen := map[string]bool{}
 	var out []model.MatchedObject
 	for _, m := range in {
-		key := m.Ref.Kind + "/" + m.Ref.Name
+		key := m.Ref.Kind + "/" + m.Ref.Namespace + "/" + m.Ref.Name
 		if seen[key] {
 			continue
 		}

@@ -46,8 +46,10 @@ function entityDetailFields(inspect, inspectRow, view) {
   }
   const status = inspect?.status?.label || pod?.phase || inspectRow?.signal
   if (status) fields.push({ label: 'Status', value: status })
-  if (pod?.node) fields.push({ label: 'Node', value: pod.node })
-  if (pod?.createdAt) fields.push({ label: 'Age', value: formatEntityAge(pod.createdAt) })
+  const node = pod?.node || inspectRow?.node
+  if (node) fields.push({ label: 'Node', value: node })
+  const ageSource = pod?.createdAt || inspectRow?.creationTimestamp
+  if (ageSource) fields.push({ label: 'Age', value: formatEntityAge(ageSource) })
   return fields.slice(0, 6)
 }
 

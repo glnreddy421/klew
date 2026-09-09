@@ -275,13 +275,23 @@ export function deriveMatchRows(view, matches) {
       const epTotal = svc.totalEndpoints ?? 0
       if (epTotal > 0 && epReady < epTotal) {
         status = 'degraded'
-        signal = signal || `${epReady}/${epTotal} endpoints`
+        signal = signal || `${epReady}/${epTotal} ready`
       }
       if (ready == null) {
         ready = epReady
         total = epTotal
       }
     }
+
+    const serviceFields = svc ? {
+      serviceType: svc.type || '',
+      clusterIP: svc.clusterIP || '',
+      selector: svc.selector || '',
+      ports: svc.ports || [],
+      externalIPs: svc.externalIPs || [],
+      readyEndpoints: svc.readyEndpoints,
+      totalEndpoints: svc.totalEndpoints,
+    } : {}
 
     if (ref.kind === 'Pod' && relatedPods.length === 1) {
       const p = relatedPods[0]
@@ -306,6 +316,7 @@ export function deriveMatchRows(view, matches) {
       restarts,
       status,
       signal,
+      ...serviceFields,
     }
   })
 }
@@ -450,12 +461,15 @@ export const ON_DEMAND_INSPECT_KINDS = new Set([
   'Namespace',
   'Deployment',
   'ReplicaSet',
+  'ReplicationController',
   'StatefulSet',
   'DaemonSet',
   'Job',
   'CronJob',
   'Service',
+  'Endpoints',
   'Ingress',
+  'IngressClass',
   'EndpointSlice',
   'ConfigMap',
   'Secret',
@@ -464,6 +478,16 @@ export const ON_DEMAND_INSPECT_KINDS = new Set([
   'StorageClass',
   'ServiceAccount',
   'HorizontalPodAutoscaler',
+  'PodDisruptionBudget',
+  'Lease',
+  'ResourceQuota',
+  'LimitRange',
+  'NetworkPolicy',
+  'Role',
+  'ClusterRole',
+  'RoleBinding',
+  'ClusterRoleBinding',
+  'HelmRelease',
   'NetworkPolicy',
   'Role',
   'RoleBinding',
@@ -510,15 +534,50 @@ export function normalizeInspectKind(kind) {
   return KIND_ALIASES[k.toLowerCase()] || k
 }
 
-/** Parse `Kind/name` inspect keys (name may contain slashes). */
+/** Build a canonical inspect key from kind, name, and optional namespace. */
+export function buildInspectKey(kind, name, namespace = '') {
+  const k = normalizeInspectKind(kind)
+  const n = String(name || '').trim()
+  const ns = String(namespace || '').trim()
+  if (!k || !n) return ''
+  if (ns && !CLUSTER_SCOPED_KINDS.has(k)) return `${k}/${ns}/${n}`
+  return `${k}/${n}`
+}
+
+/**
+ * Parse inspect keys:
+ * - `Kind/name` — cluster-scoped or single-namespace investigation scope
+ * - `Kind/namespace/name` — catalog browse (K8s names never contain `/`)
+ */
 export function parseInspectKey(key) {
   if (!key || typeof key !== 'string') return null
-  const slash = key.indexOf('/')
-  if (slash <= 0) return null
-  const kind = normalizeInspectKind(key.slice(0, slash))
-  const name = key.slice(slash + 1)
-  if (!kind || !name) return null
-  return { kind, name, key: `${kind}/${name}` }
+  const parts = key.split('/').filter((p) => p.length > 0)
+  if (parts.length < 2) return null
+
+  const kind = normalizeInspectKind(parts[0])
+  if (!kind) return null
+
+  if (parts.length === 2) {
+    const name = parts[1]
+    if (!name) return null
+    return { kind, name, namespace: '', key: buildInspectKey(kind, name) }
+  }
+
+  const namespace = parts[1]
+  const name = parts.slice(2).join('/')
+  if (!namespace || !name) return null
+
+  if (CLUSTER_SCOPED_KINDS.has(kind)) {
+    const clusterName = parts.slice(1).join('/')
+    return { kind, name: clusterName, namespace: '', key: buildInspectKey(kind, clusterName) }
+  }
+
+  return {
+    kind,
+    name,
+    namespace,
+    key: buildInspectKey(kind, name, namespace),
+  }
 }
 
 export function isInspectableKey(key, view, rows) {
@@ -528,20 +587,27 @@ export function isInspectableKey(key, view, rows) {
   return !!inspectRowForKey(key, view, rows)
 }
 
-function lookupSnapshotObject(snap, kind, name) {
+function matchesSnapshotName(item, name, namespace = '') {
+  if (!item || item.name !== name) return false
+  if (!namespace) return true
+  return !item.namespace || item.namespace === namespace
+}
+
+function lookupSnapshotObject(snap, kind, name, namespace = '') {
   if (!snap || !name) return null
-  if (kind === 'Pod') return snap.pods?.find((p) => p.name === name) || null
-  if (kind === 'Node') return snap.nodes?.find((n) => n.name === name) || null
-  if (kind === 'Service') return snap.services?.find((s) => s.name === name) || null
-  if (kind === 'Ingress') return snap.ingresses?.find((i) => i.name === name) || null
-  if (kind === 'ReplicaSet') return snap.replicaSets?.find((r) => r.name === name) || null
-  if (kind === 'HorizontalPodAutoscaler') return snap.hpas?.find((h) => h.name === name) || null
+  const match = (item) => matchesSnapshotName(item, name, namespace)
+  if (kind === 'Pod') return snap.pods?.find(match) || null
+  if (kind === 'Node') return snap.nodes?.find(match) || null
+  if (kind === 'Service') return snap.services?.find(match) || null
+  if (kind === 'Ingress') return snap.ingresses?.find(match) || null
+  if (kind === 'ReplicaSet') return snap.replicaSets?.find(match) || null
+  if (kind === 'HorizontalPodAutoscaler') return snap.hpas?.find(match) || null
   if (['Deployment', 'StatefulSet', 'DaemonSet', 'Job', 'CronJob'].includes(kind)) {
-    return snap.workloads?.find((w) => w.name === name && (!w.kind || w.kind === kind)) || null
+    return snap.workloads?.find((w) => match(w) && (!w.kind || w.kind === kind)) || null
   }
-  if (kind === 'ConfigMap') return snap.configRefs?.find((c) => c.name === name) || null
-  if (kind === 'Secret') return snap.secretRefs?.find((s) => s.name === name) || null
-  if (kind === 'PersistentVolumeClaim') return snap.pvcRefs?.find((p) => p.name === name) || null
+  if (kind === 'ConfigMap') return snap.configRefs?.find(match) || null
+  if (kind === 'Secret') return snap.secretRefs?.find(match) || null
+  if (kind === 'PersistentVolumeClaim') return snap.pvcRefs?.find(match) || null
   return null
 }
 
@@ -552,10 +618,12 @@ function investigationNamespace(view) {
     || ''
 }
 
-function synthesizeInspectRow(kind, name, view, status = 'unknown') {
-  const ns = CLUSTER_SCOPED_KINDS.has(kind) ? '' : investigationNamespace(view)
+function synthesizeInspectRow(kind, name, view, status = 'unknown', explicitNamespace) {
+  const ns = CLUSTER_SCOPED_KINDS.has(kind)
+    ? ''
+    : (explicitNamespace !== undefined ? explicitNamespace : investigationNamespace(view))
   return {
-    key: `${kind}/${name}`,
+    key: buildInspectKey(kind, name, ns),
     kind,
     name,
     ref: { kind, name, namespace: ns },
@@ -597,14 +665,14 @@ export function inspectRowForKey(key, view, rows) {
   if (!parsed) return null
 
   const snap = view?.state?.snapshot || {}
-  const obj = lookupSnapshotObject(snap, parsed.kind, parsed.name)
+  const obj = lookupSnapshotObject(snap, parsed.kind, parsed.name, parsed.namespace)
   if (obj) {
     if (parsed.kind === 'Pod') return podSummaryToInspectRow(obj)
     return snapshotObjectToInspectRow(obj, parsed.kind, view)
   }
 
   if (ON_DEMAND_INSPECT_KINDS.has(parsed.kind)) {
-    return synthesizeInspectRow(parsed.kind, parsed.name, view)
+    return synthesizeInspectRow(parsed.kind, parsed.name, view, 'unknown', parsed.namespace)
   }
   return null
 }

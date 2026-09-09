@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  CATEGORY_OVERVIEW_KIND,
   entitiesForKind,
   filterEntitiesBySearch,
   pickDefaultKindSelection,
@@ -96,11 +97,26 @@ describe('resourceNavigation', () => {
     expect(filterEntitiesBySearch(ents, 'b')).toHaveLength(1)
   })
 
-  it('picks default kind with entities', () => {
+  it('picks workloads overview by default', () => {
     expect(pickDefaultKindSelection(sampleTree, false)).toEqual({
       groupId: 'workloads',
-      kind: 'Deployment',
-      resourceId: 'apps/v1/deployments',
+      kind: CATEGORY_OVERVIEW_KIND,
+      resourceId: null,
+    })
+  })
+
+  it('returns no entities for overview selection', () => {
+    expect(entitiesForKind(sampleTree, 'workloads', CATEGORY_OVERVIEW_KIND)).toEqual([])
+  })
+
+  it('keeps overview selection after tree refresh', () => {
+    expect(resolveKindSelection(sampleTree, {
+      groupId: 'workloads',
+      kind: CATEGORY_OVERVIEW_KIND,
+    }, false)).toEqual({
+      groupId: 'workloads',
+      kind: CATEGORY_OVERVIEW_KIND,
+      resourceId: null,
     })
   })
 

@@ -129,6 +129,9 @@ export namespace details {
 	    table?: Table;
 	    keyValues?: KeyValue[];
 	    notes?: string[];
+	    code?: string;
+	    altCode?: string;
+	    altToggleLabel?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Section(source);
@@ -143,6 +146,9 @@ export namespace details {
 	        this.table = this.convertValues(source["table"], Table);
 	        this.keyValues = this.convertValues(source["keyValues"], KeyValue);
 	        this.notes = source["notes"];
+	        this.code = source["code"];
+	        this.altCode = source["altCode"];
+	        this.altToggleLabel = source["altToggleLabel"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -699,6 +705,22 @@ export namespace kube {
 	        this.available = source["available"];
 	    }
 	}
+	export class ResourceManifest {
+	    command: string;
+	    yaml: string;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ResourceManifest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.command = source["command"];
+	        this.yaml = source["yaml"];
+	        this.error = source["error"];
+	    }
+	}
 
 }
 
@@ -706,6 +728,8 @@ export namespace main {
 	
 	export class CatalogOptions {
 	    namespace: string;
+	    allNamespaces: boolean;
+	    namespaces: string[];
 	    kubeconfig: string;
 	    context: string;
 	    includeCounts: boolean;
@@ -718,6 +742,8 @@ export namespace main {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.namespace = source["namespace"];
+	        this.allNamespaces = source["allNamespaces"];
+	        this.namespaces = source["namespaces"];
 	        this.kubeconfig = source["kubeconfig"];
 	        this.context = source["context"];
 	        this.includeCounts = source["includeCounts"];
@@ -727,6 +753,8 @@ export namespace main {
 	export class DiscoverOptions {
 	    query: string;
 	    namespace: string;
+	    allNamespaces: boolean;
+	    namespaces: string[];
 	    kubeconfig: string;
 	    context: string;
 	
@@ -738,6 +766,8 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.query = source["query"];
 	        this.namespace = source["namespace"];
+	        this.allNamespaces = source["allNamespaces"];
+	        this.namespaces = source["namespaces"];
 	        this.kubeconfig = source["kubeconfig"];
 	        this.context = source["context"];
 	    }
@@ -745,6 +775,8 @@ export namespace main {
 	export class ListCatalogEntitiesOptions {
 	    resourceId: string;
 	    namespace: string;
+	    allNamespaces: boolean;
+	    namespaces: string[];
 	    clusterScoped: boolean;
 	    kubeconfig: string;
 	    context: string;
@@ -757,6 +789,8 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.resourceId = source["resourceId"];
 	        this.namespace = source["namespace"];
+	        this.allNamespaces = source["allNamespaces"];
+	        this.namespaces = source["namespaces"];
 	        this.clusterScoped = source["clusterScoped"];
 	        this.kubeconfig = source["kubeconfig"];
 	        this.context = source["context"];
@@ -788,6 +822,30 @@ export namespace main {
 	        this.context = source["context"];
 	        this.namespace = source["namespace"];
 	        this.kubeconfig = source["kubeconfig"];
+	    }
+	}
+	export class ResourceManifestOptions {
+	    resourceId: string;
+	    kind: string;
+	    name: string;
+	    namespace: string;
+	    clusterScoped: boolean;
+	    kubeconfig: string;
+	    context: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ResourceManifestOptions(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.resourceId = source["resourceId"];
+	        this.kind = source["kind"];
+	        this.name = source["name"];
+	        this.namespace = source["namespace"];
+	        this.clusterScoped = source["clusterScoped"];
+	        this.kubeconfig = source["kubeconfig"];
+	        this.context = source["context"];
 	    }
 	}
 	export class StartOptions {
@@ -899,6 +957,92 @@ export namespace model {
 	        this.startedAt = source["startedAt"];
 	    }
 	}
+	export class CatalogCondition {
+	    type: string;
+	    status: string;
+	    reason?: string;
+	    message?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CatalogCondition(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.type = source["type"];
+	        this.status = source["status"];
+	        this.reason = source["reason"];
+	        this.message = source["message"];
+	    }
+	}
+	export class CatalogContainerStatus {
+	    name: string;
+	    state: string;
+	    ready: boolean;
+	    init?: boolean;
+	    reason?: string;
+	    message?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CatalogContainerStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.state = source["state"];
+	        this.ready = source["ready"];
+	        this.init = source["init"];
+	        this.reason = source["reason"];
+	        this.message = source["message"];
+	    }
+	}
+	export class CatalogDataEntry {
+	    key: string;
+	    value?: string;
+	    sizeBytes: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new CatalogDataEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.value = source["value"];
+	        this.sizeBytes = source["sizeBytes"];
+	    }
+	}
+	export class NodeCatalogResources {
+	    roles?: string;
+	    kubeletVersion?: string;
+	    taintCount?: number;
+	    capacityCpuMilli?: number;
+	    allocatableCpuMilli?: number;
+	    capacityMemoryBytes?: number;
+	    allocatableMemoryBytes?: number;
+	    capacityDiskBytes?: number;
+	    allocatableDiskBytes?: number;
+	    ready?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new NodeCatalogResources(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.roles = source["roles"];
+	        this.kubeletVersion = source["kubeletVersion"];
+	        this.taintCount = source["taintCount"];
+	        this.capacityCpuMilli = source["capacityCpuMilli"];
+	        this.allocatableCpuMilli = source["allocatableCpuMilli"];
+	        this.capacityMemoryBytes = source["capacityMemoryBytes"];
+	        this.allocatableMemoryBytes = source["allocatableMemoryBytes"];
+	        this.capacityDiskBytes = source["capacityDiskBytes"];
+	        this.allocatableDiskBytes = source["allocatableDiskBytes"];
+	        this.ready = source["ready"];
+	    }
+	}
 	export class CatalogEntity {
 	    resourceId: string;
 	    name: string;
@@ -909,6 +1053,69 @@ export namespace model {
 	    apiVersion: string;
 	    creationTimestamp?: string;
 	    statusHint?: string;
+	    nodeName?: string;
+	    containerNames?: string[];
+	    restartCount?: number;
+	    ownerKind?: string;
+	    ownerName?: string;
+	    qosClass?: string;
+	    containers?: CatalogContainerStatus[];
+	    desiredReplicas?: number;
+	    currentReplicas?: number;
+	    readyReplicas?: number;
+	    availableReplicas?: number;
+	    updatedReplicas?: number;
+	    unavailableReplicas?: number;
+	    misscheduled?: number;
+	    succeeded?: number;
+	    completions?: number;
+	    schedule?: string;
+	    suspend?: boolean;
+	    activeJobs?: number;
+	    lastScheduleTime?: string;
+	    conditions?: CatalogCondition[];
+	    serviceType?: string;
+	    clusterIP?: string;
+	    externalIPs?: string[];
+	    ports?: string[];
+	    selector?: string;
+	    readyEndpoints?: number;
+	    totalEndpoints?: number;
+	    endpointSummary?: string;
+	    serviceName?: string;
+	    addressType?: string;
+	    loadBalancers?: string[];
+	    ingressRulesSummary?: string;
+	    ingressController?: string;
+	    parameterAPIGroup?: string;
+	    parameterScope?: string;
+	    parameterKind?: string;
+	    parameterNamespace?: string;
+	    policyTypes?: string[];
+	    provisioner?: string;
+	    reclaimPolicy?: string;
+	    volumeBindingMode?: string;
+	    isDefault?: boolean;
+	    volumeName?: string;
+	    storageClassName?: string;
+	    capacity?: string;
+	    accessModes?: string[];
+	    claimRef?: string;
+	    dataKeys?: number;
+	    secretType?: string;
+	    scaleTarget?: string;
+	    metricsSummary?: string;
+	    minReplicas?: number;
+	    maxReplicas?: number;
+	    pdbMinAvailable?: string;
+	    pdbMaxUnavailable?: string;
+	    pdbDisruptionsAllowed?: number;
+	    configMapData?: CatalogDataEntry[];
+	    leaseHolder?: string;
+	    nodeResources?: NodeCatalogResources;
+	    tableFields?: Record<string, string>;
+	    helmStorageKind?: string;
+	    helmStorageName?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new CatalogEntity(source);
@@ -925,7 +1132,88 @@ export namespace model {
 	        this.apiVersion = source["apiVersion"];
 	        this.creationTimestamp = source["creationTimestamp"];
 	        this.statusHint = source["statusHint"];
+	        this.nodeName = source["nodeName"];
+	        this.containerNames = source["containerNames"];
+	        this.restartCount = source["restartCount"];
+	        this.ownerKind = source["ownerKind"];
+	        this.ownerName = source["ownerName"];
+	        this.qosClass = source["qosClass"];
+	        this.containers = this.convertValues(source["containers"], CatalogContainerStatus);
+	        this.desiredReplicas = source["desiredReplicas"];
+	        this.currentReplicas = source["currentReplicas"];
+	        this.readyReplicas = source["readyReplicas"];
+	        this.availableReplicas = source["availableReplicas"];
+	        this.updatedReplicas = source["updatedReplicas"];
+	        this.unavailableReplicas = source["unavailableReplicas"];
+	        this.misscheduled = source["misscheduled"];
+	        this.succeeded = source["succeeded"];
+	        this.completions = source["completions"];
+	        this.schedule = source["schedule"];
+	        this.suspend = source["suspend"];
+	        this.activeJobs = source["activeJobs"];
+	        this.lastScheduleTime = source["lastScheduleTime"];
+	        this.conditions = this.convertValues(source["conditions"], CatalogCondition);
+	        this.serviceType = source["serviceType"];
+	        this.clusterIP = source["clusterIP"];
+	        this.externalIPs = source["externalIPs"];
+	        this.ports = source["ports"];
+	        this.selector = source["selector"];
+	        this.readyEndpoints = source["readyEndpoints"];
+	        this.totalEndpoints = source["totalEndpoints"];
+	        this.endpointSummary = source["endpointSummary"];
+	        this.serviceName = source["serviceName"];
+	        this.addressType = source["addressType"];
+	        this.loadBalancers = source["loadBalancers"];
+	        this.ingressRulesSummary = source["ingressRulesSummary"];
+	        this.ingressController = source["ingressController"];
+	        this.parameterAPIGroup = source["parameterAPIGroup"];
+	        this.parameterScope = source["parameterScope"];
+	        this.parameterKind = source["parameterKind"];
+	        this.parameterNamespace = source["parameterNamespace"];
+	        this.policyTypes = source["policyTypes"];
+	        this.provisioner = source["provisioner"];
+	        this.reclaimPolicy = source["reclaimPolicy"];
+	        this.volumeBindingMode = source["volumeBindingMode"];
+	        this.isDefault = source["isDefault"];
+	        this.volumeName = source["volumeName"];
+	        this.storageClassName = source["storageClassName"];
+	        this.capacity = source["capacity"];
+	        this.accessModes = source["accessModes"];
+	        this.claimRef = source["claimRef"];
+	        this.dataKeys = source["dataKeys"];
+	        this.secretType = source["secretType"];
+	        this.scaleTarget = source["scaleTarget"];
+	        this.metricsSummary = source["metricsSummary"];
+	        this.minReplicas = source["minReplicas"];
+	        this.maxReplicas = source["maxReplicas"];
+	        this.pdbMinAvailable = source["pdbMinAvailable"];
+	        this.pdbMaxUnavailable = source["pdbMaxUnavailable"];
+	        this.pdbDisruptionsAllowed = source["pdbDisruptionsAllowed"];
+	        this.configMapData = this.convertValues(source["configMapData"], CatalogDataEntry);
+	        this.leaseHolder = source["leaseHolder"];
+	        this.nodeResources = this.convertValues(source["nodeResources"], NodeCatalogResources);
+	        this.tableFields = source["tableFields"];
+	        this.helmStorageKind = source["helmStorageKind"];
+	        this.helmStorageName = source["helmStorageName"];
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class CatalogEntityList {
 	    entities: CatalogEntity[];
@@ -969,6 +1257,7 @@ export namespace model {
 	    restartCount: number;
 	    state: string;
 	    reason?: string;
+	    message?: string;
 	    exitCode?: number;
 	    startedAt?: string;
 	    finishedAt?: string;
@@ -995,6 +1284,7 @@ export namespace model {
 	        this.restartCount = source["restartCount"];
 	        this.state = source["state"];
 	        this.reason = source["reason"];
+	        this.message = source["message"];
 	        this.exitCode = source["exitCode"];
 	        this.startedAt = source["startedAt"];
 	        this.finishedAt = source["finishedAt"];
@@ -2428,6 +2718,7 @@ export namespace model {
 	
 	
 	
+	
 	export class ResourceCatalog {
 	    context: string;
 	    cluster: string;
@@ -2441,6 +2732,8 @@ export namespace model {
 	    extensions: KubernetesResourceDescriptor[];
 	    clusterScoped: KubernetesResourceDescriptor[];
 	    failedGroups?: string[];
+	    allNamespaces?: boolean;
+	    namespaces?: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new ResourceCatalog(source);
@@ -2459,6 +2752,8 @@ export namespace model {
 	        this.extensions = this.convertValues(source["extensions"], KubernetesResourceDescriptor);
 	        this.clusterScoped = this.convertValues(source["clusterScoped"], KubernetesResourceDescriptor);
 	        this.failedGroups = source["failedGroups"];
+	        this.allNamespaces = source["allNamespaces"];
+	        this.namespaces = source["namespaces"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

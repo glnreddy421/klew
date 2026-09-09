@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -268,22 +269,67 @@ func (a *App) SelectNamespace(namespace string) kube.ClusterState {
 	return st
 }
 
-// GetView returns the current investigation snapshot for the UI.
 // GetObjectDetails returns a kind-aware Kubernetes object inspector payload.
+// Works with or without an active investigation (live cluster GET in browse mode).
 func (a *App) GetObjectDetails(kind, name, namespace string) (*details.ObjectDetail, error) {
-	a.mu.Lock()
-	svc := a.svc
-	a.mu.Unlock()
-	if svc == nil {
-		return nil, fmt.Errorf("no active investigation")
-	}
 	ctx := a.ctx
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return svc.ObjectDetails(ctx, kind, name, namespace)
+
+	a.mu.Lock()
+	svc := a.svc
+	a.mu.Unlock()
+
+	if svc != nil {
+		return svc.ObjectDetails(ctx, kind, name, namespace)
+	}
+
+	client, ns, err := a.resolveBrowseClient(namespace)
+	if err != nil {
+		return nil, err
+	}
+	return details.Build(ctx, &details.Request{
+		Client:   client,
+		Snapshot: model.EvidenceBundle{},
+		State:    model.InvestigationState{},
+		Ref: model.ObjectRef{
+			Kind:      kind,
+			Name:      name,
+			Namespace: ns,
+		},
+	})
 }
 
+func (a *App) resolveBrowseClient(namespace string) (*kube.Client, string, error) {
+	a.mu.Lock()
+	cluster := a.cluster
+	a.mu.Unlock()
+
+	kcfg := cluster.KubeconfigPath
+	ctxName := cluster.SelectedContext
+	if ctxName == "" {
+		ctxName = cluster.CurrentContext
+	}
+	ns := namespace
+	if ns == "" {
+		ns = cluster.SelectedNamespace
+	}
+
+	client, err := kube.NewFromFlags(kcfg, ctxName, ns)
+	if err != nil {
+		return nil, "", err
+	}
+	if ns == "" {
+		ns = client.Namespace
+		if ns == "" {
+			ns = client.ContextNamespace
+		}
+	}
+	return client, ns, nil
+}
+
+// GetView returns the current investigation snapshot for the UI.
 func (a *App) GetView() api.View {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -295,15 +341,32 @@ func (a *App) GetView() api.View {
 
 // DiscoverOptions configures pre-flight match discovery before investigation.
 type DiscoverOptions struct {
-	Query      string `json:"query"`
-	Namespace  string `json:"namespace"`
-	Kubeconfig string `json:"kubeconfig"`
-	Context    string `json:"context"`
+	Query         string   `json:"query"`
+	Namespace     string   `json:"namespace"`
+	AllNamespaces bool     `json:"allNamespaces"`
+	Namespaces    []string `json:"namespaces"`
+	Kubeconfig    string   `json:"kubeconfig"`
+	Context       string   `json:"context"`
 }
 
-// DiscoverMatches finds resources matching the query in a namespace by name
-// substring across core Kubernetes kinds (workloads, networking, config, RBAC).
-// An empty query returns every listed resource in the namespace.
+func discoverScopeFromOptions(opts DiscoverOptions, fallbackNS string) model.NamespaceScope {
+	if opts.AllNamespaces {
+		return model.NamespaceScope{AllNamespaces: true}
+	}
+	if len(opts.Namespaces) > 1 {
+		return model.NamespaceScope{Namespaces: append([]string(nil), opts.Namespaces...), Primary: opts.Namespaces[0]}
+	}
+	if len(opts.Namespaces) == 1 {
+		return model.NamespaceScope{Primary: opts.Namespaces[0], Namespaces: []string{opts.Namespaces[0]}}
+	}
+	ns := opts.Namespace
+	if ns == "" {
+		ns = fallbackNS
+	}
+	return model.NamespaceScope{Primary: ns, Namespaces: []string{ns}}
+}
+
+// DiscoverMatches finds resources matching the query across the selected scope.
 func (a *App) DiscoverMatches(opts DiscoverOptions) ([]model.MatchedObject, error) {
 	if a.ctx == nil {
 		a.ctx = context.Background()
@@ -312,7 +375,8 @@ func (a *App) DiscoverMatches(opts DiscoverOptions) ([]model.MatchedObject, erro
 	kcfg := opts.Kubeconfig
 	ctxName := opts.Context
 	ns := opts.Namespace
-	if kcfg == "" || ctxName == "" || ns == "" {
+	allowEmptyNS := opts.AllNamespaces || len(opts.Namespaces) > 1
+	if kcfg == "" || ctxName == "" || (ns == "" && !allowEmptyNS) {
 		a.mu.Lock()
 		cluster := a.cluster
 		a.mu.Unlock()
@@ -322,7 +386,7 @@ func (a *App) DiscoverMatches(opts DiscoverOptions) ([]model.MatchedObject, erro
 		if ctxName == "" {
 			ctxName = cluster.SelectedContext
 		}
-		if ns == "" {
+		if ns == "" && !allowEmptyNS {
 			ns = cluster.SelectedNamespace
 		}
 	}
@@ -331,13 +395,14 @@ func (a *App) DiscoverMatches(opts DiscoverOptions) ([]model.MatchedObject, erro
 	if err != nil {
 		return nil, err
 	}
-	if ns == "" {
+	if ns == "" && !allowEmptyNS {
 		ns = client.Namespace
 		if ns == "" {
 			ns = client.ContextNamespace
 		}
 	}
-	matches, err := kube.DiscoverMatches(a.ctx, client, ns, opts.Query)
+	scope := discoverScopeFromOptions(opts, ns)
+	matches, err := kube.DiscoverMatches(a.ctx, client, scope, opts.Query)
 	if matches == nil {
 		matches = []model.MatchedObject{}
 	}
@@ -346,11 +411,13 @@ func (a *App) DiscoverMatches(opts DiscoverOptions) ([]model.MatchedObject, erro
 
 // CatalogOptions configures dynamic resource catalog discovery.
 type CatalogOptions struct {
-	Namespace     string `json:"namespace"`
-	Kubeconfig    string `json:"kubeconfig"`
-	Context       string `json:"context"`
-	IncludeCounts bool   `json:"includeCounts"`
-	Refresh       bool   `json:"refresh"`
+	Namespace      string   `json:"namespace"`
+	AllNamespaces  bool     `json:"allNamespaces"`
+	Namespaces     []string `json:"namespaces"`
+	Kubeconfig     string   `json:"kubeconfig"`
+	Context        string   `json:"context"`
+	IncludeCounts  bool     `json:"includeCounts"`
+	Refresh        bool     `json:"refresh"`
 }
 
 func (a *App) resolveCatalogClient(opts CatalogOptions) (*kube.Client, string, error) {
@@ -360,7 +427,8 @@ func (a *App) resolveCatalogClient(opts CatalogOptions) (*kube.Client, string, e
 	kcfg := opts.Kubeconfig
 	ctxName := opts.Context
 	ns := opts.Namespace
-	if kcfg == "" || ctxName == "" || ns == "" {
+	allowEmptyNS := opts.AllNamespaces || len(opts.Namespaces) > 1
+	if kcfg == "" || ctxName == "" || (ns == "" && !allowEmptyNS) {
 		a.mu.Lock()
 		cluster := a.cluster
 		a.mu.Unlock()
@@ -370,7 +438,7 @@ func (a *App) resolveCatalogClient(opts CatalogOptions) (*kube.Client, string, e
 		if ctxName == "" {
 			ctxName = cluster.SelectedContext
 		}
-		if ns == "" {
+		if ns == "" && !allowEmptyNS {
 			ns = cluster.SelectedNamespace
 		}
 	}
@@ -378,7 +446,7 @@ func (a *App) resolveCatalogClient(opts CatalogOptions) (*kube.Client, string, e
 	if err != nil {
 		return nil, "", err
 	}
-	if ns == "" {
+	if ns == "" && !allowEmptyNS {
 		ns = client.Namespace
 		if ns == "" {
 			ns = client.ContextNamespace
@@ -397,10 +465,18 @@ func (a *App) GetResourceCatalog(opts CatalogOptions) (model.ResourceCatalog, er
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if opts.Refresh {
-		return kube.RefreshResourceCatalog(ctx, client, ns, opts.IncludeCounts)
+	catalogNS := ns
+	if opts.AllNamespaces {
+		catalogNS = ""
+	} else if len(opts.Namespaces) == 1 {
+		catalogNS = opts.Namespaces[0]
+	} else if len(opts.Namespaces) > 1 {
+		catalogNS = ""
 	}
-	return kube.BuildResourceCatalog(ctx, client, ns, opts.IncludeCounts)
+	if opts.Refresh {
+		return kube.RefreshResourceCatalog(ctx, client, catalogNS, opts.IncludeCounts, opts.AllNamespaces, opts.Namespaces)
+	}
+	return kube.BuildResourceCatalog(ctx, client, catalogNS, opts.IncludeCounts, opts.AllNamespaces, opts.Namespaces)
 }
 
 // RefreshResourceCatalog invalidates cached discovery/auth and rebuilds the catalog.
@@ -411,19 +487,23 @@ func (a *App) RefreshResourceCatalog(opts CatalogOptions) (model.ResourceCatalog
 
 // ListCatalogEntitiesOptions configures lazy entity listing for a resource GVR.
 type ListCatalogEntitiesOptions struct {
-	ResourceID    string `json:"resourceId"`
-	Namespace     string `json:"namespace"`
-	ClusterScoped bool   `json:"clusterScoped"`
-	Kubeconfig    string `json:"kubeconfig"`
-	Context       string `json:"context"`
+	ResourceID     string   `json:"resourceId"`
+	Namespace      string   `json:"namespace"`
+	AllNamespaces  bool     `json:"allNamespaces"`
+	Namespaces     []string `json:"namespaces"`
+	ClusterScoped  bool     `json:"clusterScoped"`
+	Kubeconfig     string   `json:"kubeconfig"`
+	Context        string   `json:"context"`
 }
 
 // ListCatalogEntities returns lightweight entities for a selected catalog resource.
 func (a *App) ListCatalogEntities(opts ListCatalogEntitiesOptions) (model.CatalogEntityList, error) {
 	client, ns, err := a.resolveCatalogClient(CatalogOptions{
-		Namespace:  opts.Namespace,
-		Kubeconfig: opts.Kubeconfig,
-		Context:    opts.Context,
+		Namespace:     opts.Namespace,
+		AllNamespaces: opts.AllNamespaces,
+		Namespaces:    opts.Namespaces,
+		Kubeconfig:    opts.Kubeconfig,
+		Context:       opts.Context,
 	})
 	if err != nil {
 		return model.CatalogEntityList{AccessState: model.ResourceAccessError, Error: err.Error()}, err
@@ -438,11 +518,70 @@ func (a *App) ListCatalogEntities(opts ListCatalogEntitiesOptions) (model.Catalo
 	listNS := ns
 	if opts.Namespace != "" {
 		listNS = opts.Namespace
+	} else if len(opts.Namespaces) == 1 {
+		listNS = opts.Namespaces[0]
+	} else if opts.AllNamespaces || len(opts.Namespaces) > 1 {
+		listNS = ""
 	}
 	if opts.ClusterScoped {
 		listNS = ""
 	}
-	return kube.ListCatalogEntities(ctx, client, listNS, opts.ResourceID)
+	return kube.ListCatalogEntities(ctx, client, opts.ResourceID, kube.CatalogEntityScope{
+		Namespace:     listNS,
+		AllNamespaces: opts.AllNamespaces,
+		Namespaces:    opts.Namespaces,
+		ClusterScoped: opts.ClusterScoped,
+	})
+}
+
+// ResourceManifestOptions configures read-only kubectl get -o yaml for the inspector.
+type ResourceManifestOptions struct {
+	ResourceID    string `json:"resourceId"`
+	Kind          string `json:"kind"`
+	Name          string `json:"name"`
+	Namespace     string `json:"namespace"`
+	ClusterScoped bool   `json:"clusterScoped"`
+	Kubeconfig    string `json:"kubeconfig"`
+	Context       string `json:"context"`
+}
+
+// GetResourceManifest returns kubectl get -o yaml output for a selected object.
+func (a *App) GetResourceManifest(opts ResourceManifestOptions) (kube.ResourceManifest, error) {
+	if strings.TrimSpace(opts.Name) == "" {
+		return kube.ResourceManifest{}, fmt.Errorf("name is required")
+	}
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	a.mu.Lock()
+	cluster := a.cluster
+	a.mu.Unlock()
+
+	kcfg := strings.TrimSpace(opts.Kubeconfig)
+	ctxName := strings.TrimSpace(opts.Context)
+	if kcfg == "" {
+		kcfg = cluster.KubeconfigPath
+	}
+	if ctxName == "" {
+		ctxName = cluster.SelectedContext
+		if ctxName == "" {
+			ctxName = cluster.CurrentContext
+		}
+	}
+
+	clusterVersion := a.activeClusterVersion()
+	return kube.GetResourceManifest(ctx, kube.ResourceManifestRequest{
+		KubeconfigPath: kcfg,
+		Context:        ctxName,
+		ClusterVersion: clusterVersion,
+		ResourceID:     strings.TrimSpace(opts.ResourceID),
+		Kind:           strings.TrimSpace(opts.Kind),
+		Name:           strings.TrimSpace(opts.Name),
+		Namespace:      strings.TrimSpace(opts.Namespace),
+		ClusterScoped:  opts.ClusterScoped,
+	})
 }
 
 // StartOptions configures a live investigation from the desktop UI.

@@ -34,6 +34,10 @@ export function GetResourceCatalog(arg1) {
   return window['go']['main']['App']['GetResourceCatalog'](arg1);
 }
 
+export function GetResourceManifest(arg1) {
+  return window['go']['main']['App']['GetResourceManifest'](arg1);
+}
+
 export function GetTerminalShellChoices() {
   return window['go']['main']['App']['GetTerminalShellChoices']();
 }

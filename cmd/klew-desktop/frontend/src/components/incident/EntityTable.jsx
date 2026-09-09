@@ -1,6 +1,19 @@
+import { useId, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { KindIcon } from '../KindIcon'
 import { kindDisplayLabel, resourceMetadataTitle } from '../../lib/resourceCatalog.js'
-import { enrichEntitiesForTable, tableColumnsForDensity } from '../../lib/entityTable.js'
+import { singleBrowseScope, normalizeBrowseScope } from '../../lib/browseScope.js'
+import {
+  enrichEntitiesForTable,
+  formatConfigMapData,
+  tableCellValue,
+  truncateSelector,
+} from '../../lib/entityTable.js'
+import { useEntityTableColumns } from '../../hooks/useEntityTableColumns.js'
+import { EntityTableColumnPicker } from './EntityTableColumnPicker.jsx'
+import { NodeConditionsCell, NodeNameCell, NodeResourceCell, NodeTaintsCell } from './NodeTableCells.jsx'
+import { ContainerStatusIndicators } from './ContainerStatusIndicators.jsx'
+import { DeploymentConditionIndicators } from './DeploymentConditionIndicators.jsx'
 import { ResourceAccessPanel } from './ResourceAccessPanel.jsx'
 
 function StatusCell({ row }) {
@@ -14,7 +27,233 @@ function StatusCell({ row }) {
   )
 }
 
-function TableRow({ row, selected, focusKey, columns, onSelect }) {
+function NamespaceCell({ row, browseScope, onBrowseScopeChange }) {
+  const ns = tableCellValue(row, 'namespace')
+  if (!ns || ns === '—') {
+    return <span className="entity-table-ns-empty">—</span>
+  }
+
+  const current = normalizeBrowseScope(browseScope)
+  const isCurrent = current.mode === 'single' && current.namespace === ns
+
+  return (
+    <button
+      type="button"
+      className={['entity-table-ns-link', isCurrent ? 'is-current' : ''].filter(Boolean).join(' ')}
+      title={isCurrent ? ns : `Switch scope to ${ns}`}
+      onClick={(e) => {
+        e.stopPropagation()
+        if (!isCurrent) onBrowseScopeChange?.(singleBrowseScope(ns))
+      }}
+    >
+      {ns}
+    </button>
+  )
+}
+
+function TableCellClip({ value, className = '', mono = false }) {
+  const text = value ?? '—'
+  return (
+    <span className={['entity-table-cell-clip', mono ? 'mono' : ''].filter(Boolean).join(' ')}>
+      {text}
+    </span>
+  )
+}
+
+function SelectorTooltip({ value, tipId, coords }) {
+  return createPortal(
+    <div
+      className="entity-table-selector-tooltip entity-table-selector-tooltip-fixed"
+      role="tooltip"
+      id={tipId}
+      style={{ left: coords.x, top: coords.y }}
+    >
+      <div className="entity-table-selector-tooltip-k">Selector</div>
+      <div className="entity-table-selector-tooltip-v mono">{value}</div>
+    </div>,
+    document.body,
+  )
+}
+
+function SelectorCell({ row }) {
+  const full = tableCellValue(row, 'selector')
+  const [open, setOpen] = useState(false)
+  const [coords, setCoords] = useState({ x: 0, y: 0 })
+  const triggerRef = useRef(null)
+  const tipId = useId()
+
+  if (!full || full === '—') {
+    return <span className="entity-table-selector-empty">—</span>
+  }
+
+  const short = truncateSelector(full, 18)
+  const truncated = short !== full
+
+  function showTooltip() {
+    const rect = triggerRef.current?.getBoundingClientRect()
+    if (rect) {
+      setCoords({
+        x: rect.left,
+        y: rect.top - 8,
+      })
+    }
+    setOpen(true)
+  }
+
+  return (
+    <span
+      ref={triggerRef}
+      className="entity-table-selector"
+      onMouseEnter={truncated ? showTooltip : undefined}
+      onMouseLeave={() => setOpen(false)}
+      onFocus={truncated ? showTooltip : undefined}
+      onBlur={() => setOpen(false)}
+      onClick={(e) => e.stopPropagation()}
+      tabIndex={truncated ? 0 : -1}
+      aria-label={truncated ? `Selector: ${full}` : undefined}
+      aria-describedby={open ? tipId : undefined}
+    >
+      <svg
+        className="entity-table-selector-icon"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        aria-hidden="true"
+      >
+        <path d="M3.5 4.5h9M3.5 8h6M3.5 11.5h8" strokeLinecap="round" />
+      </svg>
+      <span className="entity-table-selector-text">{short}</span>
+      {open && truncated && <SelectorTooltip value={full} tipId={tipId} coords={coords} />}
+    </span>
+  )
+}
+
+function ConfigMapDataKeysPopover({ entries, tipId, coords, above }) {
+  return createPortal(
+    <div
+      className={[
+        'entity-table-configmap-popover',
+        above ? 'is-above' : '',
+      ].filter(Boolean).join(' ')}
+      role="tooltip"
+      id={tipId}
+      style={{ left: coords.x, top: coords.y }}
+    >
+      <div className="entity-table-configmap-popover-title">Data Keys</div>
+      <div className="entity-table-configmap-popover-scroll">
+        <table className="entity-table-configmap-tooltip-table">
+          <thead>
+            <tr>
+              <th>Key</th>
+              <th>Value</th>
+              <th>Size</th>
+            </tr>
+          </thead>
+          <tbody>
+            {entries.map((entry) => (
+              <tr key={entry.key}>
+                <td className="mono entity-table-configmap-key">{entry.key}</td>
+                <td className="mono entity-table-configmap-value" title={entry.value || ''}>
+                  {entry.value || '—'}
+                </td>
+                <td className="mono entity-table-configmap-size">{entry.sizeBytes} bytes</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
+function ConfigMapDataKeysCell({ row }) {
+  const entries = row.table?.dataKeysDetail || row.configMapData || []
+  const summary = formatConfigMapData(entries)
+  const [open, setOpen] = useState(false)
+  const [coords, setCoords] = useState({ x: 0, y: 0, above: false })
+  const triggerRef = useRef(null)
+  const tipId = useId()
+
+  if (!entries.length) {
+    return <span className="entity-table-cell-clip">—</span>
+  }
+
+  function showPopover() {
+    const rect = triggerRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const popoverWidth = Math.min(560, window.innerWidth - 24)
+    const spaceBelow = window.innerHeight - rect.bottom
+    const above = spaceBelow < 220 && rect.top > spaceBelow
+    const x = Math.max(12, Math.min(rect.left, window.innerWidth - popoverWidth - 12))
+    setCoords({
+      x,
+      y: above ? rect.top - 8 : rect.bottom + 8,
+      above,
+    })
+    setOpen(true)
+  }
+
+  return (
+    <span
+      ref={triggerRef}
+      className="entity-table-configmap-data"
+      onMouseEnter={showPopover}
+      onMouseLeave={() => setOpen(false)}
+      onFocus={showPopover}
+      onBlur={() => setOpen(false)}
+      onClick={(e) => e.stopPropagation()}
+      tabIndex={0}
+      aria-describedby={open ? tipId : undefined}
+    >
+      <button type="button" className="entity-table-configmap-pill" tabIndex={-1}>
+        {summary}
+      </button>
+      {open && (
+        <ConfigMapDataKeysPopover
+          entries={entries}
+          tipId={tipId}
+          coords={coords}
+          above={coords.above}
+        />
+      )}
+    </span>
+  )
+}
+
+function ControlledByCell({ row, onInspect }) {
+  const label = row.table?.controlledBy || '—'
+  const inspectKey = row.table?.controlledByKey
+  const title = row.table?.controlledByTitle || label
+  if (!inspectKey || label === '—') {
+    return <span className="entity-table-owner-empty">—</span>
+  }
+  return (
+    <button
+      type="button"
+      className="entity-table-owner-link"
+      title={title}
+      onClick={(e) => {
+        e.stopPropagation()
+        onInspect?.(inspectKey)
+      }}
+    >
+      {label}
+    </button>
+  )
+}
+
+function TableRow({
+  row,
+  selected,
+  focusKey,
+  columns,
+  onSelect,
+  onInspect,
+  browseScope,
+  onBrowseScopeChange,
+}) {
   const isRoot = focusKey === row.key
   return (
     <tr
@@ -35,12 +274,15 @@ function TableRow({ row, selected, focusKey, columns, onSelect }) {
       }}
     >
       {columns.map((col) => {
-        const t = row.table || {}
         switch (col.id) {
           case 'name':
             return (
               <td key={col.id} className={col.className} title={row.name}>
-                <span className="entity-table-name">{row.name}</span>
+                {row.kind === 'Node' ? (
+                  <NodeNameCell row={row} />
+                ) : (
+                  <span className="entity-table-name">{row.name}</span>
+                )}
               </td>
             )
           case 'status':
@@ -49,20 +291,217 @@ function TableRow({ row, selected, focusKey, columns, onSelect }) {
                 <StatusCell row={row} />
               </td>
             )
-          case 'namespace':
-            return <td key={col.id} className={`${col.className} mono`}>{t.namespace || '—'}</td>
-          case 'node':
-            return <td key={col.id} className={`${col.className} mono`} title={t.node}>{t.node || '—'}</td>
-          case 'restarts':
-            return <td key={col.id} className={`${col.className} mono`}>{t.restarts ?? '—'}</td>
+          case 'containers':
+            return (
+              <td key={col.id} className={col.className}>
+                <ContainerStatusIndicators containers={row.table?.containers || []} />
+              </td>
+            )
           case 'cpu':
-            return <td key={col.id} className={`${col.className} mono`}>{t.cpu || '—'}</td>
+            if (row.kind === 'Node') {
+              return (
+                <td key={col.id} className={col.className}>
+                  <NodeResourceCell
+                    capacity={row.nodeResources?.capacityCpuMilli}
+                    allocatable={row.nodeResources?.allocatableCpuMilli}
+                  />
+                </td>
+              )
+            }
+            return (
+              <td key={col.id} className={col.className}>
+                <TableCellClip mono value={tableCellValue(row, col.id)} />
+              </td>
+            )
           case 'memory':
-            return <td key={col.id} className={`${col.className} mono`}>{t.memory || '—'}</td>
+            if (row.kind === 'Node') {
+              return (
+                <td key={col.id} className={col.className}>
+                  <NodeResourceCell
+                    capacity={row.nodeResources?.capacityMemoryBytes}
+                    allocatable={row.nodeResources?.allocatableMemoryBytes}
+                  />
+                </td>
+              )
+            }
+            return (
+              <td key={col.id} className={col.className}>
+                <TableCellClip mono value={tableCellValue(row, col.id)} />
+              </td>
+            )
+          case 'disk':
+            return (
+              <td key={col.id} className={col.className}>
+                {row.kind === 'Node' ? (
+                  <NodeResourceCell
+                    capacity={row.nodeResources?.capacityDiskBytes}
+                    allocatable={row.nodeResources?.allocatableDiskBytes}
+                  />
+                ) : (
+                  <TableCellClip mono value={tableCellValue(row, col.id)} />
+                )}
+              </td>
+            )
+          case 'taints':
+            return (
+              <td key={col.id} className={col.className}>
+                {row.kind === 'Node' ? (
+                  <NodeTaintsCell row={row} />
+                ) : (
+                  <TableCellClip mono value={tableCellValue(row, col.id)} />
+                )}
+              </td>
+            )
+          case 'qos':
           case 'age':
-            return <td key={col.id} className={`${col.className} mono`}>{t.age || '—'}</td>
-          default:
-            return <td key={col.id}>—</td>
+          case 'lastSchedule':
+            return (
+              <td key={col.id} className={col.className}>
+                <TableCellClip
+                  mono
+                  value={col.id === 'lastSchedule'
+                    ? (row.lastScheduleTime || tableCellValue(row, col.id))
+                    : tableCellValue(row, col.id)}
+                />
+              </td>
+            )
+          case 'controlledBy':
+            return (
+              <td key={col.id} className={col.className}>
+                <ControlledByCell row={row} onInspect={onInspect} />
+              </td>
+            )
+          case 'conditions':
+            return (
+              <td key={col.id} className={col.className}>
+                {row.kind === 'Node' ? (
+                  <NodeConditionsCell row={row} />
+                ) : (
+                  <DeploymentConditionIndicators conditions={row.table?.conditionsDetail || []} />
+                )}
+              </td>
+            )
+          case 'version':
+          case 'roles':
+            return (
+              <td key={col.id} className={col.className}>
+                <TableCellClip mono value={tableCellValue(row, col.id)} />
+              </td>
+            )
+          case 'namespace':
+            return (
+              <td key={col.id} className={col.className}>
+                <NamespaceCell
+                  row={row}
+                  browseScope={browseScope}
+                  onBrowseScopeChange={onBrowseScopeChange}
+                />
+              </td>
+            )
+          case 'selector':
+            return (
+              <td key={col.id} className={col.className}>
+                <SelectorCell row={row} />
+              </td>
+            )
+          case 'dataKeys':
+            return (
+              <td key={col.id} className={col.className}>
+                <ConfigMapDataKeysCell row={row} />
+              </td>
+            )
+          case 'node':
+          case 'desired':
+          case 'current':
+          case 'ready':
+          case 'updated':
+          case 'available':
+          case 'misscheduled':
+          case 'completions':
+          case 'schedule':
+          case 'suspend':
+          case 'active':
+          case 'restarts':
+          case 'pods':
+          case 'replicas':
+          case 'type':
+          case 'clusterIP':
+          case 'ports':
+          case 'externalIP':
+          case 'endpoints':
+          case 'service':
+          case 'loadBalancers':
+          case 'rules':
+          case 'controller':
+          case 'apiGroup':
+          case 'scope':
+          case 'parameterKind':
+          case 'policyTypes':
+          case 'provisioner':
+          case 'reclaimPolicy':
+          case 'volumeBindingMode':
+          case 'defaultClass':
+          case 'volume':
+          case 'capacity':
+          case 'accessModes':
+          case 'storageClass':
+          case 'claim':
+          case 'keys':
+          case 'secretType':
+          case 'scaleTarget':
+          case 'targets':
+          case 'minPods':
+          case 'maxPods':
+          case 'hpaReplicas':
+          case 'minAvailable':
+          case 'maxUnavailable':
+          case 'allowedDisruptions':
+          case 'holder':
+          case 'reason':
+          case 'object':
+          case 'message':
+          case 'lastSeen':
+          case 'secrets':
+          case 'role':
+          case 'subjects':
+          case 'hard':
+          case 'limits':
+          case 'value':
+          case 'globalDefault':
+          case 'handler':
+          case 'attacher':
+          case 'pv':
+          case 'attachRequired':
+          case 'podInfoOnMount':
+          case 'storageCapacity':
+          case 'drivers':
+          case 'group':
+          case 'webhooks':
+          case 'failurePolicy':
+          case 'matchConstraints':
+          case 'policy':
+          case 'validationActions':
+          case 'addressType':
+          case 'chart':
+          case 'revision':
+          case 'chartVersion':
+          case 'appVersion':
+          case 'updated':
+          case 'releases':
+            return (
+              <td key={col.id} className={col.className}>
+                <TableCellClip mono value={tableCellValue(row, col.id)} />
+              </td>
+            )
+          default: {
+            const value = tableCellValue(row, col.id)
+            if (value === '—') return <td key={col.id} className={col.className}>—</td>
+            return (
+              <td key={col.id} className={col.className}>
+                <TableCellClip mono value={value} />
+              </td>
+            )
+          }
         }
       })}
     </tr>
@@ -81,13 +520,19 @@ export function EntityTable({
   pods = [],
   inspectKey,
   focusKey,
-  density = 'standard',
+  browseScope,
+  onBrowseScopeChange,
   onSelect,
   hasSearchQuery = '',
 }) {
   const label = kindGroup?.label || (kind ? kindDisplayLabel(kind) : 'Resources')
-  const columns = tableColumnsForDensity(density)
-  const rows = enrichEntitiesForTable(filteredEntities, pods)
+  const resolvedKind = kind || kindGroup?.kind || ''
+  const { columns, selectable, visibleIds, setVisibleIds } = useEntityTableColumns({
+    kind: resolvedKind,
+    kindGroup,
+    browseScope,
+  })
+  const rows = enrichEntitiesForTable(filteredEntities, pods, resolvedKind)
 
   const accessBlocked = entities.length === 0
     && !entitiesLoading
@@ -100,13 +545,25 @@ export function EntityTable({
     )
 
   return (
-    <section className={`entity-table entity-table-${density}`} aria-label={`${label} entities`}>
+    <section className="entity-table" aria-label={`${label} entities`}>
       <header className="entity-table-header">
         <div className="entity-table-heading">
           {kind ? <KindIcon kind={kind} size={16} /> : null}
-          <h4 className="entity-table-title">{label}</h4>
+          <h4 className="entity-table-title">
+            {label}
+            {resolvedKind === 'Endpoints' && (
+              <span className="entity-table-legacy-tag">legacy</span>
+            )}
+          </h4>
           {!accessBlocked && (
             <span className="entity-table-count">{entitiesLoading ? '…' : entities.length}</span>
+          )}
+          {!accessBlocked && selectable.length > 0 && (
+            <EntityTableColumnPicker
+              columns={selectable}
+              visibleIds={visibleIds}
+              onChange={setVisibleIds}
+            />
           )}
         </div>
         {kindGroup && (
@@ -120,39 +577,44 @@ export function EntityTable({
         {accessBlocked ? (
           <ResourceAccessPanel kindGroup={kindGroup} />
         ) : (
-          <>
-            {entitiesLoading && <p className="entity-table-loading">Loading…</p>}
-            {!entitiesLoading && rows.length > 0 && (
-              <div className="entity-table-scroll">
-                <table className="entity-table-grid">
-                  <thead>
-                    <tr>
-                      {columns.map((col) => (
-                        <th key={col.id} className={col.className}>{col.label}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((row) => (
-                      <TableRow
-                        key={row.key}
-                        row={row}
-                        columns={columns}
-                        selected={inspectKey === row.key}
-                        focusKey={focusKey}
-                        onSelect={onSelect}
-                      />
-                    ))}
-                  </tbody>
-                </table>
+          <div className="entity-table-scroll">
+            <table className="entity-table-grid">
+              <thead>
+                <tr>
+                  {columns.map((col) => (
+                    <th key={col.id} className={col.className}>{col.label}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {entitiesLoading && (
+                  <tr className="entity-table-placeholder-row">
+                    <td colSpan={Math.max(columns.length, 1)} className="entity-table-placeholder-cell">
+                      Loading…
+                    </td>
+                  </tr>
+                )}
+                {!entitiesLoading && rows.map((row) => (
+                  <TableRow
+                    key={row.key}
+                    row={row}
+                    columns={columns}
+                    selected={inspectKey === row.key}
+                    focusKey={focusKey}
+                    onSelect={onSelect}
+                    onInspect={onSelect}
+                    browseScope={browseScope}
+                    onBrowseScopeChange={onBrowseScopeChange}
+                  />
+                ))}
+              </tbody>
+            </table>
+            {!entitiesLoading && !rows.length && hasSearchQuery && (
+              <div className="entity-table-empty entity-table-empty-filtered">
+                <p>No matches for &quot;{hasSearchQuery}&quot;</p>
               </div>
             )}
-            {!entitiesLoading && !rows.length && (
-              <div className="entity-table-empty">
-                <p>{hasSearchQuery ? `No matches for "${hasSearchQuery}"` : `No ${label.toLowerCase()} in this scope`}</p>
-              </div>
-            )}
-          </>
+          </div>
         )}
       </div>
     </section>

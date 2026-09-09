@@ -1,9 +1,11 @@
 import { categoryLabel, componentCategory } from './componentInspect'
+import { buildInspectKey } from './matches'
 
 /** Group IDs that become inspector tabs (order matters). */
 export const DETAIL_TAB_ORDER = [
   { id: 'summary', label: 'Summary' },
   { id: 'status', label: 'Status' },
+  { id: 'containers', label: 'Containers' },
   { id: 'relationships', label: 'Relationships' },
   { id: 'spec', label: 'Spec' },
   { id: 'runtime', label: 'Runtime' },
@@ -19,15 +21,16 @@ export function normalizeObjectDetail(detail, row) {
   if (!detail && !row) return null
   const kind = detail?.kind || row?.kind || row?.ref?.kind || 'Unknown'
   const name = detail?.ref?.name || detail?.title?.split('/')?.pop() || row?.name || row?.ref?.name || '—'
+  const namespace = detail?.ref?.namespace || row?.namespace || row?.ref?.namespace || ''
   const category = detail?.category || componentCategory(kind)
   const sections = (detail?.sections || []).filter((s) => sectionHasContent(s))
   const summary = (detail?.summary || []).filter((f) => f?.value != null && String(f.value).trim() !== '')
 
   return {
-    key: row?.key || `${kind}/${name}`,
+    key: row?.key || buildInspectKey(kind, name, namespace),
     kind,
     name,
-    namespace: detail?.ref?.namespace || row?.namespace || row?.ref?.namespace || '',
+    namespace,
     category,
     categoryLabel: categoryLabel(category),
     adhoc: Boolean(row?.adhoc),
@@ -49,6 +52,8 @@ function sectionHasContent(s) {
   if (s.keyValues?.length) return true
   if (s.notes?.length) return true
   if (s.table?.rows?.length) return true
+  if (s.code?.trim()) return true
+  if (s.altCode?.trim()) return true
   return false
 }
 
@@ -86,7 +91,10 @@ function inferGroup(id, title) {
     return 'relationships'
   }
   if (/condition|phase|ready|replica|address|capacity|status/.test(t)) return 'status'
-  if (/resource|qos|runtime|restart|container.?state|sidecar|init/.test(t)) return 'runtime'
+  if (/container|init.?container|sidecar|probe|volume.?mount|environment|secret.?env|image.?pull|restart.?history|security.?context|allocated/.test(t)) {
+    return 'containers'
+  }
+  if (/resource|qos|runtime|restart/.test(t)) return 'runtime'
   if (/spec|strategy|port|rule|volume|environ|template|type|policy|affinity|taint|data.?key|secret.?key/.test(t)) {
     return 'spec'
   }

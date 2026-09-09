@@ -28,7 +28,11 @@ export function Sidebar({ active, onSelect, onSettings, onHelp, settingsSection,
             <button
               key={item.id}
               type="button"
-              className={`nav-item ${active === item.id ? 'active' : ''}`}
+              className={[
+                'nav-item',
+                active === item.id ? 'active' : '',
+                item.primary ? 'is-primary' : '',
+              ].filter(Boolean).join(' ')}
               onClick={() => onSelect(item.id)}
               title={item.hint || item.label}
               aria-current={active === item.id ? 'page' : undefined}

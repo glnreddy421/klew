@@ -73,6 +73,10 @@ describe('resourcePresentation', () => {
     expect(builtinCategoryForKey('networking.k8s.io/ingressclasses')).toBe('network')
     expect(defaultNamespaced({ resource: 'ingressclasses' })).toBe(false)
   })
+
+  it('maps helm virtual resources to helm category', () => {
+    expect(builtinCategoryForKey('klew/helmreleases')).toBe('helm')
+  })
 })
 
 describe('buildCatalogScopeTree presentation merge', () => {
@@ -105,6 +109,17 @@ describe('buildCatalogScopeTree presentation merge', () => {
     const config = tree.categories.find((c) => c.id === 'config')
     const hpa = config.kinds.find((k) => k.kind === 'HorizontalPodAutoscaler')
     expect(hpa.label).toBe('HPA')
+  })
+
+  it('includes virtual helm kinds without API discovery', () => {
+    const tree = buildCatalogScopeTree(mockCatalog([]), [], [])
+    const helm = tree.categories.find((c) => c.id === 'helm')
+    expect(helm?.label).toBe('Helm')
+    const releases = helm?.kinds.find((k) => k.kind === 'HelmRelease')
+    expect(releases?.virtual).toBe(true)
+    expect(releases?.resourceId).toBe('klew/virtual/v1/helmreleases')
+    expect(releases?.discovered).toBe(true)
+    expect(helm?.kinds).toHaveLength(1)
   })
 
   it('omits VPA when not discovered', () => {

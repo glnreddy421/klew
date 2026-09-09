@@ -1,8 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { ScopePanel } from '../components/incident/ScopePanel'
 import { InvestigationSignalsPanel } from '../components/incident/InvestigationSignalsPanel'
-import { CollectingMatchesSplash } from '../components/incident/CollectingMatchesSplash'
 import { InvestigationLoadingBanner } from '../components/incident/InvestigationLoadingBanner'
+import { InvestigationSessionBanner } from '../components/incident/InvestigationSessionBanner'
 import {
   deriveMatchRows,
   getMatchedObjects,
@@ -14,7 +14,8 @@ import { buildChainRows, buildFocusScope } from '../lib/focusScope'
 import { buildComponentInspect } from '../lib/componentInspect'
 import { mergeInspect, normalizeObjectDetail } from '../lib/objectDetails'
 import { GetObjectDetails } from '../../wailsjs/go/main/App'
-import { useResourceCatalog } from '../hooks/useResourceCatalog.js'
+import { useScopeBrowse } from '../context/ScopeBrowseContext.jsx'
+import { useShellInspector } from '../context/ShellInspectorContext.jsx'
 import {
   inspectPanelMode,
   inspectShowsFocusCta,
@@ -25,9 +26,17 @@ import {
 
 const ResourcesWorkbenchContext = createContext(null)
 
+export function useResourcesWorkbench() {
+  return useContext(ResourcesWorkbenchContext)
+}
+
 export function ResourcesWorkbenchRoot({
   view,
   cluster,
+  catalog: catalogProp,
+  catalogLoading: catalogLoadingProp,
+  catalogEnriching = false,
+  catalogError: catalogErrorProp,
   focusKey,
   focusPinned,
   onFocusChange,
@@ -38,11 +47,23 @@ export function ResourcesWorkbenchRoot({
   inspectKey,
   onInspectKeyChange,
   shellMode = false,
+  browseScope,
+  onBrowseScopeChange,
+  browseScopeLocked = false,
+  savedBrowseScopeLabel = '',
+  investigationNs = '',
+  investigationSession = null,
+  resourcesBrowseLens = 'matches',
+  onResourcesBrowseLensChange,
   children,
 }) {
   const value = useResourcesWorkbenchState({
     view,
     cluster,
+    catalog: catalogProp,
+    catalogLoading: catalogLoadingProp,
+    catalogEnriching,
+    catalogError: catalogErrorProp,
     focusKey,
     focusPinned,
     onFocusChange,
@@ -53,6 +74,14 @@ export function ResourcesWorkbenchRoot({
     inspectKey,
     onInspectKeyChange,
     shellMode,
+    browseScope,
+    onBrowseScopeChange,
+    browseScopeLocked,
+    savedBrowseScopeLabel,
+    investigationNs,
+    investigationSession,
+    resourcesBrowseLens,
+    onResourcesBrowseLensChange,
   })
   return (
     <ResourcesWorkbenchContext.Provider value={value}>
@@ -67,6 +96,7 @@ export function ResourcesWorkbenchView({ shellMode = false }) {
     throw new Error('ResourcesWorkbenchView requires ResourcesWorkbenchRoot')
   }
 
+
   const {
     allMatches,
     allRows,
@@ -79,42 +109,46 @@ export function ResourcesWorkbenchView({ shellMode = false }) {
     displayRows,
     catalog,
     catalogLoading,
+    catalogEnriching,
     catalogError,
     cluster,
     view,
     focusKey,
     inspectKey,
     listChrome,
+    browseScope,
+    onBrowseScopeChange,
+    browseScopeLocked,
+    savedBrowseScopeLabel,
+    investigationNs,
+    investigationSession,
+    resourcesBrowseLens,
+    onResourcesBrowseLensChange,
     handleInspect,
     handleFocus,
     handleNavKindChange,
     onClearFocus,
   } = ctx
 
+  const shellInspector = useShellInspector()
+
+  const openInspect = useCallback((key) => {
+    handleInspect(key)
+    shellInspector?.expandInspector?.()
+  }, [handleInspect, shellInspector])
+
+  const openNavKindChange = useCallback((payload) => {
+    handleNavKindChange(payload)
+  }, [handleNavKindChange])
+
   const clusterReady = Boolean(cluster?.selectedContext || cluster?.currentContext)
-  const hasInvestigationData = allMatches.length > 0 || allRows.length > 0
 
-  if (!hasInvestigationData && !clusterReady) {
-    return (
-      <div className="workbench-surface resources-workbench">
-        {investigationLoading ? (
-          <CollectingMatchesSplash />
-        ) : (
-          <div className="workbench-empty">
-            <h3>No resources in scope</h3>
-            <p className="muted">Start an investigation or widen your query to browse Kubernetes objects.</p>
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  if (!hasInvestigationData && !investigationLoading && !catalog && !catalogLoading) {
+  if (!clusterReady) {
     return (
       <div className="workbench-surface resources-workbench">
         <div className="workbench-empty">
-          <h3>No resources in scope</h3>
-          <p className="muted">Start an investigation or widen your query to browse Kubernetes objects.</p>
+          <h3>Connect a cluster</h3>
+          <p className="muted">Select a context and namespace to browse Kubernetes resources.</p>
         </div>
       </div>
     )
@@ -122,6 +156,13 @@ export function ResourcesWorkbenchView({ shellMode = false }) {
 
   return (
     <div className={`workbench-surface resources-workbench layout-${layoutMode} ${shellMode ? 'resources-workbench-shell' : ''}`}>
+      {investigationSession?.active && (
+        <InvestigationSessionBanner
+          namespaceLabel={investigationSession.namespaceLabel}
+          query={investigationSession.query}
+          starting={investigationSession.starting}
+        />
+      )}
       {investigationLoading && (
         <InvestigationLoadingBanner onOpenOverview={() => onNavigate?.('incident')} />
       )}
@@ -139,18 +180,27 @@ export function ResourcesWorkbenchView({ shellMode = false }) {
           catalog={catalog}
           cluster={cluster}
           catalogLoading={catalogLoading}
+          catalogEnriching={catalogEnriching}
           catalogError={catalogError}
           focusKey={focusKey}
           inspectKey={inspectKey}
           mode={focusPinned ? 'chain' : 'match'}
-          onInspect={handleInspect}
+          onInspect={shellMode ? openInspect : handleInspect}
           onFocus={handleFocus}
-          onKindChange={handleNavKindChange}
+          onKindChange={openNavKindChange}
           showFocusButton={listChrome.showFocusButton}
           entityView={listChrome.entityView}
           tableDensity={listChrome.tableDensity}
           showEmptyToggle={listChrome.showEmptyToggle}
           navInExplorer={shellMode}
+          browseScope={browseScope}
+          onBrowseScopeChange={onBrowseScopeChange}
+          browseScopeLocked={browseScopeLocked}
+          savedBrowseScopeLabel={savedBrowseScopeLabel}
+          investigationNs={investigationNs}
+          browseLens={resourcesBrowseLens}
+          onBrowseLensChange={onResourcesBrowseLensChange}
+          showBrowseLens={Boolean(investigationSession?.active)}
         />
       </section>
     </div>
@@ -159,6 +209,14 @@ export function ResourcesWorkbenchView({ shellMode = false }) {
 
 export function ResourcesWorkbenchInspector() {
   const ctx = useContext(ResourcesWorkbenchContext)
+  const shellInspector = useShellInspector()
+  const handleInspect = ctx?.handleInspect
+
+  const openInspect = useCallback((key) => {
+    handleInspect?.(key)
+    shellInspector?.expandInspector?.()
+  }, [handleInspect, shellInspector])
+
   if (!ctx?.inspectRow && !ctx?.inspectKey) {
     return <p className="muted inspector-empty">Select an entity to inspect signals and details.</p>
   }
@@ -172,7 +230,6 @@ export function ResourcesWorkbenchInspector() {
     showFocusCta,
     panelMode,
     handleFocus,
-    handleInspect,
     detailLoading,
     detailError,
     inspectKey,
@@ -188,7 +245,7 @@ export function ResourcesWorkbenchInspector() {
       focusPinned={focusPinned}
       showFocusCta={showFocusCta}
       onFocus={handleFocus}
-      onInspect={handleInspect}
+      onInspect={openInspect}
       loading={detailLoading}
       error={detailError}
       emptyHint={
@@ -213,6 +270,10 @@ export function useResourcesCatalog(view, cluster) {
 function useResourcesWorkbenchState({
   view,
   cluster,
+  catalog: catalogProp,
+  catalogLoading: catalogLoadingProp = false,
+  catalogEnriching = false,
+  catalogError: catalogErrorProp = '',
   focusKey,
   focusPinned,
   onFocusChange,
@@ -222,10 +283,22 @@ function useResourcesWorkbenchState({
   inspectKey,
   onInspectKeyChange,
   shellMode = false,
+  browseScope,
+  onBrowseScopeChange,
+  browseScopeLocked = false,
+  savedBrowseScopeLabel = '',
+  investigationNs = '',
+  investigationSession = null,
+  resourcesBrowseLens = 'matches',
+  onResourcesBrowseLensChange,
 }) {
   const allMatches = getMatchedObjects(view)
   const allRows = useMemo(() => deriveMatchRows(view, allMatches), [view, allMatches])
-  const { catalog, loading: catalogLoading, error: catalogError } = useResourceCatalog(cluster)
+  const catalog = catalogProp
+  const catalogLoading = catalogLoadingProp
+  const catalogError = catalogErrorProp
+  const browseCtx = useScopeBrowse()
+  const catalogEntities = browseCtx?.displayEntities || []
 
   const layoutMode = layoutModeProp || loadLayoutMode()
   const layout = layoutConfig(layoutMode)
@@ -238,6 +311,7 @@ function useResourcesWorkbenchState({
         entityView: 'table',
         tableDensity: 'standard',
         showFocusButton: true,
+        showEmptyToggle: false,
       }
     }
     return listChromeForMode(layoutMode)
@@ -264,7 +338,7 @@ function useResourcesWorkbenchState({
   }, [isAdhocInspectable, allRows, catalogEntityKeys])
 
   useEffect(() => {
-    if (focusPinned || catalogBrowseActive) return
+    if (focusPinned || catalogBrowseActive || investigationLoading) return
     if (!allRows.length) {
       onInspectKeyChange?.(null)
       return
@@ -272,7 +346,7 @@ function useResourcesWorkbenchState({
     if (inspectKey && inspectKeyAllowed(inspectKey, allRows)) return
     const preferred = pickDefaultFocus(allRows)
     if (preferred) onInspectKeyChange?.(preferred)
-  }, [allRows, focusPinned, inspectKey, onInspectKeyChange, inspectKeyAllowed, catalogBrowseActive])
+  }, [allRows, focusPinned, inspectKey, onInspectKeyChange, inspectKeyAllowed, catalogBrowseActive, investigationLoading])
 
   useEffect(() => {
     if (focusPinned && focusKey) onInspectKeyChange?.(focusKey)
@@ -299,13 +373,15 @@ function useResourcesWorkbenchState({
     if (inspectKey) {
       const fromRows = rows.find((r) => r.key === inspectKey)
       if (fromRows) return fromRows
+      const fromCatalog = catalogEntities.find((r) => r.key === inspectKey)
+      if (fromCatalog) return fromCatalog
       const fromSnap = inspectRowForKey(inspectKey, view, allRows)
       if (fromSnap) return fromSnap
       return null
     }
     if (catalogBrowseActive) return null
     return rows.find((r) => r.key === focusKey) || rows[0] || null
-  }, [rows, allRows, inspectKey, focusKey, view, catalogBrowseActive])
+  }, [rows, allRows, inspectKey, focusKey, view, catalogBrowseActive, catalogEntities])
 
   const snapshotInspect = useMemo(
     () => (inspectRow ? buildComponentInspect(view, inspectRow) : null),
@@ -397,6 +473,7 @@ function useResourcesWorkbenchState({
     displayRows,
     catalog,
     catalogLoading,
+    catalogEnriching,
     catalogError,
     cluster,
     view,
@@ -411,5 +488,13 @@ function useResourcesWorkbenchState({
     panelMode,
     detailLoading,
     detailError,
+    browseScope,
+    onBrowseScopeChange,
+    browseScopeLocked,
+    savedBrowseScopeLabel,
+    investigationNs,
+    investigationSession,
+    resourcesBrowseLens,
+    onResourcesBrowseLensChange,
   }
 }

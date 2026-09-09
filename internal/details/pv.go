@@ -46,6 +46,11 @@ func (pvProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, error
 		),
 	}
 	var sections []Section
+	sections = append(sections, sectionFields("status", "Status", GroupStatus, fields(
+		"Phase", phase,
+		"Message", pv.Status.Message,
+		"Reason", pv.Status.Reason,
+	)))
 	sections = append(sections, sectionFields("claim", "Claim", GroupRelationships, fields(
 		"Claim Ref", claim,
 	)))
@@ -63,6 +68,9 @@ func (pvProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, error
 	sections = append(sections, sectionFields("reclaimPolicy", "Reclaim Policy", GroupSpec, fields(
 		"Policy", string(pv.Spec.PersistentVolumeReclaimPolicy),
 		"Access Modes", joinAccessModes(pv.Spec.AccessModes),
+		"Volume Mode", volumeModeString(pv.Spec.VolumeMode),
+		"Mount Options", strings.Join(pv.Spec.MountOptions, ", "),
+		"Volume Source", pvSourceSummary(pv),
 	)))
 	sections = append(sections, metaSections(pv.Labels, pv.Annotations, ownerRefsFromMeta(pv.OwnerReferences, ""))...)
 	if mf := managedFieldsSection(pv.ManagedFields); !mf.Empty() {
@@ -85,6 +93,39 @@ func joinAccessModes(modes []corev1.PersistentVolumeAccessMode) string {
 		parts = append(parts, string(m))
 	}
 	return strings.Join(parts, ", ")
+}
+
+func volumeModeString(mode *corev1.PersistentVolumeMode) string {
+	if mode == nil {
+		return ""
+	}
+	return string(*mode)
+}
+
+func pvSourceSummary(pv *corev1.PersistentVolume) string {
+	spec := pv.Spec
+	switch {
+	case spec.HostPath != nil:
+		return fmt.Sprintf("hostPath: %s", spec.HostPath.Path)
+	case spec.NFS != nil:
+		return fmt.Sprintf("nfs: %s:%s", spec.NFS.Server, spec.NFS.Path)
+	case spec.CSI != nil:
+		return fmt.Sprintf("csi: %s (%s)", spec.CSI.Driver, spec.CSI.VolumeHandle)
+	case spec.Local != nil:
+		return fmt.Sprintf("local: %s", spec.Local.Path)
+	case spec.GCEPersistentDisk != nil:
+		return fmt.Sprintf("gcePersistentDisk: %s", spec.GCEPersistentDisk.PDName)
+	case spec.AWSElasticBlockStore != nil:
+		return fmt.Sprintf("awsElasticBlockStore: %s", spec.AWSElasticBlockStore.VolumeID)
+	case spec.AzureDisk != nil:
+		return fmt.Sprintf("azureDisk: %s", spec.AzureDisk.DiskName)
+	case spec.CephFS != nil:
+		return fmt.Sprintf("cephfs: %s", spec.CephFS.Path)
+	case spec.Glusterfs != nil:
+		return fmt.Sprintf("glusterfs: %s", spec.Glusterfs.Path)
+	default:
+		return ""
+	}
 }
 
 func nodeAffinityString(na *corev1.VolumeNodeAffinity) string {

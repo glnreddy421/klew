@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { StatusBadge, RowStatusBadge } from './StatusBadge'
 import { KindIcon } from '../KindIcon'
-import { formatReady, parseInspectKey } from '../../lib/matches'
+import { formatReady } from '../../lib/matches'
 import {
   deriveSignalStats,
   hasAnomalyIssues,
@@ -9,11 +9,16 @@ import {
 import { decodeSecretValue } from '../../lib/secretDisplay'
 import {
   enrichInspectGroups,
-  inferRowKind,
-  linkableTableColumn,
-  parseObjectRefCell,
+  resolveInspectRef,
   summaryMetrics,
 } from '../../lib/inspectEnrich'
+import { InspectContainersPanel } from './InspectContainersPanel'
+import { RelationshipGraphPanel } from './RelationshipGraph'
+import { ServiceEndpointSummary } from './ServiceEndpointSummary'
+import { HelmReleaseInspectView } from './HelmReleaseInspectView.jsx'
+import { hasContainerPanelData, parseInspectContainers } from '../../lib/inspectContainers'
+import { buildRelationshipGraph } from '../../lib/relationshipGraph'
+import { findServiceEndpointFields } from '../../lib/serviceEndpoints'
 
 /**
  * Kind-aware object inspector.
@@ -52,6 +57,25 @@ export function ComponentInspectPanel({
     return items.filter((r) => r.kind !== 'Pod' && r.role !== 'Pod' && r.role !== 'Target pod')
   }, [inspect, relatedPods])
 
+  const relationshipCenter = useMemo(() => {
+    if (!inspect) return null
+    return {
+      kind: inspect.kind,
+      name: inspect.name,
+      key: inspect.key,
+      namespace: inspect.namespace,
+    }
+  }, [inspect])
+
+  const hasRelationshipGraph = useMemo(() => {
+    if (!relationshipCenter) return false
+    return buildRelationshipGraph({
+      center: relationshipCenter,
+      items: relationshipItems,
+      inspectNamespace: inspect?.namespace,
+    }).nodes.length > 1
+  }, [relationshipCenter, relationshipItems, inspect?.namespace])
+
   if (!inspect) {
     return (
       <div className="inspect-empty muted">
@@ -62,6 +86,16 @@ export function ComponentInspectPanel({
     )
   }
 
+  if (inspect.kind === 'HelmRelease') {
+    return (
+      <HelmReleaseInspectView
+        inspect={inspect}
+        loading={loading}
+        error={error}
+      />
+    )
+  }
+
   const unhealthy = hasAnomalyIssues(inspect)
   const focusKey = inspect.key
 
@@ -69,13 +103,20 @@ export function ComponentInspectPanel({
     <RelatedPodsSection pods={relatedPods} onInspect={onInspect} />
   ) : null
 
-  const relationshipsBlock = relationshipItems.length > 0 ? (
-    <RelationshipsSection items={relationshipItems} onInspect={onInspect} />
+  const relationshipsBlock = hasRelationshipGraph ? (
+    <RelationshipGraphPanel
+      center={relationshipCenter}
+      items={relationshipItems}
+      inspectNamespace={inspect.namespace}
+      onInspect={onInspect}
+    />
   ) : null
 
   const summaryExtras = (
     <>
-      {metrics.length > 0 && <InspectSummaryMetrics metrics={metrics} />}
+      {metrics.length > 0 && (
+        <InspectSummaryMetrics metrics={metrics} onInspect={onInspect} inspectNamespace={inspect.namespace} />
+      )}
       {relationshipsBlock}
     </>
   )
@@ -85,6 +126,7 @@ export function ComponentInspectPanel({
       inspect={inspect}
       showFocusCta={showFocusCta && !focusPinned}
       onFocus={() => onFocus?.(focusKey)}
+      onInspect={onInspect}
       loading={loading}
       error={error}
     />
@@ -100,6 +142,7 @@ export function ComponentInspectPanel({
           summaryExtras={summaryExtras}
           groups={groups}
           relatedPodsBlock={relatedPodsBlock}
+          relationshipItems={relationshipItems}
           onInspect={onInspect}
         />
       )
@@ -125,7 +168,11 @@ export function ComponentInspectPanel({
           {summaryExtras}
           <SignalsBlock inspect={inspect} unhealthy={unhealthy} quietHealthy compact={metrics.length > 0} />
           {relatedPodsBlock}
-          <StackedSections groups={groups} onInspect={onInspect} />
+          <StackedSections
+            groups={groups}
+            onInspect={onInspect}
+            inspectNamespace={inspect.namespace}
+          />
         </div>
       )
   }
@@ -176,7 +223,13 @@ function fallbackGroups(inspect) {
   return groups
 }
 
-function InspectIdentityHeader({ inspect, showFocusCta, onFocus, loading, error }) {
+function InspectIdentityHeader({ inspect, showFocusCta, onFocus, onInspect, loading, error }) {
+  const namespaceRef = inspect.namespace
+    ? resolveInspectRef(inspect.namespace, {
+      fieldKey: 'Namespace',
+      inspectNamespace: inspect.namespace,
+    })
+    : null
   return (
     <header className="inspect-header inspect-header-actions inspect-identity">
       <div className="inspect-title-block">
@@ -196,7 +249,18 @@ function InspectIdentityHeader({ inspect, showFocusCta, onFocus, loading, error 
           {inspect.namespace ? (
             <>
               <span className="inspect-meta-sep">·</span>
-              <span className="mono">{inspect.namespace}</span>
+              {namespaceRef && onInspect ? (
+                <button
+                  type="button"
+                  className="inspect-field-link mono"
+                  onClick={() => onInspect(namespaceRef.key)}
+                  title={`Inspect Namespace/${inspect.namespace}`}
+                >
+                  {inspect.namespace}
+                </button>
+              ) : (
+                <span className="mono">{inspect.namespace}</span>
+              )}
             </>
           ) : (
             <>
@@ -229,60 +293,85 @@ function InspectIdentityHeader({ inspect, showFocusCta, onFocus, loading, error 
   )
 }
 
-function InspectSummaryMetrics({ metrics }) {
+function InspectSummaryMetrics({ metrics, onInspect, inspectNamespace = '' }) {
   if (!metrics?.length) return null
   return (
     <dl className="inspect-prop-list inspect-summary-props" aria-label="Summary">
       {metrics.map((m) => (
         <div key={m.key} className="inspect-prop-row">
           <dt>{m.key}</dt>
-          <dd>{m.value}</dd>
+          <dd>
+            <InspectRefValue
+              value={m.value}
+              fieldKey={m.key}
+              onInspect={onInspect}
+              inspectNamespace={inspectNamespace}
+            />
+          </dd>
         </div>
       ))}
     </dl>
   )
 }
 
-function RelationshipsSection({ items, onInspect }) {
-  if (!items?.length) return null
-  const grouped = items.reduce((acc, item) => {
-    const role = item.role || 'Related'
-    if (!acc[role]) acc[role] = []
-    acc[role].push(item)
-    return acc
-  }, {})
+function InspectRefValue({
+  value,
+  fieldKey = '',
+  columnName = '',
+  section = null,
+  groupId = '',
+  onInspect,
+  inspectNamespace = '',
+  row = null,
+  columns = null,
+  columnIndex = -1,
+  className = '',
+  mono = false,
+}) {
+  const text = value ?? '—'
+  const ref = onInspect
+    ? resolveInspectRef(text, {
+      fieldKey,
+      columnName,
+      section,
+      groupId,
+      inspectNamespace,
+      row,
+      columns,
+      columnIndex,
+    })
+    : null
+
+  if (!ref?.key) {
+    return (
+      <span className={[className, mono ? 'mono' : ''].filter(Boolean).join(' ')} title={text}>
+        {text || '—'}
+      </span>
+    )
+  }
 
   return (
-    <section className="inspect-section inspect-relationships">
-      <h5 className="inspect-section-label">Relationships</h5>
-      <div className="inspect-relationship-groups">
-        {Object.entries(grouped).map(([role, list]) => (
-          <div key={role} className="inspect-relationship-group">
-            <span className="inspect-relationship-role">{role}</span>
-            <ul className="inspect-link-list">
-              {list.map((item) => (
-                <li key={`${item.role}-${item.key}`}>
-                  <button
-                    type="button"
-                    className="inspect-link-row"
-                    onClick={() => onInspect?.(item.key)}
-                    title={`Inspect ${item.kind}/${item.name}`}
-                  >
-                    <KindIcon kind={item.kind} size={15} />
-                    <span className="inspect-link-name">{item.name}</span>
-                    <span className="inspect-link-meta muted">{item.kind}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </div>
-    </section>
+    <button
+      type="button"
+      className={['inspect-field-link', mono ? 'mono' : '', className].filter(Boolean).join(' ')}
+      onClick={() => onInspect(ref.key)}
+      title={`Inspect ${ref.kind}/${ref.name}`}
+    >
+      {text || '—'}
+    </button>
   )
 }
 
-function SignalFirstPanel({ inspect, unhealthy, header, summaryExtras, groups, relatedPodsBlock, onInspect }) {
+function SignalFirstPanel({
+  inspect,
+  unhealthy,
+  header,
+  summaryExtras,
+  groups,
+  relatedPodsBlock,
+  relationshipItems = [],
+  onInspect,
+}) {
   const [metaOpen, setMetaOpen] = useState(!unhealthy)
   const stats = deriveSignalStats(inspect)
 
@@ -320,7 +409,13 @@ function SignalFirstPanel({ inspect, unhealthy, header, summaryExtras, groups, r
           {metaOpen && (
             <>
               {relatedPodsBlock}
-              <StackedSections groups={groups} onInspect={onInspect} />
+              <StackedSections
+                groups={groups}
+                inspect={inspect}
+                relationshipItems={relationshipItems}
+                onInspect={onInspect}
+                inspectNamespace={inspect.namespace}
+              />
             </>
           )}
         </>
@@ -328,7 +423,13 @@ function SignalFirstPanel({ inspect, unhealthy, header, summaryExtras, groups, r
         <>
           <SignalsBlock inspect={inspect} unhealthy={unhealthy} quietHealthy compact />
           {relatedPodsBlock}
-          <StackedSections groups={groups} onInspect={onInspect} />
+          <StackedSections
+            groups={groups}
+            inspect={inspect}
+            relationshipItems={relationshipItems}
+            onInspect={onInspect}
+            inspectNamespace={inspect.namespace}
+          />
         </>
       )}
     </div>
@@ -354,9 +455,12 @@ function DetailTabsPanel({
     if (!hasPodList) return items
     return items.filter((r) => r.kind !== 'Pod' && r.role !== 'Pod' && r.role !== 'Target pod')
   }, [inspect])
-  const relationshipsBlock = relationshipItems.length > 0 ? (
-    <RelationshipsSection items={relationshipItems} onInspect={onInspect} />
-  ) : null
+  const relationshipCenter = useMemo(() => ({
+    kind: inspect.kind,
+    name: inspect.name,
+    key: inspect.key,
+    namespace: inspect.namespace,
+  }), [inspect.kind, inspect.name, inspect.key, inspect.namespace])
 
   // Reset tab only when the user selects a different object. Live refreshes rebuild
   // `groups` with a new reference — preserve the active tab when it still exists.
@@ -373,6 +477,28 @@ function DetailTabsPanel({
   }, [inspect.key, groups])
 
   const active = groups.find((g) => g.id === tab) || groups[0]
+  const serviceEndpoints = useMemo(() => findServiceEndpointFields(inspect), [inspect])
+  const relationshipsTabGraph = useMemo(
+    () => buildRelationshipGraph({
+      center: relationshipCenter,
+      items: relationshipItems,
+      sections: active?.id === 'relationships' ? active.sections : [],
+      inspectNamespace: inspect.namespace,
+    }),
+    [relationshipCenter, relationshipItems, active, inspect.namespace],
+  )
+  const summaryRelationshipsBlock = buildRelationshipGraph({
+    center: relationshipCenter,
+    items: relationshipItems,
+    inspectNamespace: inspect.namespace,
+  }).nodes.length > 1 ? (
+    <RelationshipGraphPanel
+      center={relationshipCenter}
+      items={relationshipItems}
+      inspectNamespace={inspect.namespace}
+      onInspect={onInspect}
+    />
+  ) : null
 
   return (
     <div className="inspect-panel mode-detail-tabs">
@@ -401,13 +527,56 @@ function DetailTabsPanel({
           </div>
           <div className="inspect-tab-panel" role="tabpanel">
             {active?.id === 'summary' && metrics.length > 0 && !active.sections.some((s) => s.fields?.length) && (
-              <InspectSummaryMetrics metrics={metrics} />
+              <InspectSummaryMetrics
+                metrics={metrics}
+                onInspect={onInspect}
+                inspectNamespace={inspect.namespace}
+              />
             )}
-            {(active?.id === 'summary' || active?.id === 'relationships') && relationshipsBlock}
+            {active?.id === 'summary' && serviceEndpoints && (
+              <ServiceEndpointSummary {...serviceEndpoints} />
+            )}
+            {active?.id === 'summary' && summaryRelationshipsBlock}
             {active?.id === 'summary' && relatedPodsBlock}
-            {active && (
-              <GroupBody group={active} onInspect={onInspect} hideGroupTitle />
+            {active?.id === 'relationships' && relationshipsTabGraph.nodes.length > 1 && (
+              <RelationshipGraphPanel
+                center={relationshipCenter}
+                items={relationshipItems}
+                sections={active.sections}
+                showTitle={false}
+                inspectNamespace={inspect.namespace}
+                onInspect={onInspect}
+              />
             )}
+            {active?.id === 'relationships' && relationshipsTabGraph.nodes.length <= 1 && (
+              <GroupBody
+                group={active}
+                inspect={inspect}
+                relationshipItems={relationshipItems}
+                onInspect={onInspect}
+                hideGroupTitle
+                inspectNamespace={inspect.namespace}
+                sectionCard
+                forceTableFallback
+              />
+            )}
+            {active?.id === 'containers' && inspect.kind === 'Pod' && hasContainerPanelData(parseInspectContainers(active.sections)) ? (
+              <InspectContainersPanel
+                sections={active.sections}
+                inspectNamespace={inspect.namespace}
+                onInspect={onInspect}
+              />
+            ) : active && active.id !== 'relationships' ? (
+              <GroupBody
+                group={active}
+                inspect={inspect}
+                relationshipItems={relationshipItems}
+                onInspect={onInspect}
+                hideGroupTitle
+                inspectNamespace={inspect.namespace}
+                sectionCard
+              />
+            ) : null}
           </div>
         </>
       )}
@@ -445,41 +614,103 @@ function RelatedPodsSection({ pods, onInspect }) {
   )
 }
 
-function StackedSections({ groups, onInspect }) {
+function StackedSections({
+  groups,
+  inspect,
+  relationshipItems = [],
+  onInspect,
+  inspectNamespace = '',
+}) {
   if (!groups?.length) return null
   return (
     <div className="inspect-stack">
       {groups.map((g) => (
-        <GroupBody key={g.id} group={g} showHeading onInspect={onInspect} />
-      ))}
-    </div>
-  )
-}
-
-function GroupBody({ group, showHeading = false, hideGroupTitle = false, onInspect }) {
-  return (
-    <div className="inspect-group">
-      {showHeading && !hideGroupTitle && (
-        <h5 className="inspect-group-title">{group.label}</h5>
-      )}
-      {group.sections.map((s) => (
-        <DetailSection
-          key={s.id || s.title}
-          section={s}
-          groupId={group.id}
+        <GroupBody
+          key={g.id}
+          group={g}
+          inspect={inspect}
+          relationshipItems={relationshipItems}
+          showHeading
           onInspect={onInspect}
+          inspectNamespace={inspectNamespace}
         />
       ))}
     </div>
   )
 }
 
-function DetailSection({ section, groupId, onInspect }) {
+function GroupBody({
+  group,
+  inspect,
+  relationshipItems = [],
+  showHeading = false,
+  hideGroupTitle = false,
+  onInspect,
+  inspectNamespace = '',
+  sectionCard = false,
+  forceTableFallback = false,
+}) {
+  if (group.id === 'relationships' && inspect && !forceTableFallback) {
+    const graph = buildRelationshipGraph({
+      center: {
+        kind: inspect.kind,
+        name: inspect.name,
+        key: inspect.key,
+        namespace: inspect.namespace,
+      },
+      items: relationshipItems,
+      sections: group.sections,
+      inspectNamespace: inspectNamespace || inspect.namespace,
+    })
+    if (graph.nodes.length > 1) {
+      return (
+        <RelationshipGraphPanel
+          center={{
+            kind: inspect.kind,
+            name: inspect.name,
+            key: inspect.key,
+            namespace: inspect.namespace,
+          }}
+          items={relationshipItems}
+          sections={group.sections}
+          title={group.label}
+          showTitle={showHeading && !hideGroupTitle}
+          inspectNamespace={inspectNamespace || inspect.namespace}
+          onInspect={onInspect}
+        />
+      )
+    }
+  }
+
+  return (
+    <div className="inspect-group">
+      {showHeading && !hideGroupTitle && (
+        <h5 className="inspect-group-title">{group.label}</h5>
+      )}
+      {group.sections.map((s) => {
+        if (group.id === 'summary' && s.id === 'serviceEndpoint') return null
+        return (
+          <DetailSection
+            key={s.id || s.title}
+            section={s}
+            groupId={group.id}
+            onInspect={onInspect}
+            inspectNamespace={inspectNamespace}
+            card={sectionCard}
+          />
+        )
+      })}
+    </div>
+  )
+}
+
+export function DetailSection({ section, groupId, onInspect, inspectNamespace = '', card = false }) {
   if (!section) return null
+  const sectionClass = ['inspect-section', card ? 'inspect-section-card' : ''].filter(Boolean).join(' ')
 
   if (section._resourceBars) {
     return (
-      <section className="inspect-section">
+      <section className={sectionClass}>
         <h5 className="inspect-section-label">{section.title}</h5>
         <div className="resource-bars">
           {section._resourceBars.map((bar) => (
@@ -495,7 +726,7 @@ function DetailSection({ section, groupId, onInspect }) {
     const annotations = section._annotations || []
     if (!labels.length && !annotations.length) return null
     return (
-      <section className="inspect-section">
+      <section className={sectionClass}>
         <h5 className="inspect-section-label">{section.title}</h5>
         {labels.length > 0 && (
           <div className="inspect-meta-block">
@@ -529,7 +760,7 @@ function DetailSection({ section, groupId, onInspect }) {
 
   if (section._events) {
     return (
-      <section className="inspect-section">
+      <section className={sectionClass}>
         <h5 className="inspect-section-label">{section.title}</h5>
         <ul className="inspect-events">
           {section._events.map((ev, i) => (
@@ -554,14 +785,23 @@ function DetailSection({ section, groupId, onInspect }) {
   if (!hasFields && !hasKV && !hasTable && !hasNotes) return null
 
   return (
-    <section className="inspect-section">
+    <section className={sectionClass}>
       <h5 className="inspect-section-label">{section.title}</h5>
       {hasFields && (
         <dl className="inspect-prop-list">
           {section.fields.map((f, i) => (
             <div key={`${f.key}-${i}`} className="inspect-prop-row">
               <dt>{f.key}</dt>
-              <dd title={f.value}>{f.value}</dd>
+              <dd>
+                <InspectRefValue
+                  value={f.value}
+                  fieldKey={f.key}
+                  section={section}
+                  groupId={groupId}
+                  onInspect={onInspect}
+                  inspectNamespace={inspectNamespace}
+                />
+              </dd>
             </div>
           ))}
         </dl>
@@ -571,7 +811,16 @@ function DetailSection({ section, groupId, onInspect }) {
           {section.keyValues.map((kv) => (
             <span key={kv.key} className="inspect-chip" title={`${kv.key}=${kv.value}`}>
               <span className="chip-k">{kv.key}</span>
-              <span className="chip-v">{kv.value}</span>
+              <span className="chip-v">
+                <InspectRefValue
+                  value={kv.value}
+                  fieldKey={kv.key}
+                  section={section}
+                  groupId={groupId}
+                  onInspect={onInspect}
+                  inspectNamespace={inspectNamespace}
+                />
+              </span>
             </span>
           ))}
         </div>
@@ -599,31 +848,37 @@ function DetailSection({ section, groupId, onInspect }) {
                       )
                     }
                     const colName = section.table.columns[j]
-                    const linkable = linkableTableColumn(colName, groupId)
-                      && cell && onInspect
-                    if (linkable) {
-                      const parsedRef = parseObjectRefCell(cell)
-                      const kind = parsedRef?.kind || inferRowKind(section, j, cell)
-                      const inspectName = parsedRef?.name || cell
-                      const parsed = kind ? parseInspectKey(`${kind}/${inspectName}`) : null
-                      const key = parsed?.key
-                      if (key) {
-                        return (
-                          <td key={j}>
-                            <button
-                              type="button"
-                              className="inspect-table-link"
-                              onClick={() => onInspect(key)}
-                              title={`Inspect ${kind}/${inspectName}`}
-                            >
-                              {cell}
-                            </button>
-                          </td>
-                        )
-                      }
-                    }
+                    const isValueCol = colName === 'Value'
+                    const ref = onInspect
+                      ? resolveInspectRef(cell, {
+                        columnName: colName,
+                        section,
+                        groupId,
+                        inspectNamespace,
+                        row,
+                        columns: section.table.columns,
+                        columnIndex: j,
+                      })
+                      : null
                     return (
-                      <td key={j} title={cell}>{cell || '—'}</td>
+                      <td
+                        key={j}
+                        title={cell}
+                        className={isValueCol ? 'inspect-value-cell' : undefined}
+                      >
+                        {ref?.key ? (
+                          <button
+                            type="button"
+                            className="inspect-table-link"
+                            onClick={() => onInspect(ref.key)}
+                            title={`Inspect ${ref.kind}/${ref.name}`}
+                          >
+                            {cell || '—'}
+                          </button>
+                        ) : (
+                          cell || '—'
+                        )}
+                      </td>
                     )
                   })}
                 </tr>

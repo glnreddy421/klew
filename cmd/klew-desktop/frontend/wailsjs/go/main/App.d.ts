@@ -22,6 +22,8 @@ export function GetObjectDetails(arg1:string,arg2:string,arg3:string):Promise<de
 
 export function GetResourceCatalog(arg1:main.CatalogOptions):Promise<model.ResourceCatalog>;
 
+export function GetResourceManifest(arg1:main.ResourceManifestOptions):Promise<kube.ResourceManifest>;
+
 export function GetTerminalShellChoices():Promise<Array<main.TerminalShellChoice>>;
 
 export function GetView():Promise<api.View>;

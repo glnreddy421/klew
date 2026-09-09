@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
 import { ActivityRail } from './ActivityRail.jsx'
 import { ContextExplorer } from './ContextExplorer.jsx'
+import { InspectorPanel } from './InspectorPanel.jsx'
 import { TopBar } from '../TopBar.jsx'
 import { useShellLayout } from '../../hooks/useShellLayout.js'
+import { ShellInspectorProvider } from '../../context/ShellInspectorContext.jsx'
 import { defaultRelations } from './explorers/ExplorerPanels.jsx'
-
 const EXPLORER_MIN = 180
 const EXPLORER_MAX = 320
 const INSPECTOR_MIN = 300
@@ -34,6 +35,7 @@ export function AppShell({
   prefs,
   onPrefsChange,
   inspectRow,
+  onOpenPodLogs,
   explorerFilters,
   onExplorerFiltersChange,
   graphRelations,
@@ -54,19 +56,18 @@ export function AppShell({
   const inspectorCollapsed = layout.inspectorCollapsed || !showInspector
   const inspectorBottom = layout.inspectorPlacement === 'bottom'
 
-  const lastAutoExpandKeyRef = useRef(null)
-
-  useEffect(() => {
-    if (!showInspector || !inspectRow?.key) return
-    if (lastAutoExpandKeyRef.current === inspectRow.key) return
-    lastAutoExpandKeyRef.current = inspectRow.key
-    if (layout.inspectorCollapsed) {
-      patch({ inspectorCollapsed: false })
-    }
+  const expandInspector = useCallback(() => {
+    if (!showInspector) return
+    patch({ inspectorCollapsed: false })
     if (!inspectorBottom && layout.inspectorWidth < INSPECTOR_AUTO_WIDTH) {
       setInspectorWidth(INSPECTOR_AUTO_WIDTH)
     }
-  }, [inspectRow?.key, showInspector, inspectorBottom, layout.inspectorCollapsed, layout.inspectorWidth, patch, setInspectorWidth])
+  }, [showInspector, inspectorBottom, layout.inspectorWidth, patch, setInspectorWidth])
+
+  const shellInspector = useMemo(
+    () => ({ expandInspector }),
+    [expandInspector],
+  )
 
   const startExplorerResize = useCallback((e) => {
     e.preventDefault()
@@ -151,52 +152,21 @@ export function AppShell({
         className={`app-inspector ${inspectorBottom ? 'app-inspector-bottom' : ''}`}
         style={inspectorStyle}
       >
-        <header className="inspector-header">
-          <h2 className="inspector-header-title">Inspector</h2>
-          <div className="inspector-header-actions">
-            <div className="inspector-placement-toggle" role="group" aria-label="Inspector placement">
-              <button
-                type="button"
-                className={`inspector-placement-btn ${!inspectorBottom ? 'active' : ''}`}
-                onClick={() => setInspectorPlacement('right')}
-                title="Dock inspector on the right"
-                aria-label="Dock inspector on the right"
-                aria-pressed={!inspectorBottom}
-              >
-                Right
-              </button>
-              <button
-                type="button"
-                className={`inspector-placement-btn ${inspectorBottom ? 'active' : ''}`}
-                onClick={() => setInspectorPlacement('bottom')}
-                title="Dock inspector on the bottom"
-                aria-label="Dock inspector on the bottom"
-                aria-pressed={inspectorBottom}
-              >
-                Bottom
-              </button>
-            </div>
-            <button
-              type="button"
-              className="explorer-collapse-btn"
-              onClick={toggleInspector}
-              title="Collapse inspector"
-              aria-label="Collapse inspector"
-            >
-              <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
-                <path d={inspectorBottom ? 'M4 10l4-4 4 4' : 'M6 4l4 4-4 4'} strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-          </div>
-        </header>
-        <div className="inspector-body">
+        <InspectorPanel
+          placement={inspectorBottom ? 'bottom' : 'right'}
+          onPlacementChange={setInspectorPlacement}
+          onClose={toggleInspector}
+          onOpenPodLogs={onOpenPodLogs}
+          cluster={cluster}
+        >
           {inspector}
-        </div>
+        </InspectorPanel>
       </aside>
     </>
   )
 
   return (
+    <ShellInspectorProvider value={shellInspector}>
     <div className="app-shell">
       <TopBar {...topBarProps} onOpenSettings={onOpenSettings} onOpenHelp={onOpenHelp} />
 
@@ -250,27 +220,12 @@ export function AppShell({
             </main>
 
             {!inspectorBottom && inspectorPanel}
-
-            {showInspector && inspectorCollapsed && (
-              <div className="app-inspector-collapsed">
-                <button
-                  type="button"
-                  className="explorer-expand-btn"
-                  onClick={toggleInspector}
-                  title="Expand inspector"
-                  aria-label="Expand inspector"
-                >
-                  <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
-                    <path d="M10 4L6 8l4 4" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </button>
-              </div>
-            )}
           </div>
 
           {inspectorBottom && inspectorPanel}
         </div>
       </div>
     </div>
+    </ShellInspectorProvider>
   )
 }

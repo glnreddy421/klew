@@ -1,6 +1,12 @@
 import { useMemo, useEffect } from 'react'
-import { buildCatalogScopeTree } from '../../lib/resourceCatalog.js'
-import { flattenTreeEntities, entitySearchPlaceholder, visibleCategories } from '../../lib/resourceNavigation.js'
+import { buildCatalogScopeTree, catalogTreeSignature } from '../../lib/resourceCatalog.js'
+import {
+  flattenTreeEntities,
+  entitySearchPlaceholder,
+  isCategoryOverview,
+  visibleCategories,
+} from '../../lib/resourceNavigation.js'
+import { WorkloadOverviewPanel } from '../workloads/WorkloadOverviewPanel.jsx'
 import { useResourceNavigation } from '../../hooks/useResourceNavigation.js'
 import { useCatalogEntities } from '../../hooks/useCatalogEntities.js'
 import { clusterScopeKey, useLazyResourceCounts } from '../../hooks/useLazyResourceCounts.js'
@@ -8,6 +14,9 @@ import { useScopeBrowse } from '../../context/ScopeBrowseContext.jsx'
 import { ResourceNav } from './ResourceNav.jsx'
 import { EntityList } from './EntityList.jsx'
 import { EntityTable } from './EntityTable.jsx'
+import { NamespacePopover } from '../shell/ClusterNamespacePopover.jsx'
+import { allBrowseScope, isResourcesBrowseAll, RESOURCES_BROWSE_LENS } from '../../lib/browseScope.js'
+import { canLoadCatalogEntities, resolveDisplayEntities } from '../../lib/catalogDisplay.js'
 
 /**
  * Scope UX — resource kinds + entity collection.
@@ -19,6 +28,7 @@ export function ScopePanel({
   catalog,
   cluster,
   catalogLoading = false,
+  catalogEnriching = false,
   catalogError = '',
   focusKey,
   inspectKey,
@@ -31,11 +41,18 @@ export function ScopePanel({
   tableDensity = 'standard',
   showEmptyToggle = true,
   navInExplorer = false,
+  browseScope,
+  onBrowseScopeChange,
+  browseScopeLocked = false,
+  savedBrowseScopeLabel = '',
+  investigationNs = '',
+  browseLens = RESOURCES_BROWSE_LENS.MATCHES,
+  onBrowseLensChange,
+  showBrowseLens = false,
 }) {
   const browseCtx = useScopeBrowse()
   const pods = view?.state?.snapshot?.pods || []
   const chain = mode === 'chain'
-  const namespace = cluster?.selectedNamespace || cluster?.currentContext || ''
 
   const internal = useScopePanelState({
     view,
@@ -44,6 +61,7 @@ export function ScopePanel({
     rows,
     chain,
     enabled: !browseCtx && !chain,
+    browseLens,
   })
 
   const nav = browseCtx?.nav || internal.nav
@@ -56,9 +74,10 @@ export function ScopePanel({
   const filteredEntities = useMemo(() => {
     const q = String(nav.entitySearchQuery || '').trim().toLowerCase()
     if (!q) return displayEntities
-    return displayEntities.filter((row) =>
-      `${row.name || ''} ${row.key || ''}`.toLowerCase().includes(q),
-    )
+    return displayEntities.filter((row) => {
+      const haystack = `${row.name || ''} ${row.key || ''} ${row.namespace || row.ref?.namespace || ''}`.toLowerCase()
+      return haystack.includes(q)
+    })
   }, [displayEntities, nav.entitySearchQuery])
 
   const entityChangeSig = useMemo(
@@ -77,6 +96,11 @@ export function ScopePanel({
   }, [chain, nav.selectedGroupId, nav.selectedKind, nav.selectedResourceId, entityChangeSig, onKindChange])
 
   const chainEntities = useMemo(() => (chain ? flattenTreeEntities(tree) : []), [chain, tree])
+  const isOverview = isCategoryOverview(nav.selectedKind)
+  const workloadKindGroups = useMemo(
+    () => tree?.categories?.find((c) => c.id === 'workloads')?.kinds || [],
+    [tree],
+  )
   const searchPlaceholder = entitySearchPlaceholder(nav.selectedKind, effectiveKindGroup?.label)
 
   if (chain) {
@@ -101,22 +125,61 @@ export function ScopePanel({
   return (
     <div className="scope-panel scope-panel-browse">
       <div className="scope-toolbar">
-        <input
-          type="search"
-          className="scope-toolbar-search"
-          value={nav.entitySearchQuery}
-          onChange={(e) => nav.setEntitySearchQuery(e.target.value)}
-          placeholder={searchPlaceholder}
-          aria-label="Filter entities"
-        />
+        <div className="scope-toolbar-controls">
+          {!isOverview && (
+          <input
+            type="search"
+            className="scope-toolbar-search"
+            value={nav.entitySearchQuery}
+            onChange={(e) => nav.setEntitySearchQuery(e.target.value)}
+            placeholder={searchPlaceholder}
+            aria-label="Filter entities"
+          />
+          )}
+          <div className="scope-toolbar-scope">
+            <NamespacePopover
+              cluster={cluster}
+              scope={browseScope ?? allBrowseScope()}
+              onScopeChange={onBrowseScopeChange}
+              disabled={!onBrowseScopeChange}
+              locked={browseScopeLocked}
+              lockedNamespace={investigationNs}
+              savedScopeLabel={savedBrowseScopeLabel}
+              compact
+              variant="browse"
+            />
+          </div>
+        </div>
         <div className="scope-toolbar-meta">
-          {catalogLoading && <span className="scope-toolbar-hint">Syncing catalog…</span>}
+          {catalogLoading && <span className="scope-toolbar-hint">Loading catalog…</span>}
+          {catalogEnriching && !catalogLoading && (
+            <span className="scope-toolbar-hint">Updating counts…</span>
+          )}
           {catalogError && !catalogLoading && (
             <span className="scope-toolbar-hint scope-toolbar-warn" title={catalogError}>
               Limited discovery
             </span>
           )}
-          {namespace && <span className="scope-toolbar-ns mono">{namespace}</span>}
+          {showBrowseLens && (
+            <div className="scope-lens-toggle" role="group" aria-label="Resource lens">
+              <button
+                type="button"
+                className={`scope-lens-btn ${browseLens === RESOURCES_BROWSE_LENS.MATCHES ? 'is-active' : ''}`}
+                onClick={() => onBrowseLensChange?.(RESOURCES_BROWSE_LENS.MATCHES)}
+                aria-pressed={browseLens === RESOURCES_BROWSE_LENS.MATCHES}
+              >
+                Matches
+              </button>
+              <button
+                type="button"
+                className={`scope-lens-btn ${browseLens === RESOURCES_BROWSE_LENS.ALL ? 'is-active' : ''}`}
+                onClick={() => onBrowseLensChange?.(RESOURCES_BROWSE_LENS.ALL)}
+                aria-pressed={browseLens === RESOURCES_BROWSE_LENS.ALL}
+              >
+                All resources
+              </button>
+            </div>
+          )}
           {showEmptyToggle && (
             <button
               type="button"
@@ -140,9 +203,19 @@ export function ScopePanel({
             selectedResourceId={nav.selectedResourceId}
             onToggleGroup={nav.toggleGroup}
             onSelectKind={nav.selectKind}
+            onSelectOverview={nav.selectOverview}
+            countsLoading={catalogEnriching}
           />
         )}
-        {entityView === 'table' ? (
+        {isOverview ? (
+          <WorkloadOverviewPanel
+            cluster={cluster}
+            browseScope={browseScope}
+            kindGroups={workloadKindGroups}
+            catalogLoading={catalogLoading}
+            onSelectKind={(card) => nav.selectKind(card.groupId, card.kind, card.resourceId)}
+          />
+        ) : entityView === 'table' ? (
           <EntityTable
             kind={nav.selectedKind}
             kindGroup={effectiveKindGroup}
@@ -150,7 +223,8 @@ export function ScopePanel({
             filteredEntities={filteredEntities}
             entitiesLoading={lazy.loading && canLazyLoad}
             pods={pods}
-            density={tableDensity}
+            browseScope={browseScope}
+            onBrowseScopeChange={onBrowseScopeChange}
             hasSearchQuery={nav.entitySearchQuery.trim()}
             inspectKey={inspectKey}
             focusKey={focusKey}
@@ -176,41 +250,43 @@ export function ScopePanel({
   )
 }
 
-function useScopePanelState({ view, catalog, cluster, rows, chain, enabled }) {
+function useScopePanelState({ view, catalog, cluster, rows, chain, enabled, browseLens = RESOURCES_BROWSE_LENS.MATCHES }) {
   const pods = view?.state?.snapshot?.pods || []
+  const catalogAll = isResourcesBrowseAll(browseLens)
+  const treeRows = useMemo(
+    () => (catalogAll ? [] : rows),
+    [catalogAll, rows],
+  )
 
   const rowSig = useMemo(
-    () => rows.map((r) => `${r.key}:${r.status}:${r.ready}:${r.total}:${r.restarts}`).join('|'),
-    [rows],
+    () => treeRows.map((r) => `${r.key}:${r.status}:${r.ready}:${r.total}:${r.restarts}`).join('|'),
+    [treeRows],
   )
   const podSig = useMemo(
     () => pods.map((p) => `${p.name}:${p.ready ? 1 : 0}:${p.restartCount || 0}`).join('|'),
     [pods],
   )
-  const catalogSig = useMemo(
-    () => (catalog ? `${catalog.generatedAt}:${catalog.resources?.length || 0}` : ''),
-    [catalog],
-  )
+  const catalogSig = useMemo(() => catalogTreeSignature(catalog), [catalog])
 
   const baseTree = useMemo(
-    () => buildCatalogScopeTree(catalog, rows, pods),
+    () => buildCatalogScopeTree(catalog, treeRows, pods),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [rowSig, podSig, catalogSig],
   )
 
   const navBase = useResourceNavigation(baseTree, { enabled })
 
+  const isOverviewSelected = isCategoryOverview(navBase.selectedKind)
   const investigationEntities = navBase.entities
   const kindGroup = navBase.selectedKindGroup
-  const canLazyLoad = Boolean(
-    kindGroup?.resourceId
-    && kindGroup.accessState !== 'forbidden'
-    && kindGroup.countState?.state !== 'forbidden'
-    && kindGroup.discovered
-    && investigationEntities.length === 0,
-  )
+  const canLazyLoad = !isOverviewSelected && canLoadCatalogEntities(kindGroup)
 
-  const lazy = useCatalogEntities({ cluster, kindGroup, enabled: enabled && canLazyLoad })
+  const lazy = useCatalogEntities({
+    cluster,
+    kindGroup,
+    browseScope: cluster?.browseScope,
+    enabled: enabled && canLazyLoad,
+  })
   const tree = useLazyResourceCounts(baseTree, {
     clusterKey: clusterScopeKey(cluster),
     kindGroup,
@@ -222,11 +298,15 @@ function useScopePanelState({ view, catalog, cluster, rows, chain, enabled }) {
     categories: visibleCategories(tree, navBase.showEmptyKinds),
   }), [navBase, tree])
 
-  const displayEntities = investigationEntities.length ? investigationEntities : lazy.entities
+  const displayEntities = resolveDisplayEntities({
+    catalogAll,
+    investigationEntities,
+    lazyEntities: lazy.entities,
+  })
 
   const effectiveKindGroup = useMemo(() => {
     if (!kindGroup) return null
-    if (investigationEntities.length > 0) {
+    if (!catalogAll && investigationEntities.length > 0) {
       return {
         ...kindGroup,
         accessState: 'allowed',
@@ -247,7 +327,7 @@ function useScopePanelState({ view, catalog, cluster, rows, chain, enabled }) {
       return { ...kindGroup, accessState: 'unavailable', countState: { state: 'unavailable' } }
     }
     return kindGroup
-  }, [kindGroup, lazy.accessState, lazy.entities.length, investigationEntities.length])
+  }, [kindGroup, lazy.accessState, lazy.entities.length, investigationEntities.length, catalogAll])
 
   return { tree, nav, displayEntities, effectiveKindGroup, lazy, canLazyLoad }
 }

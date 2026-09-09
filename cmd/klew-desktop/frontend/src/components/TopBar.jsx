@@ -6,14 +6,21 @@ import {
   normalizeInvestigationQuery,
 } from '../lib/investigationQuery'
 import { ContextPopover, NamespacePopover } from './shell/ClusterNamespacePopover.jsx'
+import { ClusterConnectionDot } from './shell/ClusterConnectionDot.jsx'
 import { TimeWindowPopover } from './shell/TimeWindowPopover.jsx'
+import { scopeSupportsInvestigate } from '../lib/browseScope.js'
 
 export function TopBar({
   cluster,
+  scope,
+  scopeLocked = false,
+  savedScopeLabel = '',
+  investigationNs = '',
+  onScopeChange,
+  scopeVariant = 'browse',
   syncing,
   onSync,
   onContextChange,
-  onNamespaceChange,
   query,
   onQueryChange,
   onQueryClear,
@@ -33,6 +40,9 @@ export function TopBar({
   prefs,
   onPrefsChange,
   live,
+  connection = null,
+  onReconnect,
+  reconnectBusy = false,
 }) {
   const inputRef = useRef(null)
   const [windowMaximized, setWindowMaximized] = useState(false)
@@ -40,7 +50,7 @@ export function TopBar({
   const [searchExpanded, setSearchExpanded] = useState(false)
 
   const q = normalizeInvestigationQuery(query)
-  const canInvestigate = Boolean(cluster.selectedNamespace) && !starting
+  const canInvestigate = scopeSupportsInvestigate(scope) && !starting
   const queryChanged = running && !isBlankInvestigationQuery(q) && q !== normalizeInvestigationQuery(activeQuery)
   const contextLocked = running || starting
 
@@ -112,8 +122,8 @@ export function TopBar({
             type="button"
             className="topbar-nav-btn"
             onClick={() => onNavHome?.()}
-            title="Home — Overview"
-            aria-label="Home — Overview"
+            title="Home — Resources"
+            aria-label="Home — Resources"
           >
             <HomeIcon />
           </button>
@@ -125,22 +135,37 @@ export function TopBar({
             contextLocked={contextLocked}
             onContextChange={onContextChange}
           />
-          <NamespacePopover
-            cluster={cluster}
-            disabled={running || starting}
-            onNamespaceChange={onNamespaceChange}
+          <ClusterConnectionDot
+            connection={connection}
+            onReconnect={onReconnect}
+            reconnectBusy={reconnectBusy}
+            contextLabel={cluster?.selectedContext || cluster?.currentContext || ''}
           />
         </div>
       </div>
 
       <div className="topbar-center">
-        <form
-          className={`topbar-search ${searchExpanded || query ? 'expanded' : ''}`}
-          onSubmit={(e) => {
-            e.preventDefault()
-            onStart?.(e)
-          }}
-        >
+        <div className="topbar-search-group">
+          <NamespacePopover
+            cluster={cluster}
+            scope={scope}
+            disabled={starting}
+            locked={scopeLocked}
+            lockedNamespace={investigationNs}
+            savedScopeLabel={savedScopeLabel}
+            onScopeChange={onScopeChange}
+            variant={scopeVariant}
+            compact
+            inline
+          />
+          <form
+            className={`topbar-search ${searchExpanded || query ? 'expanded' : ''}`}
+            onSubmit={(e) => {
+              e.preventDefault()
+              onStart?.(e)
+            }}
+          >
+            <div className="topbar-search-divider" aria-hidden="true" />
           <button
             type="button"
             className="topbar-search-toggle"
@@ -159,7 +184,7 @@ export function TopBar({
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
             onBlur={() => { if (!query) setSearchExpanded(false) }}
-            placeholder="Search resources, signals…"
+            placeholder="Search to investigate…"
             disabled={starting}
             aria-label="Search"
             spellCheck={false}
@@ -176,7 +201,7 @@ export function TopBar({
               type="submit"
               className="topbar-search-investigate"
               disabled={!canInvestigate}
-              title={investigateTitle({ running, starting, queryChanged })}
+              title={investigateTitle({ running, starting, queryChanged, scope })}
             >
               {investigateLabel({ running, starting, queryChanged })}
             </button>
@@ -204,6 +229,7 @@ export function TopBar({
             )}
           </div>
         </form>
+        </div>
       </div>
 
       <div className="topbar-right">
@@ -268,11 +294,12 @@ function investigateLabel({ running, starting, queryChanged }) {
   return 'Investigate'
 }
 
-function investigateTitle({ running, starting, queryChanged }) {
+function investigateTitle({ running, starting, queryChanged, scope }) {
   if (starting) return 'Starting investigation…'
-  if (running && queryChanged) return 'Re-run with updated query'
-  if (running) return 'Restart investigation'
-  return 'Start investigation'
+  if (!scopeSupportsInvestigate(scope)) return 'Select one namespace to investigate'
+  if (running && queryChanged) return 'Re-run with updated query in current scope'
+  if (running) return 'Restart investigation in current scope'
+  return 'Start investigation in current scope'
 }
 
 function StopIcon() {

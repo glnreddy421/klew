@@ -9,9 +9,11 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	batchv1 "k8s.io/api/batch/v1"
+	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -89,6 +91,14 @@ func getService(ctx context.Context, req *Request) (*corev1.Service, error) {
 		return nil, fmt.Errorf("no client")
 	}
 	return c.CoreV1().Services(nsOr(req, "")).Get(ctx, req.Ref.Name, metav1.GetOptions{})
+}
+
+func getEndpoints(ctx context.Context, req *Request) (*corev1.Endpoints, error) {
+	c := cs(req)
+	if c == nil {
+		return nil, fmt.Errorf("no client")
+	}
+	return c.CoreV1().Endpoints(nsOr(req, "")).Get(ctx, req.Ref.Name, metav1.GetOptions{})
 }
 
 func getIngress(ctx context.Context, req *Request) (*networkingv1.Ingress, error) {
@@ -225,6 +235,54 @@ func getNetworkPolicy(ctx context.Context, req *Request) (*networkingv1.NetworkP
 		return nil, fmt.Errorf("no client")
 	}
 	return c.NetworkingV1().NetworkPolicies(nsOr(req, "")).Get(ctx, req.Ref.Name, metav1.GetOptions{})
+}
+
+func getReplicationController(ctx context.Context, req *Request) (*corev1.ReplicationController, error) {
+	c := cs(req)
+	if c == nil {
+		return nil, fmt.Errorf("no client")
+	}
+	return c.CoreV1().ReplicationControllers(nsOr(req, "")).Get(ctx, req.Ref.Name, metav1.GetOptions{})
+}
+
+func getIngressClass(ctx context.Context, req *Request) (*networkingv1.IngressClass, error) {
+	c := cs(req)
+	if c == nil {
+		return nil, fmt.Errorf("no client")
+	}
+	return c.NetworkingV1().IngressClasses().Get(ctx, req.Ref.Name, metav1.GetOptions{})
+}
+
+func getPodDisruptionBudget(ctx context.Context, req *Request) (*policyv1.PodDisruptionBudget, error) {
+	c := cs(req)
+	if c == nil {
+		return nil, fmt.Errorf("no client")
+	}
+	return c.PolicyV1().PodDisruptionBudgets(nsOr(req, "")).Get(ctx, req.Ref.Name, metav1.GetOptions{})
+}
+
+func getLease(ctx context.Context, req *Request) (*coordinationv1.Lease, error) {
+	c := cs(req)
+	if c == nil {
+		return nil, fmt.Errorf("no client")
+	}
+	return c.CoordinationV1().Leases(nsOr(req, "")).Get(ctx, req.Ref.Name, metav1.GetOptions{})
+}
+
+func getResourceQuota(ctx context.Context, req *Request) (*corev1.ResourceQuota, error) {
+	c := cs(req)
+	if c == nil {
+		return nil, fmt.Errorf("no client")
+	}
+	return c.CoreV1().ResourceQuotas(nsOr(req, "")).Get(ctx, req.Ref.Name, metav1.GetOptions{})
+}
+
+func getLimitRange(ctx context.Context, req *Request) (*corev1.LimitRange, error) {
+	c := cs(req)
+	if c == nil {
+		return nil, fmt.Errorf("no client")
+	}
+	return c.CoreV1().LimitRanges(nsOr(req, "")).Get(ctx, req.Ref.Name, metav1.GetOptions{})
 }
 
 func getEndpointSlicesForService(ctx context.Context, req *Request, svcName string) ([]discoveryv1.EndpointSlice, error) {

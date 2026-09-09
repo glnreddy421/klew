@@ -4,6 +4,8 @@
  * events, resources, and anomalies are derived from that object only.
  */
 
+import { buildInspectKey } from './matches'
+
 const WORKLOAD = new Set(['Deployment', 'StatefulSet', 'DaemonSet', 'Job', 'CronJob', 'ReplicaSet'])
 
 export function componentCategory(kind) {
@@ -82,7 +84,8 @@ function collectRelationships(kind, name, snap, relatedPods, resolved) {
   const seen = new Set()
   const add = (k, n, role, ns) => {
     if (!n || !k) return
-    const key = `${k}/${n}`
+    const namespace = ns || resolved?.namespace || ''
+    const key = buildInspectKey(k, n, namespace)
     const id = `${role}|${key}`
     if (seen.has(id)) return
     seen.add(id)
@@ -91,7 +94,7 @@ function collectRelationships(kind, name, snap, relatedPods, resolved) {
       name: n,
       key,
       role,
-      namespace: ns || resolved?.namespace || '',
+      namespace,
     })
   }
 

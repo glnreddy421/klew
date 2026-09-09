@@ -9,7 +9,7 @@ import {
 describe('resourceCategoryIcons', () => {
   it('maps all navigator categories', () => {
     for (const id of [
-      'workloads', 'network', 'storage', 'config', 'security', 'cluster', 'custom', 'other',
+      'workloads', 'network', 'storage', 'config', 'security', 'helm', 'cluster', 'custom', 'other',
     ]) {
       assert.ok(RESOURCE_CATEGORY_ICON_NAMES[id], id)
       assert.ok(resourceCategoryIconName(id))

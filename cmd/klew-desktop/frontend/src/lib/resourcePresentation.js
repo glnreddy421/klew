@@ -3,6 +3,9 @@
  * This is NOT discovery — it defines where known resources appear in the UI.
  */
 
+/** Virtual catalog resource IDs (not discovered via the Kubernetes API). */
+export const VIRTUAL_HELM_RELEASES_ID = 'klew/virtual/v1/helmreleases'
+
 /**
  * @typedef {Object} PresentationResource
  * @property {string} group
@@ -11,6 +14,9 @@
  * @property {string} displayName
  * @property {number} sortOrder
  * @property {boolean} [discoveredOnly] — hide row unless cluster exposes this API (e.g. VPA CRD)
+ * @property {boolean} [virtual] — Klew-managed browse kind (e.g. Helm releases from secrets)
+ * @property {string} [resourceId] — fixed catalog resource id for virtual kinds
+ * @property {boolean} [namespaced] — scope hint when not discovered from the API
  */
 
 /** @type {Array<{ id: string, label: string, resources: PresentationResource[] }>} */
@@ -34,7 +40,7 @@ export const BUILTIN_PRESENTATION = [
     label: 'Network',
     resources: [
       { group: '', resource: 'services', kind: 'Service', displayName: 'Services', sortOrder: 1 },
-      { group: '', resource: 'endpoints', kind: 'Endpoints', displayName: 'Endpoints', sortOrder: 2 },
+      { group: '', resource: 'endpoints', kind: 'Endpoints', displayName: 'Endpoints', legacy: true, sortOrder: 2 },
       { group: 'discovery.k8s.io', resource: 'endpointslices', kind: 'EndpointSlice', displayName: 'EndpointSlices', sortOrder: 3 },
       { group: 'networking.k8s.io', resource: 'ingresses', kind: 'Ingress', displayName: 'Ingresses', sortOrder: 4 },
       { group: 'networking.k8s.io', resource: 'ingressclasses', kind: 'IngressClass', displayName: 'IngressClasses', sortOrder: 5 },
@@ -82,6 +88,22 @@ export const BUILTIN_PRESENTATION = [
       { group: 'rbac.authorization.k8s.io', resource: 'rolebindings', kind: 'RoleBinding', displayName: 'RoleBindings', sortOrder: 3 },
       { group: 'rbac.authorization.k8s.io', resource: 'clusterroles', kind: 'ClusterRole', displayName: 'ClusterRoles', sortOrder: 4 },
       { group: 'rbac.authorization.k8s.io', resource: 'clusterrolebindings', kind: 'ClusterRoleBinding', displayName: 'ClusterRoleBindings', sortOrder: 5 },
+    ],
+  },
+  {
+    id: 'helm',
+    label: 'Helm',
+    resources: [
+      {
+        group: 'klew',
+        resource: 'helmreleases',
+        kind: 'HelmRelease',
+        displayName: 'Releases',
+        sortOrder: 1,
+        virtual: true,
+        resourceId: VIRTUAL_HELM_RELEASES_ID,
+        namespaced: true,
+      },
     ],
   },
   {
@@ -150,4 +172,8 @@ export function isExtensionGroup(group) {
 
 export function isDiscoveredOnlyEntry(entry) {
   return Boolean(entry?.discoveredOnly)
+}
+
+export function isVirtualPresentationEntry(entry) {
+  return Boolean(entry?.virtual)
 }
