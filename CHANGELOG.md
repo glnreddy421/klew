@@ -4,7 +4,7 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 
 ## [Unreleased]
 
-## [2.0.0] — 2026-09-09
+## [1.0.0] — 2026-09-09
 
 Major release: redesigned **Resources** workbench, shell inspector, terminal workspace, and cluster catalog — the “klew-ui” line.
 
@@ -149,7 +149,7 @@ Major release: redesigned **Resources** workbench, shell inspector, terminal wor
 
 - Prior desktop and CLI improvements; see git history and GitHub releases.
 
-[2.0.0]: https://github.com/glnreddy421/klew/releases/tag/v2.0.0
+[1.0.0]: https://github.com/glnreddy421/klew/releases/tag/v1.0.0
 [0.1.10]: https://github.com/glnreddy421/klew/releases/tag/v0.1.10
 [0.1.9]: https://github.com/glnreddy421/klew/releases/tag/v0.1.9
 [0.1.8]: https://github.com/glnreddy421/klew/releases/tag/v0.1.8
