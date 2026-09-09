@@ -140,7 +140,7 @@ export function IncidentView({
   useEffect(() => {
     if (!rows.length) return
     if (inspectKey && isAdhocInspectable(inspectKey, rows)) return
-    setInspectKey(focusPinned ? (focusKey || rows[0].key) : (pickDefaultFocus(rows) || rows[0].key))
+    setInspectKey(focusPinned ? (focusKey || rows[0]?.key) : (pickDefaultFocus(rows) || rows[0]?.key))
   }, [rows, inspectKey, focusPinned, focusKey, isAdhocInspectable])
 
   const inspectRow = useMemo(() => {

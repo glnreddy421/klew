@@ -405,9 +405,9 @@ function collectAnomalies(view, kind, name, row, resolved, relatedPods, events) 
     })
   }
 
-  // Derived from object state
-  if (row.status && row.status !== 'healthy') {
-    push({ level: row.status === 'critical' ? 'crit' : 'warn', text: row.signal || `${kind}/${name} is ${row.status}`, source: 'status' })
+  // Catalog / table status hints only — never synthesize "Kind/name is unknown" from missing health data.
+  if (row.signal && row.status && row.status !== 'healthy' && row.status !== 'unknown') {
+    push({ level: row.status === 'critical' ? 'crit' : 'warn', text: row.signal, source: 'status' })
   }
   if (typeof resolved?.ready === 'number' && typeof resolved?.replicas === 'number' && resolved.ready < resolved.replicas) {
     push({ level: 'crit', text: `Only ${resolved.ready}/${resolved.replicas} replicas ready`, source: 'workload' })
@@ -464,11 +464,16 @@ function collectAnomalies(view, kind, name, row, resolved, relatedPods, events) 
 
   // Dedupe by text
   const seen = new Set()
-  return out.filter((a) => {
+  return filterSpuriousAnomalies(out.filter((a) => {
     if (seen.has(a.text)) return false
     seen.add(a.text)
     return true
-  }).slice(0, 12)
+  })).slice(0, 12)
+}
+
+/** Drop bogus "is unknown" rows — catalog objects without runtime health are not failing. */
+export function filterSpuriousAnomalies(anomalies) {
+  return (anomalies || []).filter((a) => !/\bis unknown$/i.test(String(a.text || '')))
 }
 
 function signalBelongsTo(s, kind, name, relatedPods) {
@@ -502,7 +507,8 @@ function deriveLabel(row, resolved, relatedPods) {
   if (tone === 'healthy') return 'HEALTHY'
   if (tone === 'critical') return 'CRITICAL'
   if (tone === 'degraded') return 'DEGRADED'
-  return (row.status || 'UNKNOWN').toUpperCase()
+  if (tone === 'unknown') return row.signal || '—'
+  return (row.status || '—').toUpperCase()
 }
 
 function buildResourceBars(relatedPods, metrics) {

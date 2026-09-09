@@ -366,7 +366,7 @@ function useResourcesWorkbenchState({
   useEffect(() => {
     if (!rows.length || catalogBrowseActive) return
     if (inspectKey && inspectKeyAllowed(inspectKey, rows)) return
-    onInspectKeyChange?.(focusPinned ? (focusKey || rows[0].key) : (pickDefaultFocus(rows) || rows[0].key))
+    onInspectKeyChange?.(focusPinned ? (focusKey || rows[0]?.key) : (pickDefaultFocus(rows) || rows[0]?.key))
   }, [rows, inspectKey, focusPinned, focusKey, inspectKeyAllowed, onInspectKeyChange, catalogBrowseActive])
 
   const inspectRow = useMemo(() => {

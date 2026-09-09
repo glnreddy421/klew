@@ -1,4 +1,4 @@
-import { categoryLabel, componentCategory } from './componentInspect'
+import { categoryLabel, componentCategory, filterSpuriousAnomalies } from './componentInspect'
 import { buildInspectKey } from './matches'
 
 /** Group IDs that become inspector tabs (order matters). */
@@ -104,12 +104,24 @@ function inferGroup(id, title) {
 /** Merge live detail with snapshot-derived signals (anomalies stay frontend). */
 export function mergeInspect(detailModel, snapshotInspect) {
   if (!detailModel && !snapshotInspect) return null
-  if (!detailModel) return snapshotInspect
+  if (!detailModel) {
+    return {
+      ...snapshotInspect,
+      anomalies: filterSpuriousAnomalies(snapshotInspect?.anomalies),
+    }
+  }
   const snap = snapshotInspect || {}
+  const anomalies = filterSpuriousAnomalies(snap.anomalies).filter((a) => {
+    if (a.source !== 'status') return true
+    if (/\bis unknown$/i.test(String(a.text || ''))) return false
+    if (detailModel.status?.tone === 'healthy') return false
+    return true
+  })
+
   return {
     ...snap,
     ...detailModel,
-    anomalies: snap.anomalies || [],
+    anomalies,
     resourceBars: snap.resourceBars || [],
     notes: snap.notes || [],
     events: snap.events || [],

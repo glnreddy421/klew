@@ -99,6 +99,7 @@ func RefreshClusterState(ctx context.Context, kubeconfigPath, selectedContext, s
 		}
 		return ClusterState{
 			KubeconfigPath: path,
+			Namespaces:     []string{},
 			SyncedAt:       model.TimestampFrom(time.Now().UTC()),
 			SyncError:      err.Error(),
 		}

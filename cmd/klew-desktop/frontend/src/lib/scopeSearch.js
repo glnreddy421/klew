@@ -1,8 +1,9 @@
 /** Case-insensitive substring filter for picker lists. */
 export function filterBySubstring(items, query, getText) {
+  const list = Array.isArray(items) ? items : []
   const q = String(query || '').trim().toLowerCase()
-  if (!q) return items
-  return items.filter((item) => getText(item).toLowerCase().includes(q))
+  if (!q) return list
+  return list.filter((item) => getText(item).toLowerCase().includes(q))
 }
 
 /** Filter investigation matches by free-text and optional kind. */
