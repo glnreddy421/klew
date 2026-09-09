@@ -20,7 +20,7 @@ Built for engineers on call, SREs, and platform teams who already use `kubectl` 
 
 | Evidence | Resources |
 | --- | --- |
-| Correlated signals and supporting facts. | In-scope catalog with deep inspection. |
+| Correlated signals and supporting facts. | Catalog browse, inspector, and live logs in one workspace. |
 | ![Evidence](docs/screenshots/evidence.png) | ![Resources](docs/screenshots/resources.png) |
 
 | Graph |
