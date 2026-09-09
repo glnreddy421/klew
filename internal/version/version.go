@@ -2,8 +2,8 @@
 package version
 
 var (
-	// Version is the semver release tag (e.g. 1.0.0).
-	Version = "1.0.0"
+	// Version is the semver release tag (e.g. 1.1.0).
+	Version = "1.1.0"
 	// Commit is the short git SHA at build time.
 	Commit = "none"
 	// Date is the UTC build timestamp (RFC3339).
