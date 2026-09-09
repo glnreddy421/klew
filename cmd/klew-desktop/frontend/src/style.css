@@ -582,6 +582,14 @@ body {
   gap: 2px;
 }
 
+.sidebar-version {
+  padding: 4px 14px 6px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
 .help-btn { margin-top: 0; }
 
 /* ── Workspace ── */
@@ -9772,6 +9780,17 @@ body {
 .settings-about h4 {
   margin: 0 0 8px;
   font-size: 13px;
+}
+
+.settings-about-version {
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.settings-readonly-compact {
+  margin-bottom: 10px;
 }
 
 .settings-about p {

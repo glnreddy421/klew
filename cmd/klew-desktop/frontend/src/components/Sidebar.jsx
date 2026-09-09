@@ -1,7 +1,9 @@
 import { NAV_ITEMS } from '../lib/constants'
+import { useAppInfo } from '../hooks/useAppInfo'
 import { LogoMark } from './Logo'
 
 export function Sidebar({ active, onSelect, onSettings, onHelp, settingsSection, collapsed, onToggle }) {
+  const appInfo = useAppInfo()
   const settingsActive = active === 'settings' && settingsSection !== 'help'
   const helpActive = active === 'settings' && settingsSection === 'help'
   return (
@@ -45,6 +47,11 @@ export function Sidebar({ active, onSelect, onSettings, onHelp, settingsSection,
       </nav>
 
       <div className="sidebar-footer">
+        {!collapsed && appInfo?.version && (
+          <div className="sidebar-version" title={`Klew v${appInfo.version}`}>
+            v{appInfo.version}
+          </div>
+        )}
         <button
           type="button"
           className={`nav-item ${settingsActive ? 'active' : ''}`}
