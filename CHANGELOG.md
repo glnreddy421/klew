@@ -4,6 +4,19 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-09-09
+
+### Inspector & workloads
+
+- Surface **related Pods** for Deployments, StatefulSets, Jobs, CronJobs, and DaemonSets — inspect and tail logs from the workload inspector.
+- **Manifest** tab: LRU cache with stale-while-revalidate fetch; keep view mounted when switching tabs; tiered YAML rendering for large manifests.
+- **Scheduling** fields render as proper tables (tolerations, node selector, affinity, taints) with Hide/Show — in the entity table (hover popover) and inspector.
+- Fold **Status** and **Scheduling** into the **Summary** tab (no separate tabs).
+
+### Catalog
+
+- Structured scheduling data on catalog rows for table columns and inspector enrichment.
+
 ## [1.0.0] — 2026-09-09
 
 Major release: redesigned **Resources** workbench, shell inspector, terminal workspace, and cluster catalog — the “klew-ui” line.
@@ -149,6 +162,7 @@ Major release: redesigned **Resources** workbench, shell inspector, terminal wor
 
 - Prior desktop and CLI improvements; see git history and GitHub releases.
 
+[1.1.0]: https://github.com/glnreddy421/klew/releases/tag/v1.1.0
 [1.0.0]: https://github.com/glnreddy421/klew/releases/tag/v1.0.0
 [0.1.10]: https://github.com/glnreddy421/klew/releases/tag/v0.1.10
 [0.1.9]: https://github.com/glnreddy421/klew/releases/tag/v0.1.9
