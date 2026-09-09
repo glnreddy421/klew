@@ -177,3 +177,13 @@ export function isDiscoveredOnlyEntry(entry) {
 export function isVirtualPresentationEntry(entry) {
   return Boolean(entry?.virtual)
 }
+
+/** Stable GVR id for builtin kinds when discovery metadata is incomplete. */
+export function defaultCatalogResourceId(entry) {
+  if (entry?.resourceId) return entry.resourceId
+  const group = entry?.group || ''
+  const resource = entry?.resource || ''
+  if (!resource) return ''
+  if (!group) return `v1/${resource}`
+  return `${group}/v1/${resource}`
+}

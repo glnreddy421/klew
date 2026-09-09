@@ -6,6 +6,7 @@ import {
   BUILTIN_PRESENTATION,
   presentationKey,
   isExtensionGroup,
+  defaultCatalogResourceId,
   defaultNamespaced,
   isDiscoveredOnlyEntry,
   isVirtualPresentationEntry,
@@ -151,7 +152,7 @@ function mergeBuiltinEntry(entry, discovered, matchEntities) {
   const countState = deriveCountState(desc, matchCount)
   let accessState = desc?.accessState || 'unknown'
   if (!desc) {
-    accessState = 'unavailable'
+    accessState = 'unknown'
   } else if (countState.state === 'forbidden') {
     accessState = 'forbidden'
   } else if (matchCount != null && matchCount > 0) {
@@ -164,7 +165,7 @@ function mergeBuiltinEntry(entry, discovered, matchEntities) {
 
   return {
     presentationKey: key,
-    resourceId: desc?.id || null,
+    resourceId: desc?.id || defaultCatalogResourceId(entry),
     kind: desc?.kind || entry.kind,
     label: entry.displayName,
     legacy: Boolean(entry.legacy),
@@ -176,7 +177,7 @@ function mergeBuiltinEntry(entry, discovered, matchEntities) {
     namespaced: desc?.namespaced ?? defaultNamespaced(entry),
     builtin: true,
     discoveredOnly: isDiscoveredOnlyEntry(entry),
-    discovered: !!desc,
+    discovered: isDiscoveredOnlyEntry(entry) ? !!desc : true,
     accessState,
     countState,
     matchCount: matchCount ?? 0,
@@ -590,7 +591,7 @@ export function catalogEntityToRow(entity, fallbackKind) {
       namespace: ns,
       uid: entity.uid,
     },
-    status: catalogStatusTone(hint),
+    status: catalogStatusTone(hint, kind),
     signal: hint,
     creationTimestamp: entity.creationTimestamp || '',
     node: entity.nodeName || '',
@@ -660,9 +661,15 @@ export function catalogEntityToRow(entity, fallbackKind) {
   }))
 }
 
-function catalogStatusTone(hint) {
+const LISTED_CONFIG_KINDS = new Set([
+  'ServiceAccount', 'Secret', 'ConfigMap', 'Role', 'RoleBinding', 'ClusterRole', 'ClusterRoleBinding',
+])
+
+function catalogStatusTone(hint, kind = '') {
   const h = String(hint || '').toLowerCase()
-  if (!h) return 'unknown'
+  if (!h) {
+    return LISTED_CONFIG_KINDS.has(kind) ? 'healthy' : 'unknown'
+  }
   if (h === 'external') return 'healthy'
   if (h.includes('no endpoints')) return 'critical'
   const readyFrac = h.match(/(\d+)\/(\d+)\s*ready/)

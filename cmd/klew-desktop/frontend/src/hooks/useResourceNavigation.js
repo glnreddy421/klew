@@ -9,7 +9,7 @@ import {
   visibleCategories,
 } from '../lib/resourceNavigation.js'
 
-const DEFAULT_EXPANDED = new Set(['workloads'])
+const DEFAULT_EXPANDED = new Set(['workloads', 'config', 'security'])
 
 /**
  * Resource navigation state — accordion-style groups, kind selection.

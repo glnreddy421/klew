@@ -11,12 +11,12 @@ export function entityMergeKey(row) {
 }
 
 export function canLoadCatalogEntities(kindGroup) {
-  return Boolean(
-    kindGroup?.resourceId
-    && kindGroup.accessState !== 'forbidden'
-    && kindGroup.countState?.state !== 'forbidden'
-    && (kindGroup.discovered || kindGroup.virtual)
-  )
+  if (!kindGroup?.resourceId) return false
+  if (kindGroup.accessState === 'forbidden' || kindGroup.countState?.state === 'forbidden') {
+    return false
+  }
+  if (kindGroup.virtual || kindGroup.builtin) return true
+  return Boolean(kindGroup.discovered)
 }
 
 /** Prefer catalog API rows; merge status onto investigation matches by key. */
