@@ -661,12 +661,18 @@ const STATIC_ACCESS_KINDS = new Set([
   'ServiceAccount', 'Role', 'RoleBinding', 'ClusterRole', 'ClusterRoleBinding',
 ])
 
+const STATIC_CONFIG_KINDS = new Set(['Secret', 'ConfigMap'])
+
 export function statusLabelForRow(row, pod) {
   if (row.kind === 'HelmRelease') {
     return formatHelmReleaseStatus(row.signal || row.tableFields?.status || row.status)
   }
   if (STATIC_ACCESS_KINDS.has(row.kind) && (!row.status || row.status === 'unknown')) {
     return 'Active'
+  }
+  if (STATIC_CONFIG_KINDS.has(row.kind) && row.signal) return row.signal
+  if (STATIC_CONFIG_KINDS.has(row.kind) && (!row.status || row.status === 'unknown')) {
+    return 'Listed'
   }
   if (row.kind === 'Service') return serviceStatusLabel(row)
   if (pod?.phase) return pod.phase

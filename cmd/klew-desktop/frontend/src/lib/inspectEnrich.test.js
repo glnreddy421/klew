@@ -30,8 +30,10 @@ describe('resolveInspectRef', () => {
     expect(ref?.key).toBe('Deployment/prod/payment')
   })
 
-  it('parses prefixed secret refs', () => {
-    expect(parseObjectRefCell('secret:tls-cert/prod')?.key).toBe('Secret/prod/tls-cert')
+  it('parses prefixed secret refs using inspect namespace, not data keys', () => {
+    expect(parseObjectRefCell('secret:tls-cert', 'prod')?.key).toBe('Secret/prod/tls-cert')
+    expect(parseObjectRefCell('secret:oci-publishing-gitlab-token/GITLAB_TOKEN', 'dtool')?.key)
+      .toBe('Secret/dtool/oci-publishing-gitlab-token')
   })
 
   it('does not treat tolerations count as a node', () => {

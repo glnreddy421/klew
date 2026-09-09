@@ -165,8 +165,11 @@ function isPlausibleNodeName(name) {
   return true
 }
 
-/** Parse secret:/configMap:/pvc: prefixed refs for inspector navigation. */
-export function parseObjectRefCell(cell) {
+/**
+ * Parse secret:/configMap:/pvc: prefixed refs for inspector navigation.
+ * Backend format is name[/dataKey] — the segment after / is a key inside the object, not namespace.
+ */
+export function parseObjectRefCell(cell, defaultNamespace = '') {
   const raw = String(cell || '').trim()
   if (!raw) return null
   const m = raw.match(/^(secret|configmap|pvc):([^/]+)(?:\/(.+))?$/i)
@@ -178,9 +181,8 @@ export function parseObjectRefCell(cell) {
   }
   const kind = kindMap[m[1].toLowerCase()]
   const name = m[2]?.trim()
-  const namespace = m[3]?.trim() || ''
   if (!kind || !name) return null
-  return refResult(kind, name, namespace)
+  return refResult(kind, name, defaultNamespace)
 }
 
 function parseKindNameValue(value, defaultNamespace = '') {
@@ -289,7 +291,7 @@ export function resolveInspectRef(value, {
   if (!raw || raw === '—' || raw === '-') return null
   if (raw.includes(',') && raw.length > 64) return null
 
-  const prefixed = parseObjectRefCell(raw)
+  const prefixed = parseObjectRefCell(raw, inspectNamespace)
   if (prefixed) return prefixed
 
   const kindName = parseKindNameValue(raw, inspectNamespace)
