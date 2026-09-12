@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { EvidenceBoardPanel } from '../components/evidence/EvidenceBoardPanel'
+import { InvestigationSurfaceGuide } from '../components/incident/InvestigationSurfaceGuide.jsx'
 import {
   formatClock,
   getState,
@@ -10,7 +11,7 @@ import {
 /**
  * Evidence — correlated pattern links and supporting observations.
  */
-export function EvidenceView({ view, onFilterLogs, explorerFilter }) {
+export function EvidenceView({ view, onFilterLogs, explorerFilter, investigationActive = false, onNavigate }) {
   const state = getState(view)
 
   const signals = useMemo(() => {
@@ -45,6 +46,31 @@ export function EvidenceView({ view, onFilterLogs, explorerFilter }) {
     for (const e of groups.metric || []) out.push({ ...e, _bucket: 'Metric' })
     return out.slice(0, 12)
   }, [groups])
+
+  if (!investigationActive) {
+    return (
+      <div className="inv-page evidence-page ev-revamp">
+        <InvestigationSurfaceGuide surfaceId="evidence" onNavigate={onNavigate} />
+      </div>
+    )
+  }
+
+  const hasEvidence = evidence.length > 0 || signals.length > 0 || evidenceBoard
+
+  if (!hasEvidence) {
+    return (
+      <div className="inv-page evidence-page ev-revamp">
+        <InvestigationSurfaceGuide
+          surfaceId="evidence"
+          onNavigate={onNavigate}
+          compact
+        />
+        <p className="surface-guide-followup muted">
+          Correlation is running — observations and claims will appear here after the first pass.
+        </p>
+      </div>
+    )
+  }
 
   return (
     <div className="inv-page evidence-page ev-revamp">

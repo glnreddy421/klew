@@ -37,7 +37,7 @@ func buildGatewayLike(obj *unstructured.Unstructured, kind string) *ObjectDetail
 		Summary:  fields("GatewayClass", class),
 	}
 	var sections []Section
-	sections = append(sections, sectionFields("status", "Status", GroupStatus, fields(
+	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields(
 		"GatewayClass", class,
 	)))
 	if listeners, ok, _ := unstructured.NestedSlice(obj.Object, "spec", "listeners"); ok {
@@ -63,7 +63,7 @@ func buildGatewayLike(obj *unstructured.Unstructured, kind string) *ObjectDetail
 			rows = append(rows, []string{fmt.Sprint(m["type"]), fmt.Sprint(m["value"])})
 		}
 		if len(rows) > 0 {
-			sections = append(sections, sectionTable("addresses", "Addresses", GroupStatus,
+			sections = append(sections, sectionTable("addresses", "Addresses", GroupSummary,
 				[]string{"Type", "Value"}, rows))
 		}
 	}

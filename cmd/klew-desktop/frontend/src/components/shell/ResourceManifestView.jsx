@@ -1,5 +1,12 @@
-import { useMemo } from 'react'
+import { memo, useDeferredValue, useMemo } from 'react'
 import { useResourceManifest } from '../../hooks/useResourceManifest.js'
+import { isRbacForbiddenMessage } from '../../lib/rbacAccess.js'
+import {
+  getYamlRenderMeta,
+  YAML_HIGHLIGHT_MAX_LINES,
+} from '../../lib/yamlRender.js'
+import { InlineLoading, LoadingState } from '../LoadingSpinner.jsx'
+import { ResourceAccessPanel } from '../incident/ResourceAccessPanel.jsx'
 
 function copyText(text) {
   if (!text) return Promise.resolve(false)
@@ -86,8 +93,7 @@ function YamlValue({ value, inline = false }) {
   return <span className="yaml-scalar">{value}</span>
 }
 
-function YamlViewer({ text }) {
-  const lines = useMemo(() => String(text || '').split('\n'), [text])
+const YamlHighlightedViewer = memo(function YamlHighlightedViewer({ lines }) {
   return (
     <pre className="yaml-viewer" aria-label="Resource manifest">
       {lines.map((line, i) => (
@@ -95,17 +101,53 @@ function YamlViewer({ text }) {
       ))}
     </pre>
   )
+})
+
+function YamlPlainViewer({ text, lineCount = 0 }) {
+  return (
+    <>
+      {lineCount > YAML_HIGHLIGHT_MAX_LINES && (
+        <p className="resource-manifest-yaml-note muted">
+          Large manifest ({lineCount.toLocaleString()} lines) — plain view for performance.
+        </p>
+      )}
+      <pre className="yaml-viewer yaml-viewer-plain mono" aria-label="Resource manifest">{text}</pre>
+    </>
+  )
+}
+
+function ManifestYamlDisplay({ text }) {
+  const meta = useMemo(() => getYamlRenderMeta(text), [text])
+  const deferredText = useDeferredValue(text)
+  const deferredMeta = useMemo(() => getYamlRenderMeta(deferredText), [deferredText])
+
+  if (meta.mode === 'plain') {
+    return <YamlPlainViewer text={text} lineCount={meta.lineCount} />
+  }
+
+  const highlightPending = deferredText !== text
+  if (highlightPending) {
+    return <YamlPlainViewer text={text} lineCount={meta.lineCount} />
+  }
+
+  return <YamlHighlightedViewer lines={deferredMeta.lines} />
 }
 
 export function ResourceManifestView({ target, cluster, onClose }) {
-  const { manifest, loading, error, refresh } = useResourceManifest(target, cluster)
+  const { manifest, loading, refreshing, error, refresh } = useResourceManifest(target, cluster)
   const command = manifest?.command || ''
   const yaml = manifest?.yaml || ''
+  const renderMeta = useMemo(() => getYamlRenderMeta(yaml), [yaml])
+  const deferredYaml = useDeferredValue(yaml)
+  const highlighting = renderMeta.mode === 'highlight' && deferredYaml !== yaml
   const fetchError = error || manifest?.error || ''
+  const accessDenied = isRbacForbiddenMessage(fetchError)
 
   const title = target
     ? `${target.kind}/${target.namespace ? `${target.namespace}/` : ''}${target.name}`
     : 'Manifest'
+
+  const fetching = loading && !yaml
 
   async function handleCopyCommand() {
     await copyText(command)
@@ -123,11 +165,17 @@ export function ResourceManifestView({ target, cluster, onClose }) {
           <strong className="resource-manifest-title mono">{title}</strong>
         </div>
         <div className="resource-manifest-actions">
+          {(refreshing || highlighting) && (
+            <InlineLoading
+              message={highlighting ? 'Rendering…' : 'Refreshing…'}
+              className="resource-manifest-refreshing muted"
+            />
+          )}
           <button
             type="button"
             className="btn btn-ghost btn-sm"
             onClick={() => refresh()}
-            disabled={loading}
+            disabled={fetching}
             title="Refresh manifest"
           >
             Refresh
@@ -162,17 +210,31 @@ export function ResourceManifestView({ target, cluster, onClose }) {
         </div>
       </div>
 
-      <div className="resource-manifest-body">
-        {loading && !yaml && (
-          <div className="resource-manifest-loading muted">Running kubectl…</div>
+      <div className={['resource-manifest-body', fetching ? 'is-busy' : ''].filter(Boolean).join(' ')}>
+        {fetching && (
+          <LoadingState message="Fetching manifest…" />
         )}
-        {fetchError && (
+        {fetchError && accessDenied && target && !fetching && (
+          <ResourceAccessPanel
+            action="get"
+            kindGroup={{
+              kind: target.kind,
+              label: target.kind,
+              resource: target.resource || String(target.kind || '').toLowerCase(),
+              group: target.group || '',
+              apiVersion: target.apiVersion || '',
+              namespaced: !target.clusterScoped,
+              accessState: 'forbidden',
+            }}
+          />
+        )}
+        {fetchError && !accessDenied && !fetching && (
           <div className="resource-manifest-error" role="alert">
             <strong>kubectl failed</strong>
             <pre className="mono">{fetchError}</pre>
           </div>
         )}
-        {yaml && !fetchError && (
+        {yaml && !fetchError && !fetching && (
           <>
             <div className="resource-manifest-yaml-head">
               <span className="muted">Manifest</span>
@@ -185,10 +247,10 @@ export function ResourceManifestView({ target, cluster, onClose }) {
                 Copy YAML
               </button>
             </div>
-            <YamlViewer text={yaml} />
+            <ManifestYamlDisplay text={yaml} />
           </>
         )}
-        {!loading && !fetchError && !yaml && (
+        {!loading && !fetchError && !yaml && !fetching && (
           <p className="muted resource-manifest-empty">No manifest returned.</p>
         )}
       </div>

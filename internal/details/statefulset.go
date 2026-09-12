@@ -16,18 +16,22 @@ func (statefulSetProvider) Build(ctx context.Context, req *Request) (*ObjectDeta
 	}
 	desired := int32Or(sts.Spec.Replicas, 1)
 	ready := sts.Status.ReadyReplicas >= desired
+	matchLabels := workloadMatchLabels(sts.Spec.Selector)
+	podRows := podsForSelector(ctx, req, matchLabels)
+	summaryPairs := appendSchedulingSummaryPairs(appendPodSummaryFields([]string{
+		"Replicas", fmt.Sprintf("%d/%d", sts.Status.ReadyReplicas, desired),
+		"Service Name", sts.Spec.ServiceName,
+		"Update Strategy", string(sts.Spec.UpdateStrategy.Type),
+	}, podRows), sts.Spec.Template.Spec)
+
 	detail := &ObjectDetail{
 		Title:    "StatefulSet/" + sts.Name,
 		Category: "workload",
 		Status:   replicaStatus(sts.Status.ReadyReplicas, desired, ready),
-		Summary: fields(
-			"Replicas", fmt.Sprintf("%d/%d", sts.Status.ReadyReplicas, desired),
-			"Service Name", sts.Spec.ServiceName,
-			"Update Strategy", string(sts.Spec.UpdateStrategy.Type),
-		),
+		Summary:  fields(summaryPairs...),
 	}
 	var sections []Section
-	sections = append(sections, sectionFields("status", "Status", GroupStatus, fields(
+	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields(
 		"Replicas", fmtInt32(sts.Status.Replicas),
 		"Ready", fmtInt32(sts.Status.ReadyReplicas),
 		"Current", fmtInt32(sts.Status.CurrentReplicas),
@@ -45,6 +49,9 @@ func (statefulSetProvider) Build(ctx context.Context, req *Request) (*ObjectDeta
 		if sel := selectorString(sts.Spec.Selector.MatchLabels); sel != "" {
 			sections = append(sections, sectionFields("selector", "Selector", GroupRelationships, fields("Match Labels", sel)))
 		}
+	}
+	if sec := podsRelationshipSection(ctx, req, matchLabels, podRows); !sec.Empty() {
+		sections = append(sections, sec)
 	}
 	sections = append(sections, podTemplateSections(&sts.Spec.Template, GroupSpec)...)
 	if len(sts.Spec.VolumeClaimTemplates) > 0 {

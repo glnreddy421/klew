@@ -1,9 +1,11 @@
+import { LoadingSpinner } from '../LoadingSpinner.jsx'
+
 /** Compact banner while correlation runs; resources catalog stays interactive. */
 export function InvestigationLoadingBanner({ onOpenOverview }) {
   return (
     <div className="investigation-loading-banner" role="status" aria-live="polite" aria-busy="true">
       <span className="investigation-loading-banner-text">
-        <span className="investigation-loading-spinner" aria-hidden="true" />
+        <LoadingSpinner size="sm" />
         Correlating cluster data in the background…
       </span>
       {onOpenOverview && (

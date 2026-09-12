@@ -1,6 +1,7 @@
 import {
   isWorkloadsCategory,
   resourceCategoryIconName,
+  resourceCategoryToneClass,
   WORKLOADS_ICON_PATHS,
 } from '../lib/resourceCategoryIcons'
 
@@ -12,11 +13,12 @@ export function ResourceCategoryIcon({
 }) {
   const px = typeof size === 'number' ? size : 16
   const label = title || categoryId || 'Category'
+  const toneClass = resourceCategoryToneClass(categoryId)
 
   if (isWorkloadsCategory(categoryId)) {
     return (
       <span
-        className={`resource-category-icon ${className}`.trim()}
+        className={`resource-category-icon ${toneClass} ${className}`.trim()}
         title={label}
         aria-hidden="true"
       >
@@ -33,7 +35,7 @@ export function ResourceCategoryIcon({
 
   return (
     <span
-      className={`resource-category-icon material-symbols-outlined ${className}`.trim()}
+      className={`resource-category-icon material-symbols-outlined ${toneClass} ${className}`.trim()}
       title={label}
       aria-hidden="true"
       style={{ fontSize: px, width: px, height: px }}

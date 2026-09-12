@@ -17,5 +17,11 @@ export function usePreferences() {
     return next
   }, [])
 
-  return { prefs, setPreferences, resetPreferences }
+  const reloadPreferences = useCallback(() => {
+    const next = loadPreferences()
+    setPrefsState(next)
+    return next
+  }, [])
+
+  return { prefs, setPreferences, resetPreferences, reloadPreferences }
 }

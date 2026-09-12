@@ -19,6 +19,7 @@ export function useSidebar() {
       const next = !prev
       try {
         localStorage.setItem(STORAGE_KEY, next ? '1' : '0')
+        import('../lib/settingsCache.js').then((m) => m.queueSettingsCacheSync()).catch(() => {})
       } catch {
         // ignore
       }

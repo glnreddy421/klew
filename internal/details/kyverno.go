@@ -37,7 +37,7 @@ func buildKyvernoPolicy(obj *unstructured.Unstructured, kind string) *ObjectDeta
 		Summary:  fields("Kind", kind),
 	}
 	var sections []Section
-	sections = append(sections, sectionFields("status", "Status", GroupStatus, fields(
+	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields(
 		"Generation", fmtInt64(obj.GetGeneration()),
 	)))
 	if rules, ok, _ := unstructured.NestedSlice(obj.Object, "spec", "rules"); ok {

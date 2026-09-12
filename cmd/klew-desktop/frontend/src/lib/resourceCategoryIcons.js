@@ -37,3 +37,11 @@ export function resourceCategoryIconName(categoryId) {
 export function isWorkloadsCategory(categoryId) {
   return categoryId === 'workloads'
 }
+
+/** CSS tone class for category coloring in nav (icons, headers). */
+export function resourceCategoryToneClass(categoryId) {
+  if (categoryId && Object.prototype.hasOwnProperty.call(RESOURCE_CATEGORY_ICON_NAMES, categoryId)) {
+    return `tone-${categoryId}`
+  }
+  return 'tone-other'
+}

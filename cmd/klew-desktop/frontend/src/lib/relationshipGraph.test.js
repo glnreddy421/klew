@@ -28,6 +28,39 @@ describe('buildRelationshipGraph service backends', () => {
     expect(graph.nodes.some((n) => n.kind === 'Node')).toBe(false)
   })
 
+  it('links job owner references and spawned pods', () => {
+    const graph = buildRelationshipGraph({
+      center: { kind: 'Job', name: 'nightly-123', key: 'Job/dtool/nightly-123', namespace: 'dtool' },
+      items: [],
+      sections: [
+        {
+          id: 'ownerRefs',
+          title: 'Owner References',
+          group: 'relationships',
+          table: {
+            columns: ['Kind', 'Name', 'Namespace', 'UID'],
+            rows: [['CronJob', 'nightly', 'dtool', 'uid-1']],
+          },
+        },
+        {
+          id: 'pods',
+          title: 'Pods',
+          group: 'relationships',
+          table: {
+            columns: ['Name', 'Phase', 'Ready'],
+            rows: [['nightly-123-abc', 'Succeeded', 'True']],
+          },
+        },
+      ],
+      inspectNamespace: 'dtool',
+    })
+
+    expect(graph.nodes.some((n) => n.kind === 'CronJob' && n.name === 'nightly')).toBe(true)
+    expect(graph.nodes.some((n) => n.kind === 'Pod' && n.name === 'nightly-123-abc')).toBe(true)
+    expect(graph.edges.some((e) => e.role === 'Owner')).toBe(true)
+    expect(graph.edges.some((e) => e.role === 'Pod')).toBe(true)
+  })
+
   it('includes endpoint slice nodes with EndpointSlice role', () => {
     const graph = buildRelationshipGraph({
       center: { kind: 'Service', name: 'payment-api', key: 'Service/klew-lab/payment-api', namespace: 'klew-lab' },

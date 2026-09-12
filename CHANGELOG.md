@@ -4,6 +4,33 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-09-12
+
+### Resources browse
+
+- **Focus chain in browse mode** — follow Deployment → ReplicaSet → Pod → Service without starting an investigation; chain uses catalog data and stable namespace-aware keys.
+- **Inspector browse tabs** — Summary, Spec, Relationships, and other tabs show what to expect, loading/empty states, and what to look for per resource kind.
+- **Browse metrics** — CPU/memory columns and workload overview metrics when metrics-server is available.
+- **Scheduling tables** — tolerations, affinity, and node selector render as proper tables in the entity grid (hover) and inspector.
+- **Manifest cache** — LRU stale-while-revalidate for inspector YAML; tiered rendering for large manifests.
+
+### Investigation surfaces (browse without Investigate)
+
+- **Overview, Patterns, Failures, Evidence** — guided empty states explain what each surface provides and how to start an investigation from the top bar.
+- Sidebar explorers on investigation tabs show the same guidance when no session is running.
+
+### Inspector & shell
+
+- Inspector panel uses card chrome (accent stripe, header LED, inset padding) and VS Code-style resize sash.
+- Terminal / live logs no longer auto-open on focus or when investigation starts — user-driven only.
+- Cluster connection banner and reconnect flow improvements.
+
+### Backend
+
+- Workload and batch **relationship** enrichment for inspector graphs.
+- Structured **scheduling** fields on catalog rows.
+- Node browse metrics enrichment.
+
 ## [1.1.0] — 2026-09-09
 
 ### Inspector & workloads

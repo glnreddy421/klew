@@ -23,7 +23,7 @@ func (roleProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, err
 		Summary:  fields("Rules", fmtInt32(int32(len(role.Rules)))),
 	}
 	var sections []Section
-	sections = append(sections, sectionFields("status", "Status", GroupStatus, fields(
+	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields(
 		"Namespace", role.Namespace,
 		"Rules", fmtInt32(int32(len(role.Rules))),
 	)))

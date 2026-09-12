@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ListCatalogEntities } from '../../wailsjs/go/main/App'
 import { catalogEntityToRow } from '../lib/resourceCatalog.js'
 import { browseScopeApiParams, normalizeBrowseScope } from '../lib/browseScope.js'
+import { normalizeCatalogAccessState } from '../lib/rbacAccess.js'
 
 /**
  * Lazily lists catalog entities for the selected resource GVR.
@@ -55,16 +56,18 @@ export function useCatalogEntities({ cluster, kindGroup, browseScope, enabled = 
     })
       .then((result) => {
         if (reqRef.current !== id) return
-        setAccessState(result?.accessState || 'unknown')
+        const errMsg = result?.error || ''
+        setAccessState(normalizeCatalogAccessState(result?.accessState, errMsg))
         const rows = (result?.entities || []).map((entity) => catalogEntityToRow(entity, kindGroup?.kind))
         setEntities(rows)
-        if (result?.error) setError(result.error)
+        if (errMsg) setError(errMsg)
       })
       .catch((e) => {
         if (reqRef.current !== id) return
-        setError(String(e))
+        const errMsg = String(e)
+        setError(errMsg)
         setEntities([])
-        setAccessState('error')
+        setAccessState(normalizeCatalogAccessState('error', errMsg))
       })
       .finally(() => {
         if (reqRef.current === id) setLoading(false)

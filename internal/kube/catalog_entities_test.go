@@ -3,7 +3,9 @@ package kube
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
+	"time"
 
 	discoveryv1 "k8s.io/api/discovery/v1"
 
@@ -136,6 +138,23 @@ func TestEnrichJobCatalogEntity(t *testing.T) {
 	})
 	if entity.Completions == nil || *entity.Completions != 1 {
 		t.Fatalf("default completions = %v", entity.Completions)
+	}
+}
+
+func TestJobDurationHint(t *testing.T) {
+	start := time.Now().Add(-5 * time.Minute).UTC().Format(time.RFC3339)
+	completion := time.Now().Add(-2 * time.Minute).UTC().Format(time.RFC3339)
+	got := jobDurationHint(map[string]interface{}{
+		"status": map[string]interface{}{
+			"startTime":      start,
+			"completionTime": completion,
+		},
+	})
+	if got == "" {
+		t.Fatal("expected duration")
+	}
+	if !strings.Contains(got, "m") {
+		t.Fatalf("expected minute duration, got %q", got)
 	}
 }
 

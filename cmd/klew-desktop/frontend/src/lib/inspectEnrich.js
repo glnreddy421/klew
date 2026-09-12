@@ -8,9 +8,26 @@ export function summaryMetrics(inspect) {
     ? inspect.summary.map((f) => ({ key: f.key, value: f.value }))
     : (inspect.status?.fields || []).map((f) => ({ key: f.k, value: f.v }))
 
-  const skip = new Set(['kind', 'name'])
+  const skip = new Set([
+    'kind',
+    'name',
+    'node selector',
+    'tolerations',
+    'affinity',
+    'taints',
+  ])
+  const priority = [
+    'node selector',
+    'tolerations',
+    'affinity',
+    'phase',
+    'replicas',
+    'ready',
+    'schedule',
+  ]
   const seen = new Set()
-  const out = []
+  const prioritized = []
+  const rest = []
   for (const f of raw) {
     const key = String(f.key || '').trim()
     const value = String(f.value ?? '').trim()
@@ -18,10 +35,13 @@ export function summaryMetrics(inspect) {
     const id = `${key}|${value}`
     if (seen.has(id)) continue
     seen.add(id)
-    out.push({ key, value })
-    if (out.length >= 6) break
+    const item = { key, value }
+    const rank = priority.indexOf(key.toLowerCase())
+    if (rank >= 0) prioritized.push({ rank, item })
+    else rest.push(item)
   }
-  return out
+  prioritized.sort((a, b) => a.rank - b.rank)
+  return [...prioritized.map((p) => p.item), ...rest].slice(0, 10)
 }
 
 /** Merge snapshot-only sections into live detail groups when tabs would be sparse. */
@@ -80,8 +100,9 @@ export function enrichInspectGroups(groups, inspect) {
     }
   }
 
+  const folded = foldLegacySummaryGroups(base)
   const tabOrder = new Map(DETAIL_TAB_ORDER.map((t, i) => [t.id, i]))
-  return base
+  return folded
     .map((g) => ({
       ...g,
       label: DETAIL_TAB_ORDER.find((t) => t.id === g.id)?.label || g.label,
@@ -89,6 +110,20 @@ export function enrichInspectGroups(groups, inspect) {
     }))
     .filter((g) => g.sections.length > 0)
     .sort((a, b) => (tabOrder.get(a.id) ?? 99) - (tabOrder.get(b.id) ?? 99))
+}
+
+function foldLegacySummaryGroups(groups) {
+  const legacyIds = new Set(['status', 'scheduling'])
+  const legacy = (groups || []).filter((g) => legacyIds.has(g.id))
+  if (!legacy.length) return groups || []
+  const rest = (groups || []).filter((g) => !legacyIds.has(g.id))
+  const summary = rest.find((g) => g.id === 'summary') || { id: 'summary', label: 'Summary', sections: [] }
+  const mergedSections = dedupeSections([
+    ...(summary.sections || []),
+    ...legacy.flatMap((g) => g.sections || []),
+  ])
+  const withoutSummary = rest.filter((g) => g.id !== 'summary')
+  return [{ ...summary, sections: mergedSections }, ...withoutSummary]
 }
 
 function sectionHasLabels(s) {
@@ -211,9 +246,25 @@ function parseNamespacedName(value, kind, defaultNamespace = '') {
   return refResult(kind, m[2], m[1] || defaultNamespace)
 }
 
+const NON_LINKABLE_FIELD_KEYS = /^(dns policy|restart policy|concurrency policy|scheduler|termination grace|host network|qos class|priority class|service account name|automount service account token|share process namespace|enable service links|set hostname as fqdn|host pid|host ipc|host users|readiness gates)$/i
+
+const NON_LINKABLE_FIELD_VALUES = /^(clusterfirst|clusterfirstwithhostnet|default|none|onfailure|never|always|allow|forbid|replace|true|false|default-scheduler|ifnotpresent|always|never)$/i
+
+function isNonLinkableInspectField(fieldKey, value) {
+  const key = String(fieldKey || '').trim()
+  const raw = String(value || '').trim()
+  if (!raw) return true
+  if (!key) return false
+  if (NON_LINKABLE_FIELD_KEYS.test(key)) return true
+  if (NON_LINKABLE_FIELD_VALUES.test(raw)) return true
+  if (/policy$/i.test(key) && !/network policy|pod disruption|validation/i.test(key)) return true
+  return false
+}
+
 function inferKindFromFieldKey(fieldKey, sectionContext) {
   const key = String(fieldKey || '').toLowerCase()
   const ctx = String(sectionContext || '').toLowerCase()
+  if (NON_LINKABLE_FIELD_KEYS.test(key)) return null
 
   if (/storage class|storageclass/.test(key) || /storageclass/.test(ctx)) return 'StorageClass'
   if (/persistent volume|volume name|^volume$/.test(key) && !/volume mode|volume binding|volume claim template/.test(key)) {
@@ -236,6 +287,7 @@ function inferKindFromFieldKey(fieldKey, sectionContext) {
   if (/secret/.test(key) && !/image pull/.test(key)) return 'Secret'
   if (/service account/.test(key)) return 'ServiceAccount'
   if (/endpointslice/.test(key)) return 'EndpointSlice'
+  if (/^pods?$/.test(key)) return 'Pod'
   if (/^object$/.test(key) && /event/.test(ctx)) return null // Kind/name in value
   if (/^target$|^target ref$/.test(key)) return null // Kind/name value carries kind
   return null
@@ -248,7 +300,10 @@ function inferKindFromPlainName(section, columnName, groupId) {
   if (/^node$|^nominated node$/.test(col)) return 'Node'
   if (/scheduled on/.test(title) && col === 'name') return 'Node'
   if (/namespace/.test(title) && col === 'name') return 'Namespace'
-  if (/pod|consumer|mounted|target pod|used by|scheduled|active job/.test(title)) return 'Pod'
+  if (/pod template|template spec/.test(title)) return null
+  if (/target pod|used by pod|scheduled pod|consumer pod|active job|pods scheduled|mounted by pod/.test(title)) {
+    return 'Pod'
+  }
   if (/service|backend service|load balancer/.test(title)) return 'Service'
   if (/ingress(?!class)/.test(title)) return 'Ingress'
   if (/ingressclass/.test(title)) return 'IngressClass'
@@ -289,6 +344,7 @@ export function resolveInspectRef(value, {
 } = {}) {
   const raw = String(value ?? '').trim()
   if (!raw || raw === '—' || raw === '-') return null
+  if (isNonLinkableInspectField(fieldKey || columnName, raw)) return null
   if (raw.includes(',') && raw.length > 64) return null
 
   const prefixed = parseObjectRefCell(raw, inspectNamespace)
@@ -332,7 +388,8 @@ export function resolveInspectRef(value, {
   }
 
   if (columnName?.toLowerCase() === 'object' || fieldKey?.toLowerCase() === 'object') {
-    return parseKindNameValue(raw) || refResult(inferRowKind(section, columnIndex, raw), raw, inspectNamespace)
+    return parseKindNameValue(raw, inspectNamespace)
+      || refResult(inferRowKind(section, columnIndex, raw, inspectNamespace), raw, inspectNamespace)
   }
 
   if (String(columnName || fieldKey || '').toLowerCase() === 'target') {
@@ -366,7 +423,7 @@ export function linkableTableColumn(columnName, sectionGroup) {
   if (col === 'name' || col === 'pod' || col === 'source' || col === 'volume' || col === 'object') return true
   if (col === 'role' || col === 'policy' || col === 'service' || col === 'claim' || col === 'target') return true
   if (sectionGroup === 'relationships') return true
-  if (sectionGroup === 'spec' || sectionGroup === 'status' || sectionGroup === 'containers') {
+  if (sectionGroup === 'spec' || sectionGroup === 'status' || sectionGroup === 'summary' || sectionGroup === 'containers') {
     if (col === 'source') return true
     return col !== 'type' && col !== 'status' && col !== 'reason'
       && col !== 'state' && col !== 'exit' && col !== 'restarts' && col !== 'ready'
@@ -378,8 +435,8 @@ export function linkableTableColumn(columnName, sectionGroup) {
 }
 
 /** Infer kind for a relationship table row from section context. */
-export function inferRowKind(section, columnIndex, cell) {
-  const parsed = parseObjectRefCell(cell)
+export function inferRowKind(section, columnIndex, cell, defaultNamespace = '') {
+  const parsed = parseObjectRefCell(cell, defaultNamespace)
   if (parsed) return parsed.kind
   return inferKindFromPlainName(section, '', 'relationships')
     || inferKindFromPlainName(section, 'name', 'relationships')

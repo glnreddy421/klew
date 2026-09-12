@@ -70,6 +70,7 @@ export function InvestigationSignalsPanel({
   emptyHint,
   onViewAllSignals,
   expanded = false,
+  browseMode = false,
 }) {
   const counts = countSignals(view)
   const signals = topSignals(view, inspect)
@@ -89,10 +90,12 @@ export function InvestigationSignalsPanel({
 
   if (expanded || layoutMode === 'detail-tabs') {
     return (
-      <div className="signals-panel signals-panel-expanded">
-        <header className="signals-panel-header">
-          <h3>Investigation</h3>
-        </header>
+      <div className={`signals-panel signals-panel-expanded ${browseMode ? 'signals-panel-browse' : ''}`}>
+        {browseMode ? null : (
+          <header className="signals-panel-header">
+            <h3>Investigation</h3>
+          </header>
+        )}
         <div className="signals-panel-body inspect-card-body">
           <ComponentInspectPanel
             inspect={inspect}
@@ -104,6 +107,7 @@ export function InvestigationSignalsPanel({
             loading={loading}
             error={error}
             emptyHint={emptyHint}
+            browseMode={browseMode}
           />
         </div>
       </div>

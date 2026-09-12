@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { GetTerminalShellChoices } from '../../wailsjs/go/main/App'
 import { shellLabel } from '../lib/shellLabel'
+import { LoadingState } from './LoadingSpinner.jsx'
 
 export function TerminalShellModal({
   open,
@@ -48,7 +49,7 @@ export function TerminalShellModal({
 
         <div className="scope-picker-body terminal-shell-options">
           {loading && choices.length === 0 && (
-            <p className="muted">Loading shells…</p>
+            <LoadingState message="Loading shells…" compact />
           )}
           {choices.map((choice) => {
             const id = choice.id || choice.path

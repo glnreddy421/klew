@@ -17,20 +17,24 @@ func (deploymentProvider) Build(ctx context.Context, req *Request) (*ObjectDetai
 		return nil, err
 	}
 	ready := d.Status.ReadyReplicas >= int32Or(d.Spec.Replicas, 1) && d.Status.UnavailableReplicas == 0
+	matchLabels := workloadMatchLabels(d.Spec.Selector)
+	podRows := podsForSelector(ctx, req, matchLabels)
+	summaryPairs := appendSchedulingSummaryPairs(appendPodSummaryFields([]string{
+		"Replicas", fmt.Sprintf("%d/%d", d.Status.ReadyReplicas, int32Or(d.Spec.Replicas, 1)),
+		"Updated", fmtInt32(d.Status.UpdatedReplicas),
+		"Available", fmtInt32(d.Status.AvailableReplicas),
+		"Strategy", string(d.Spec.Strategy.Type),
+	}, podRows), d.Spec.Template.Spec)
+
 	detail := &ObjectDetail{
 		Title:    "Deployment/" + d.Name,
 		Category: "workload",
 		Status:   replicaStatus(d.Status.ReadyReplicas, int32Or(d.Spec.Replicas, 1), ready),
-		Summary: fields(
-			"Replicas", fmt.Sprintf("%d/%d", d.Status.ReadyReplicas, int32Or(d.Spec.Replicas, 1)),
-			"Updated", fmtInt32(d.Status.UpdatedReplicas),
-			"Available", fmtInt32(d.Status.AvailableReplicas),
-			"Strategy", string(d.Spec.Strategy.Type),
-		),
+		Summary:  fields(summaryPairs...),
 	}
 
 	var sections []Section
-	sections = append(sections, sectionFields("status", "Status", GroupStatus, fields(
+	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields(
 		"Observed Generation", fmtInt64(d.Status.ObservedGeneration),
 		"Replicas", fmtInt32(d.Status.Replicas),
 		"Ready", fmtInt32(d.Status.ReadyReplicas),
@@ -38,7 +42,7 @@ func (deploymentProvider) Build(ctx context.Context, req *Request) (*ObjectDetai
 		"Available", fmtInt32(d.Status.AvailableReplicas),
 		"Unavailable", fmtInt32(d.Status.UnavailableReplicas),
 	)))
-	sections = append(sections, sectionFields("replicaSummary", "Replica Summary", GroupStatus, fields(
+	sections = append(sections, sectionFields("replicaSummary", "Replica Summary", GroupSummary, fields(
 		"Desired", fmtInt32(int32Or(d.Spec.Replicas, 1)),
 		"Current", fmtInt32(d.Status.Replicas),
 		"Ready", fmtInt32(d.Status.ReadyReplicas),
@@ -53,13 +57,20 @@ func (deploymentProvider) Build(ctx context.Context, req *Request) (*ObjectDetai
 		"Progress Deadline", fmtInt32Ptr(d.Spec.ProgressDeadlineSeconds),
 	)))
 	if rows := deployConditionRows(d.Status.Conditions); len(rows) > 0 {
-		sections = append(sections, sectionTable("conditions", "Conditions", GroupStatus,
+		sections = append(sections, sectionTable("conditions", "Conditions", GroupSummary,
 			[]string{"Type", "Status", "Reason", "Message"}, rows))
 	}
 	if d.Spec.Selector != nil {
 		if sel := selectorString(d.Spec.Selector.MatchLabels); sel != "" {
 			sections = append(sections, sectionFields("selector", "Selector", GroupRelationships, fields("Match Labels", sel)))
 		}
+	}
+	if sec := podsRelationshipSection(ctx, req, matchLabels, podRows); !sec.Empty() {
+		sections = append(sections, sec)
+	}
+	if rows := replicaSetsForSelector(ctx, req, matchLabels); len(rows) > 0 {
+		sections = append(sections, sectionTable("replicaSets", "Replica Sets", GroupRelationships,
+			[]string{"Name", "Ready", "Replicas", "Created"}, rows))
 	}
 	sections = append(sections, podTemplateSections(&d.Spec.Template, GroupSpec)...)
 	sections = append(sections, metaSections(d.Labels, d.Annotations, ownerRefsFromMeta(d.OwnerReferences, d.Namespace))...)

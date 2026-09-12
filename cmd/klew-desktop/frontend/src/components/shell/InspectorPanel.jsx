@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useScopeBrowse } from '../../context/ScopeBrowseContext.jsx'
+import { prefetchResourceManifest } from '../../lib/manifestCache.js'
 import { buildManifestTarget } from '../../lib/manifestTarget.js'
 import { resolvePodLogsTarget, podLogsTerminalEnabled } from '../../lib/podLogsTerminal.js'
 import { useResourcesWorkbench } from '../../views/ResourcesWorkbenchView.jsx'
@@ -39,12 +40,21 @@ export function InspectorPanel({
     setManifestOpen(false)
   }, [inspectRow?.key])
 
+  useEffect(() => {
+    if (!manifestTarget) return undefined
+    prefetchResourceManifest(manifestTarget, cluster || workbench?.cluster)
+    return undefined
+  }, [manifestTarget, cluster, workbench?.cluster])
+
   return (
     <>
       <header className="inspector-header">
-        <h2 className="inspector-header-title">
-          {manifestOpen ? 'Manifest' : 'Inspector'}
-        </h2>
+        <div className="inspector-header-brand">
+          <span className="inspector-accent-led" aria-hidden="true" />
+          <h2 className="inspector-header-title">
+            {manifestOpen ? 'Manifest' : 'Inspector'}
+          </h2>
+        </div>
         <InspectorHeaderActions
           placement={placement}
           onPlacementChange={onPlacementChange}
@@ -61,15 +71,21 @@ export function InspectorPanel({
         />
       </header>
       <div className="inspector-body">
-        {manifestOpen && manifestTarget ? (
-          <ResourceManifestView
-            target={manifestTarget}
-            cluster={cluster || workbench?.cluster}
-            onClose={() => setManifestOpen(false)}
-          />
-        ) : (
-          children
-        )}
+        {manifestTarget ? (
+          <div className="inspector-pane inspector-pane-manifest" hidden={!manifestOpen}>
+            <ResourceManifestView
+              target={manifestTarget}
+              cluster={cluster || workbench?.cluster}
+              onClose={() => setManifestOpen(false)}
+            />
+          </div>
+        ) : null}
+        <div
+          className="inspector-pane inspector-pane-details"
+          hidden={Boolean(manifestOpen && manifestTarget)}
+        >
+          {children}
+        </div>
       </div>
     </>
   )

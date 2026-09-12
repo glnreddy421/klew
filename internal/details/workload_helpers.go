@@ -382,14 +382,14 @@ func podTemplateSections(tpl *corev1.PodTemplateSpec, group string) []Section {
 		"DNS Policy", string(spec.DNSPolicy),
 		"Scheduler", spec.SchedulerName,
 		"Priority Class", spec.PriorityClassName,
-		"Node Selector", selectorString(spec.NodeSelector),
 	)))
+	out = append(out, schedulingSections(spec)...)
 	if rows := containerRows(spec.Containers); len(rows) > 0 {
-		out = append(out, sectionTable("containers", "Containers", group,
+		out = append(out, sectionTable("templateContainers", "Template Containers", group,
 			[]string{"Name", "Image", "Req CPU", "Req Mem", "Lim CPU", "Lim Mem", "Ports"}, rows))
 	}
 	if rows := containerRows(spec.InitContainers); len(rows) > 0 {
-		out = append(out, sectionTable("initContainers", "Init Containers", GroupRuntime,
+		out = append(out, sectionTable("templateInitContainers", "Template Init Containers", GroupRuntime,
 			[]string{"Name", "Image", "Req CPU", "Req Mem", "Lim CPU", "Lim Mem", "Ports"}, rows))
 	}
 	if rows := volumeRows(spec.Volumes); len(rows) > 0 {

@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { StatusBadge } from './StatusBadge'
 import { KindIcon } from '../KindIcon'
 import { formatEntityAge } from '../../lib/entityTable'
+import { isRbacForbiddenMessage } from '../../lib/rbacAccess.js'
+import { InlineLoading, LoadingState } from '../LoadingSpinner.jsx'
 
 function findSection(inspect, id) {
   for (const group of inspect?.groups || []) {
@@ -68,7 +70,11 @@ export function HelmReleaseInspectView({
     : '—'
 
   if (!inspect) {
-    return <div className="inspect-empty muted">{loading ? 'Loading release…' : 'Select a release.'}</div>
+    return (
+      <div className="inspect-empty muted">
+        {loading ? <LoadingState message="Loading release…" /> : 'Select a release.'}
+      </div>
+    )
   }
 
   return (
@@ -80,7 +86,9 @@ export function HelmReleaseInspectView({
             <h4 className="inspect-name">
               <span className="inspect-name-text">{inspect.name}</span>
             </h4>
-            {loading && <span className="muted inspect-loading">Loading…</span>}
+            {loading && (
+              <InlineLoading message="Loading…" className="inspect-loading muted" />
+            )}
           </div>
           <dl className="helm-release-meta-grid">
             <div className="helm-release-meta-item">
@@ -110,7 +118,14 @@ export function HelmReleaseInspectView({
       </header>
 
       {error && (
-        <div className="inspect-fetch-error" role="alert">{error}</div>
+        <div
+          className={`inspect-fetch-error${isRbacForbiddenMessage(error) ? ' inspect-fetch-error-denied' : ''}`}
+          role="alert"
+        >
+          {isRbacForbiddenMessage(error)
+            ? 'Access denied — live Helm release details could not be loaded.'
+            : error}
+        </div>
       )}
 
       {valuesSection && (

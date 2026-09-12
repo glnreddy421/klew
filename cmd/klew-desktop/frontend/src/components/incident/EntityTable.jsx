@@ -1,19 +1,24 @@
-import { useId, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { KindIcon } from '../KindIcon'
-import { kindDisplayLabel, resourceMetadataTitle } from '../../lib/resourceCatalog.js'
+import { isAccessDenied, isUnavailable, kindDisplayLabel, resourceMetadataTitle } from '../../lib/resourceCatalog.js'
 import { singleBrowseScope, normalizeBrowseScope } from '../../lib/browseScope.js'
 import {
   enrichEntitiesForTable,
   formatConfigMapData,
+  sortEntitiesForTable,
   tableCellValue,
   truncateSelector,
 } from '../../lib/entityTable.js'
 import { useEntityTableColumns } from '../../hooks/useEntityTableColumns.js'
 import { EntityTableColumnPicker } from './EntityTableColumnPicker.jsx'
-import { NodeConditionsCell, NodeNameCell, NodeResourceCell, NodeTaintsCell } from './NodeTableCells.jsx'
+import { NodeConditionsCell, NodeNameCell, NodeResourceCell } from './NodeTableCells.jsx'
+import { PodMetricCell } from '../metrics/ResourceMetricDisplay.jsx'
+import { buildPodCpuMetric, buildPodMemMetric } from '../../lib/metricDisplay.js'
+import { SchedulingTableCell } from './SchedulingTableCells.jsx'
 import { ContainerStatusIndicators } from './ContainerStatusIndicators.jsx'
 import { DeploymentConditionIndicators } from './DeploymentConditionIndicators.jsx'
+import { LoadingState } from '../LoadingSpinner.jsx'
 import { ResourceAccessPanel } from './ResourceAccessPanel.jsx'
 
 function StatusCell({ row }) {
@@ -48,6 +53,33 @@ function NamespaceCell({ row, browseScope, onBrowseScopeChange }) {
     >
       {ns}
     </button>
+  )
+}
+
+function SortableColumnHeader({ col, sort, onSort }) {
+  const active = sort.columnId === col.id
+  const ascending = active && sort.direction === 'asc'
+  const descending = active && sort.direction === 'desc'
+
+  return (
+    <th
+      key={col.id}
+      className={[col.className, 'entity-table-sortable', active ? 'is-sorted' : ''].filter(Boolean).join(' ')}
+      aria-sort={active ? (ascending ? 'ascending' : 'descending') : 'none'}
+    >
+      <button
+        type="button"
+        className="entity-table-sort-btn"
+        onClick={() => onSort(col.id)}
+        title={`Sort by ${col.label}`}
+      >
+        <span className="entity-table-sort-label">{col.label}</span>
+        <span className="entity-table-sort-icons" aria-hidden="true">
+          <span className={['entity-table-sort-arrow', 'up', ascending ? 'active' : ''].filter(Boolean).join(' ')}>▲</span>
+          <span className={['entity-table-sort-arrow', 'down', descending ? 'active' : ''].filter(Boolean).join(' ')}>▼</span>
+        </span>
+      </button>
+    </th>
   )
 }
 
@@ -244,6 +276,11 @@ function ControlledByCell({ row, onInspect }) {
   )
 }
 
+const FOCUSABLE_KINDS = new Set([
+  'Deployment', 'StatefulSet', 'DaemonSet', 'Job', 'CronJob', 'ReplicaSet',
+  'Pod', 'Service', 'Ingress', 'ConfigMap', 'Secret', 'PersistentVolumeClaim',
+])
+
 function TableRow({
   row,
   selected,
@@ -251,10 +288,13 @@ function TableRow({
   columns,
   onSelect,
   onInspect,
+  onFocus,
+  showFocusButton,
   browseScope,
   onBrowseScopeChange,
 }) {
   const isRoot = focusKey === row.key
+  const canFocus = showFocusButton && onFocus && FOCUSABLE_KINDS.has(row.kind)
   return (
     <tr
       className={[
@@ -308,6 +348,16 @@ function TableRow({
                 </td>
               )
             }
+            if (row.kind === 'Pod') {
+              return (
+                <td key={col.id} className={col.className}>
+                  <PodMetricCell
+                    metric={buildPodCpuMetric(row)}
+                    fallback={tableCellValue(row, col.id)}
+                  />
+                </td>
+              )
+            }
             return (
               <td key={col.id} className={col.className}>
                 <TableCellClip mono value={tableCellValue(row, col.id)} />
@@ -320,6 +370,16 @@ function TableRow({
                   <NodeResourceCell
                     capacity={row.nodeResources?.capacityMemoryBytes}
                     allocatable={row.nodeResources?.allocatableMemoryBytes}
+                  />
+                </td>
+              )
+            }
+            if (row.kind === 'Pod') {
+              return (
+                <td key={col.id} className={col.className}>
+                  <PodMetricCell
+                    metric={buildPodMemMetric(row)}
+                    fallback={tableCellValue(row, col.id)}
                   />
                 </td>
               )
@@ -343,26 +403,21 @@ function TableRow({
               </td>
             )
           case 'taints':
+          case 'nodeSelector':
+          case 'tolerations':
+          case 'affinity':
             return (
               <td key={col.id} className={col.className}>
-                {row.kind === 'Node' ? (
-                  <NodeTaintsCell row={row} />
-                ) : (
-                  <TableCellClip mono value={tableCellValue(row, col.id)} />
-                )}
+                <SchedulingTableCell row={row} columnId={col.id} />
               </td>
             )
           case 'qos':
           case 'age':
+          case 'duration':
           case 'lastSchedule':
             return (
               <td key={col.id} className={col.className}>
-                <TableCellClip
-                  mono
-                  value={col.id === 'lastSchedule'
-                    ? (row.lastScheduleTime || tableCellValue(row, col.id))
-                    : tableCellValue(row, col.id)}
-                />
+                <TableCellClip mono value={tableCellValue(row, col.id)} />
               </td>
             )
           case 'controlledBy':
@@ -504,6 +559,24 @@ function TableRow({
           }
         }
       })}
+      {showFocusButton && onFocus && (
+        <td className="entity-table-actions">
+          {canFocus ? (
+            <button
+              type="button"
+              className="entity-list-focus entity-table-focus"
+              title={`Focus ${row.name}`}
+              aria-label={`Focus ${row.name}`}
+              onClick={(e) => {
+                e.stopPropagation()
+                onFocus?.(row.key)
+              }}
+            >
+              Focus
+            </button>
+          ) : null}
+        </td>
+      )}
     </tr>
   )
 }
@@ -520,9 +593,11 @@ export function EntityTable({
   pods = [],
   inspectKey,
   focusKey,
+  showFocusButton = false,
   browseScope,
   onBrowseScopeChange,
   onSelect,
+  onFocus,
   hasSearchQuery = '',
 }) {
   const label = kindGroup?.label || (kind ? kindDisplayLabel(kind) : 'Resources')
@@ -532,17 +607,33 @@ export function EntityTable({
     kindGroup,
     browseScope,
   })
-  const rows = enrichEntitiesForTable(filteredEntities, pods, resolvedKind)
+  const [sort, setSort] = useState({ columnId: 'name', direction: 'asc' })
+
+  useEffect(() => {
+    setSort({ columnId: 'name', direction: 'asc' })
+  }, [resolvedKind])
+
+  const rows = useMemo(
+    () => enrichEntitiesForTable(filteredEntities, pods, resolvedKind),
+    [filteredEntities, pods, resolvedKind],
+  )
+  const sortedRows = useMemo(
+    () => sortEntitiesForTable(rows, sort.columnId, sort.direction),
+    [rows, sort.columnId, sort.direction],
+  )
+
+  function handleSort(columnId) {
+    setSort((prev) => {
+      if (prev.columnId === columnId) {
+        return { columnId, direction: prev.direction === 'asc' ? 'desc' : 'asc' }
+      }
+      return { columnId, direction: 'asc' }
+    })
+  }
 
   const accessBlocked = entities.length === 0
     && !entitiesLoading
-    && (
-      kindGroup?.accessState === 'forbidden'
-      || kindGroup?.countState?.state === 'forbidden'
-      || (!kindGroup?.discovered && kindGroup?.builtin && !kindGroup?.discoveredOnly)
-      || kindGroup?.accessState === 'unavailable'
-      || kindGroup?.countState?.state === 'unavailable'
-    )
+    && (isAccessDenied(kindGroup) || isUnavailable(kindGroup))
 
   return (
     <section className="entity-table" aria-label={`${label} entities`}>
@@ -582,19 +673,27 @@ export function EntityTable({
               <thead>
                 <tr>
                   {columns.map((col) => (
-                    <th key={col.id} className={col.className}>{col.label}</th>
+                    <SortableColumnHeader
+                      key={col.id}
+                      col={col}
+                      sort={sort}
+                      onSort={handleSort}
+                    />
                   ))}
+                  {showFocusButton && onFocus && (
+                    <th className="entity-table-actions col-actions" aria-label="Focus actions" />
+                  )}
                 </tr>
               </thead>
               <tbody>
                 {entitiesLoading && (
                   <tr className="entity-table-placeholder-row">
                     <td colSpan={Math.max(columns.length, 1)} className="entity-table-placeholder-cell">
-                      Loading…
+                      <LoadingState message="Loading resources…" compact />
                     </td>
                   </tr>
                 )}
-                {!entitiesLoading && rows.map((row) => (
+                {!entitiesLoading && sortedRows.map((row) => (
                   <TableRow
                     key={row.key}
                     row={row}
@@ -603,13 +702,15 @@ export function EntityTable({
                     focusKey={focusKey}
                     onSelect={onSelect}
                     onInspect={onSelect}
+                    onFocus={onFocus}
+                    showFocusButton={showFocusButton}
                     browseScope={browseScope}
                     onBrowseScopeChange={onBrowseScopeChange}
                   />
                 ))}
               </tbody>
             </table>
-            {!entitiesLoading && !rows.length && hasSearchQuery && (
+            {!entitiesLoading && !sortedRows.length && hasSearchQuery && (
               <div className="entity-table-empty entity-table-empty-filtered">
                 <p>No matches for &quot;{hasSearchQuery}&quot;</p>
               </div>

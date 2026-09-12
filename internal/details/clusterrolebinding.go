@@ -23,7 +23,7 @@ func (clusterRoleBindingProvider) Build(ctx context.Context, req *Request) (*Obj
 		),
 	}
 	var sections []Section
-	sections = append(sections, sectionFields("status", "Status", GroupStatus, fields(
+	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields(
 		"Subjects", fmtInt32(int32(len(crb.Subjects))),
 	)))
 	sections = append(sections, sectionFields("roleRef", "RoleRef", GroupRelationships, fields(

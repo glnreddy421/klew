@@ -3,13 +3,13 @@ package details
 import (
 	"context"
 	"encoding/base64"
-	"fmt"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/glnreddy421/klew/internal/kube"
 	"github.com/glnreddy421/klew/internal/model"
 )
 
@@ -35,13 +35,13 @@ func (podProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, erro
 		Title:    "Pod/" + pod.Name,
 		Category: "runtime",
 		Status:   statusFromPhase(string(pod.Status.Phase), ready),
-		Summary: fields(
+		Summary: fields(append([]string{
 			"Phase", string(pod.Status.Phase),
 			"Node", pod.Spec.NodeName,
 			"Pod IP", pod.Status.PodIP,
 			"QoS", string(pod.Status.QOSClass),
 			"Service Account", pod.Spec.ServiceAccountName,
-		),
+		}, schedulingSummaryPairs(pod.Spec)...)...),
 	}
 
 	allContainers := append(append([]corev1.Container{}, pod.Spec.InitContainers...), pod.Spec.Containers...)
@@ -49,7 +49,7 @@ func (podProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, erro
 	secretResolver := podSecretResolver(ctx, req, pod.Namespace)
 
 	var sections []Section
-	sections = append(sections, sectionFields("status", "Status", GroupStatus, fields(
+	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields(
 		"Phase", string(pod.Status.Phase),
 		"Ready", boolStr(ready),
 		"Start Time", fmtTime(pod.Status.StartTime),
@@ -58,9 +58,14 @@ func (podProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, erro
 		"Nominated Node", pod.Status.NominatedNodeName,
 	)))
 
-	if rows := containerStateRows(pod.Status.ContainerStatuses); len(rows) > 0 {
-		sections = append(sections, sectionTable("containerStates", "Container States", GroupContainers,
-			[]string{"Name", "Ready", "Restarts", "State", "Reason", "Exit", "Image", "Image ID", "Container ID", "Started", "Alloc CPU", "Alloc Mem"}, rows))
+	usage, hasUsage := kube.GetPodMetricUsage(ctx, req.Client, pod.Namespace, pod.Name)
+	if rows := containerStateRows(pod.Status.ContainerStatuses, usage.Containers, hasUsage); len(rows) > 0 {
+		cols := []string{"Name", "Ready", "Restarts", "State", "Reason", "Exit", "Image", "Image ID", "Container ID", "Started"}
+		if hasUsage {
+			cols = append(cols, "Usage CPU", "Usage Mem")
+		}
+		cols = append(cols, "Alloc CPU", "Alloc Mem")
+		sections = append(sections, sectionTable("containerStates", "Container States", GroupContainers, cols, rows))
 	}
 	if rows := initContainerStateRows(pod.Status.InitContainerStatuses); len(rows) > 0 {
 		sections = append(sections, sectionTable("initContainerStates", "Init Container States", GroupContainers,
@@ -75,7 +80,7 @@ func (podProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, erro
 			[]string{"Name", "Restarts", "Last State", "Last Reason", "Last Exit"}, rows))
 	}
 	if rows := podConditionRows(pod.Status.Conditions); len(rows) > 0 {
-		sections = append(sections, sectionTable("conditions", "Conditions", GroupStatus,
+		sections = append(sections, sectionTable("conditions", "Conditions", GroupSummary,
 			[]string{"Type", "Status", "Reason", "Message"}, rows))
 	}
 
@@ -91,9 +96,8 @@ func (podProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, erro
 	sections = append(sections, sectionFields("nodeAssignment", "Node Assignment", GroupRelationships, fields(
 		"Node", pod.Spec.NodeName,
 		"Nominated Node", pod.Status.NominatedNodeName,
-		"Node Selector", selectorString(pod.Spec.NodeSelector),
-		"Tolerations", fmt.Sprintf("%d", len(pod.Spec.Tolerations)),
 	)))
+	sections = append(sections, schedulingSections(pod.Spec)...)
 	sections = append(sections, sectionFields("qos", "QoS", GroupRuntime, fields(
 		"QoS Class", string(pod.Status.QOSClass),
 		"Priority", fmtPriority(pod.Spec.Priority),
@@ -235,7 +239,17 @@ func fetchSecret(ctx context.Context, req *Request, ns, name string) (*corev1.Se
 	return getSecret(ctx, &sub)
 }
 
-func containerStateRows(sts []corev1.ContainerStatus) [][]string {
+func metricUsageCell(value int64, format func(int64) string) string {
+	if value <= 0 {
+		return "—"
+	}
+	if formatted := format(value); formatted != "" {
+		return formatted
+	}
+	return "—"
+}
+
+func containerStateRows(sts []corev1.ContainerStatus, usage map[string]kube.ContainerMetricUsage, includeUsage bool) [][]string {
 	var rows [][]string
 	for _, s := range sts {
 		state, reason, exit := describeContainerState(s.State)
@@ -244,7 +258,7 @@ func containerStateRows(sts []corev1.ContainerStatus) [][]string {
 			started = boolStr(*s.Started)
 		}
 		allocCPU, allocMem := allocatedResourceStrings(s.AllocatedResources)
-		rows = append(rows, []string{
+		row := []string{
 			s.Name,
 			boolStr(s.Ready),
 			fmtInt32(s.RestartCount),
@@ -255,9 +269,13 @@ func containerStateRows(sts []corev1.ContainerStatus) [][]string {
 			displayImageRef(s.ImageID),
 			displayContainerID(s.ContainerID),
 			started,
-			allocCPU,
-			allocMem,
-		})
+		}
+		if includeUsage {
+			u := usage[s.Name]
+			row = append(row, metricUsageCell(u.CPUMilli, kube.FormatCPUMilli), metricUsageCell(u.MemMi, kube.FormatMemMi))
+		}
+		row = append(row, allocCPU, allocMem)
+		rows = append(rows, row)
 	}
 	return rows
 }

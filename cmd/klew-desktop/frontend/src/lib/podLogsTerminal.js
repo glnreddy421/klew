@@ -1,4 +1,5 @@
 import { getSnapshot } from './investigationViews'
+import { commandLine, shellQuote } from './kubectlShell.js'
 
 /** @typedef {{ name: string, init?: boolean }} PodLogContainer */
 /** @typedef {{ podName: string, namespace: string, containers: PodLogContainer[] }} PodLogsTarget */
@@ -65,7 +66,7 @@ export function buildKubectlLogsCommand({ podName, namespace, container = '' }) 
   if (container) {
     parts.push('-c', shellQuote(container))
   }
-  return `${parts.join(' ')}\n`
+  return commandLine(parts)
 }
 
 export function podLogsTabTitle(podName, container = '') {
@@ -73,8 +74,3 @@ export function podLogsTabTitle(podName, container = '') {
   return `logs/${podName}`
 }
 
-function shellQuote(value) {
-  if (!value) return "''"
-  if (/^[A-Za-z0-9._/-]+$/.test(value)) return value
-  return `'${String(value).replace(/'/g, `'\\''`)}'`
-}

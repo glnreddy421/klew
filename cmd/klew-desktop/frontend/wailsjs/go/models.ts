@@ -456,6 +456,40 @@ export namespace investigation {
 
 export namespace kube {
 	
+	export class BrowseMetricsResult {
+	    available: boolean;
+	    note?: string;
+	    summary: model.MetricsSummary;
+	
+	    static createFrom(source: any = {}) {
+	        return new BrowseMetricsResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.available = source["available"];
+	        this.note = source["note"];
+	        this.summary = this.convertValues(source["summary"], model.MetricsSummary);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class ClusterNodeItem {
 	    name: string;
 	    ready: boolean;
@@ -772,6 +806,26 @@ export namespace main {
 	        this.context = source["context"];
 	    }
 	}
+	export class GetBrowseMetricsOptions {
+	    namespace: string;
+	    allNamespaces: boolean;
+	    namespaces: string[];
+	    kubeconfig: string;
+	    context: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GetBrowseMetricsOptions(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.namespace = source["namespace"];
+	        this.allNamespaces = source["allNamespaces"];
+	        this.namespaces = source["namespaces"];
+	        this.kubeconfig = source["kubeconfig"];
+	        this.context = source["context"];
+	    }
+	}
 	export class ListCatalogEntitiesOptions {
 	    resourceId: string;
 	    namespace: string;
@@ -957,6 +1011,26 @@ export namespace model {
 	        this.startedAt = source["startedAt"];
 	    }
 	}
+	export class CatalogAffinityRuleRow {
+	    type: string;
+	    weight?: string;
+	    topology?: string;
+	    namespaces?: string;
+	    match?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CatalogAffinityRuleRow(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.type = source["type"];
+	        this.weight = source["weight"];
+	        this.topology = source["topology"];
+	        this.namespaces = source["namespaces"];
+	        this.match = source["match"];
+	    }
+	}
 	export class CatalogCondition {
 	    type: string;
 	    status: string;
@@ -1013,10 +1087,97 @@ export namespace model {
 	        this.sizeBytes = source["sizeBytes"];
 	    }
 	}
+	export class CatalogTaintRow {
+	    key: string;
+	    value?: string;
+	    effect?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CatalogTaintRow(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.value = source["value"];
+	        this.effect = source["effect"];
+	    }
+	}
+	export class CatalogTolerationRow {
+	    key: string;
+	    operator?: string;
+	    value?: string;
+	    effect?: string;
+	    seconds?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CatalogTolerationRow(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.operator = source["operator"];
+	        this.value = source["value"];
+	        this.effect = source["effect"];
+	        this.seconds = source["seconds"];
+	    }
+	}
+	export class CatalogKVPair {
+	    key: string;
+	    value: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CatalogKVPair(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.value = source["value"];
+	    }
+	}
+	export class CatalogScheduling {
+	    nodeSelector?: CatalogKVPair[];
+	    tolerations?: CatalogTolerationRow[];
+	    affinity?: CatalogAffinityRuleRow[];
+	    taints?: CatalogTaintRow[];
+	
+	    static createFrom(source: any = {}) {
+	        return new CatalogScheduling(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.nodeSelector = this.convertValues(source["nodeSelector"], CatalogKVPair);
+	        this.tolerations = this.convertValues(source["tolerations"], CatalogTolerationRow);
+	        this.affinity = this.convertValues(source["affinity"], CatalogAffinityRuleRow);
+	        this.taints = this.convertValues(source["taints"], CatalogTaintRow);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class NodeCatalogResources {
 	    roles?: string;
 	    kubeletVersion?: string;
 	    taintCount?: number;
+	    taintsSummary?: string;
 	    capacityCpuMilli?: number;
 	    allocatableCpuMilli?: number;
 	    capacityMemoryBytes?: number;
@@ -1034,6 +1195,7 @@ export namespace model {
 	        this.roles = source["roles"];
 	        this.kubeletVersion = source["kubeletVersion"];
 	        this.taintCount = source["taintCount"];
+	        this.taintsSummary = source["taintsSummary"];
 	        this.capacityCpuMilli = source["capacityCpuMilli"];
 	        this.allocatableCpuMilli = source["allocatableCpuMilli"];
 	        this.capacityMemoryBytes = source["capacityMemoryBytes"];
@@ -1069,6 +1231,7 @@ export namespace model {
 	    misscheduled?: number;
 	    succeeded?: number;
 	    completions?: number;
+	    jobDuration?: string;
 	    schedule?: string;
 	    suspend?: boolean;
 	    activeJobs?: number;
@@ -1113,6 +1276,13 @@ export namespace model {
 	    configMapData?: CatalogDataEntry[];
 	    leaseHolder?: string;
 	    nodeResources?: NodeCatalogResources;
+	    scheduling?: CatalogScheduling;
+	    cpuUsageMilli?: number;
+	    memUsageMi?: number;
+	    cpuRequestMilli?: number;
+	    cpuLimitMilli?: number;
+	    memRequestMi?: number;
+	    memLimitMi?: number;
 	    tableFields?: Record<string, string>;
 	    helmStorageKind?: string;
 	    helmStorageName?: string;
@@ -1148,6 +1318,7 @@ export namespace model {
 	        this.misscheduled = source["misscheduled"];
 	        this.succeeded = source["succeeded"];
 	        this.completions = source["completions"];
+	        this.jobDuration = source["jobDuration"];
 	        this.schedule = source["schedule"];
 	        this.suspend = source["suspend"];
 	        this.activeJobs = source["activeJobs"];
@@ -1192,6 +1363,13 @@ export namespace model {
 	        this.configMapData = this.convertValues(source["configMapData"], CatalogDataEntry);
 	        this.leaseHolder = source["leaseHolder"];
 	        this.nodeResources = this.convertValues(source["nodeResources"], NodeCatalogResources);
+	        this.scheduling = this.convertValues(source["scheduling"], CatalogScheduling);
+	        this.cpuUsageMilli = source["cpuUsageMilli"];
+	        this.memUsageMi = source["memUsageMi"];
+	        this.cpuRequestMilli = source["cpuRequestMilli"];
+	        this.cpuLimitMilli = source["cpuLimitMilli"];
+	        this.memRequestMi = source["memRequestMi"];
+	        this.memLimitMi = source["memLimitMi"];
 	        this.tableFields = source["tableFields"];
 	        this.helmStorageKind = source["helmStorageKind"];
 	        this.helmStorageName = source["helmStorageName"];
@@ -1249,6 +1427,10 @@ export namespace model {
 		    return a;
 		}
 	}
+	
+	
+	
+	
 	export class ContainerStatus {
 	    podName: string;
 	    name: string;

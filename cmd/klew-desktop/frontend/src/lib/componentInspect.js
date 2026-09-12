@@ -196,7 +196,7 @@ function relatedPodsForInspect(pods) {
       }
     }
     return {
-      key: `Pod/${p.name}`,
+      key: buildInspectKey('Pod', p.name, p.namespace),
       name: p.name,
       namespace: p.namespace,
       ready: p.ready ? 1 : 0,

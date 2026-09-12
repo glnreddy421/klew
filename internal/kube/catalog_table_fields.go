@@ -21,7 +21,7 @@ func enrichCatalogTableFields(entity *model.CatalogEntity, obj map[string]interf
 	case "pods":
 		catalogTablePod(fields, entity, obj)
 	case "deployments", "statefulsets", "replicasets", "replicationcontrollers":
-		catalogTableReplicaController(fields, entity, obj)
+		catalogTableReplicaController(fields, entity, obj, resource)
 	case "daemonsets":
 		catalogTableDaemonSet(fields, entity, obj)
 	case "jobs":
@@ -55,7 +55,7 @@ func enrichCatalogTableFields(entity *model.CatalogEntity, obj map[string]interf
 	case "leases":
 		catalogTableLease(fields, entity, obj)
 	case "nodes":
-		catalogTableNode(fields, obj)
+		catalogTableNode(entity, fields, obj)
 	case "namespaces":
 		catalogTableNamespace(fields, obj)
 	case "events":
@@ -126,9 +126,10 @@ func catalogTablePod(fields map[string]string, entity *model.CatalogEntity, obj 
 	}
 	setField(fields, "node", entity.NodeName)
 	setField(fields, "qos", entity.QOSClass)
+	catalogTableScheduling(entity, fields, podSpecMap(obj, "pods"))
 }
 
-func catalogTableReplicaController(fields map[string]string, entity *model.CatalogEntity, obj map[string]interface{}) {
+func catalogTableReplicaController(fields map[string]string, entity *model.CatalogEntity, obj map[string]interface{}, resource string) {
 	setField(fields, "status", entityStatusHint(obj, "deployments"))
 	setFieldCount(fields, "desired", entity.DesiredReplicas)
 	setFieldCount(fields, "current", entity.CurrentReplicas)
@@ -139,28 +140,46 @@ func catalogTableReplicaController(fields map[string]string, entity *model.Catal
 	if entity.CurrentReplicas != nil {
 		setField(fields, "replicas", fmt.Sprintf("%d", *entity.CurrentReplicas))
 	}
+	catalogTableScheduling(entity, fields, podSpecMap(obj, resource))
 }
 
-func catalogTableDaemonSet(fields map[string]string, entity *model.CatalogEntity, _ map[string]interface{}) {
+func catalogTableDaemonSet(fields map[string]string, entity *model.CatalogEntity, obj map[string]interface{}) {
 	setFieldCount(fields, "desired", entity.DesiredReplicas)
 	setFieldCount(fields, "current", entity.CurrentReplicas)
 	setFieldCount(fields, "ready", entity.ReadyReplicas)
 	setFieldCount(fields, "updated", entity.UpdatedReplicas)
 	setFieldCount(fields, "available", entity.AvailableReplicas)
 	setFieldCount(fields, "misscheduled", entity.Misscheduled)
+	catalogTableScheduling(entity, fields, podSpecMap(obj, "daemonsets"))
 }
 
 func catalogTableJob(fields map[string]string, entity *model.CatalogEntity, obj map[string]interface{}) {
-	setField(fields, "completions", entityStatusHint(obj, "jobs"))
+	if entity.Succeeded != nil && entity.Completions != nil {
+		setField(fields, "completions", fmt.Sprintf("%d/%d", *entity.Succeeded, *entity.Completions))
+	} else {
+		setField(fields, "completions", entityStatusHint(obj, "jobs"))
+	}
+	setField(fields, "duration", entity.JobDuration)
+	if len(entity.Conditions) > 0 {
+		types := make([]string, 0, len(entity.Conditions))
+		for _, cond := range entity.Conditions {
+			if cond.Type != "" {
+				types = append(types, cond.Type)
+			}
+		}
+		setField(fields, "conditions", strings.Join(types, ", "))
+	}
+	catalogTableScheduling(entity, fields, podSpecMap(obj, "jobs"))
 }
 
-func catalogTableCronJob(fields map[string]string, entity *model.CatalogEntity, _ map[string]interface{}) {
+func catalogTableCronJob(fields map[string]string, entity *model.CatalogEntity, obj map[string]interface{}) {
 	setField(fields, "schedule", entity.Schedule)
 	if entity.Suspend != nil {
 		setField(fields, "suspend", fmt.Sprintf("%t", *entity.Suspend))
 	}
 	setFieldCount(fields, "active", entity.ActiveJobs)
 	setField(fields, "lastSchedule", entity.LastScheduleTime)
+	catalogTableScheduling(entity, fields, podSpecMap(obj, "cronjobs"))
 }
 
 func catalogTableService(fields map[string]string, entity *model.CatalogEntity, _ map[string]interface{}) {
@@ -264,13 +283,11 @@ func catalogTableLease(fields map[string]string, entity *model.CatalogEntity, _ 
 	setField(fields, "holder", entity.LeaseHolder)
 }
 
-func catalogTableNode(fields map[string]string, obj map[string]interface{}) {
+func catalogTableNode(entity *model.CatalogEntity, fields map[string]string, obj map[string]interface{}) {
 	setField(fields, "status", catalogNodeReadyStatus(obj))
 	setField(fields, "roles", catalogNodeRoles(obj))
 	setField(fields, "version", stringFromObject(obj, "status", "nodeInfo", "kubeletVersion"))
-	if count := catalogNodeTaintCount(obj); count != nil {
-		setField(fields, "taints", fmt.Sprintf("%d", *count))
-	}
+	applyCatalogNodeTaints(entity, fields, obj)
 }
 
 func catalogNodeReadyStatus(obj map[string]interface{}) string {

@@ -1,32 +1,218 @@
-import { kindBadge, matchKey, podsForMatch } from './matches'
+import { kindBadge, buildInspectKey, matchKey, parseInspectKey, podsForMatch } from './matches'
+import { BUILTIN_PRESENTATION, defaultCatalogResourceId, defaultNamespaced } from './resourcePresentation.js'
 
 const WORKLOAD_KINDS = new Set([
   'Deployment', 'StatefulSet', 'DaemonSet', 'Job', 'CronJob', 'ReplicaSet',
 ])
 
+/** Kinds loaded from the catalog API when building a focus chain outside investigation. */
+export const FOCUS_CHAIN_KINDS = [
+  'Pod', 'Deployment', 'ReplicaSet', 'StatefulSet', 'DaemonSet', 'Job', 'CronJob',
+  'Service', 'Ingress', 'ConfigMap', 'Secret', 'PersistentVolumeClaim',
+]
+
+const FOCUS_CHAIN_KIND_SET = new Set(FOCUS_CHAIN_KINDS)
+
+function asArray(value) {
+  if (Array.isArray(value)) return value
+  if (value instanceof Set) return [...value]
+  return []
+}
+
+function focusEntityKey(kind, name, namespace = '') {
+  return buildInspectKey(kind, name, namespace) || matchKey({ kind, name })
+}
+
+function resolveFocusRef(focusRow) {
+  const parsed = parseInspectKey(focusRow?.key || '')
+  return {
+    kind: focusRow?.ref?.kind || parsed?.kind || focusRow?.kind,
+    name: focusRow?.ref?.name || parsed?.name || focusRow?.name,
+    namespace: focusRow?.ref?.namespace || focusRow?.namespace || parsed?.namespace || '',
+  }
+}
+
 /**
  * Expand a focused match into its workload realm: owner chain, related pods,
  * services, config/secrets referenced by those pods, and label-linked objects
- * available on the live snapshot.
+ * from the investigation snapshot and/or catalog rows.
  */
-export function buildFocusScope(view, focusRow) {
+export function buildFocusScope(view, focusRow, options = {}) {
   if (!focusRow?.ref) return emptyFocusScope()
 
-  const snap = view?.state?.snapshot || {}
+  const catalogRows = asArray(options.catalogRows)
+  const snap = mergeSnapshotSources(view?.state?.snapshot || {}, catalogRows)
+  if (!hasSnapshotData(snap)) {
+    return minimalFocusScope(focusRow)
+  }
+
+  return buildFocusScopeFromSnapshot(snap, focusRow)
+}
+
+function minimalFocusScope(focusRow) {
+  const focusRef = resolveFocusRef(focusRow)
+  const key = focusEntityKey(focusRef.kind, focusRef.name, focusRef.namespace)
+  return {
+    active: true,
+    focusKey: focusRow.key || key,
+    focusRef,
+    rootRef: focusRef,
+    relatedKeys: new Set([key]),
+    relatedKeysArr: [key],
+    relatedPodNames: new Set(),
+    relatedPodNamesArr: [],
+    relatedPodCount: 0,
+    label: `${focusRef.kind}/${focusRef.name}`,
+    relations: [],
+  }
+}
+
+function hasSnapshotData(snap) {
+  return Boolean(
+    snap.pods?.length
+    || snap.workloads?.length
+    || snap.services?.length
+    || snap.replicaSets?.length
+    || snap.ingresses?.length,
+  )
+}
+
+function mergeSnapshotSources(snapshot, catalogRows) {
+  const fromCatalog = catalogRowsToSnapshotShape(catalogRows)
+  return {
+    pods: mergeByName(snapshot.pods, fromCatalog.pods, (p) => p.name),
+    workloads: mergeByName(snapshot.workloads, fromCatalog.workloads, (w) => `${w.kind}/${w.name}`),
+    services: mergeByName(snapshot.services, fromCatalog.services, (s) => s.name),
+    replicaSets: mergeByName(snapshot.replicaSets, fromCatalog.replicaSets, (r) => r.name),
+    ingresses: mergeByName(snapshot.ingresses, fromCatalog.ingresses, (i) => i.name),
+  }
+}
+
+function mergeByName(primary, secondary, keyFn) {
+  const out = new Map()
+  for (const item of [...asArray(primary), ...asArray(secondary)]) {
+    if (!item) continue
+    const key = keyFn(item)
+    if (!key) continue
+    out.set(key, { ...(out.get(key) || {}), ...item })
+  }
+  return [...out.values()]
+}
+
+export function catalogRowsToSnapshotShape(catalogRows) {
+  const pods = []
+  const workloads = []
+  const services = []
+  const replicaSets = []
+  const ingresses = []
+
+  for (const row of asArray(catalogRows)) {
+    if (!row?.name) continue
+    const ns = row.namespace || row.ref?.namespace || ''
+    switch (row.kind) {
+      case 'Pod':
+        pods.push({
+          name: row.name,
+          namespace: ns,
+          ready: row.ready != null && row.total != null
+            ? row.ready >= row.total
+            : row.status === 'healthy',
+          restartCount: row.restartCount || 0,
+          ownerRefs: row.ownerKind && row.ownerName
+            ? [{ kind: row.ownerKind, name: row.ownerName }]
+            : [],
+        })
+        break
+      case 'Deployment':
+      case 'StatefulSet':
+      case 'DaemonSet':
+      case 'Job':
+      case 'CronJob':
+        workloads.push({
+          kind: row.kind,
+          name: row.name,
+          namespace: ns,
+          ready: row.readyReplicas ?? row.ready ?? 0,
+          replicas: row.desiredReplicas ?? row.total ?? row.currentReplicas ?? 0,
+        })
+        break
+      case 'ReplicaSet':
+        replicaSets.push({
+          name: row.name,
+          namespace: ns,
+          deploymentOwner: row.ownerKind === 'Deployment' ? row.ownerName : '',
+        })
+        break
+      case 'Service':
+        services.push({
+          name: row.name,
+          namespace: ns,
+          selector: row.selector || '',
+          readyEndpoints: row.readyEndpoints,
+          totalEndpoints: row.totalEndpoints,
+        })
+        break
+      case 'Ingress':
+        ingresses.push({
+          name: row.name,
+          namespace: ns,
+          backends: row.serviceName ? [row.serviceName] : [],
+        })
+        break
+      default:
+        break
+    }
+  }
+
+  return { pods, workloads, services, replicaSets, ingresses }
+}
+
+/** Resolve catalog kind groups used to populate a browse-mode focus chain. */
+export function focusChainKindGroups(catalog) {
+  const discovered = new Map()
+  const resources = [
+    ...(catalog?.resources || []),
+    ...(catalog?.namespaced || []),
+    ...(catalog?.extensions || []),
+    ...(catalog?.clusterScoped || []),
+  ]
+  for (const desc of resources) {
+    if (desc?.kind && desc?.id) discovered.set(desc.kind, desc)
+  }
+
+  const out = []
+  const seen = new Set()
+  for (const cat of BUILTIN_PRESENTATION) {
+    for (const entry of cat.resources) {
+      if (!FOCUS_CHAIN_KIND_SET.has(entry.kind) || seen.has(entry.kind)) continue
+      seen.add(entry.kind)
+      const desc = discovered.get(entry.kind)
+      out.push({
+        kind: entry.kind,
+        resourceId: desc?.id || defaultCatalogResourceId(entry),
+        namespaced: desc?.namespaced ?? defaultNamespaced(entry),
+      })
+    }
+  }
+  return out
+}
+
+function buildFocusScopeFromSnapshot(snap, focusRow) {
+  if (!focusRow?.ref) return emptyFocusScope()
   const pods = snap.pods || []
   const services = snap.services || []
   const workloads = snap.workloads || []
   const replicaSets = snap.replicaSets || []
   const ingresses = snap.ingresses || []
 
-  const focusRef = { kind: focusRow.ref.kind, name: focusRow.ref.name, namespace: focusRow.ref.namespace }
-  const relatedKeys = new Set([matchKey(focusRef)])
+  const focusRef = resolveFocusRef(focusRow)
+  const relatedKeys = new Set([focusEntityKey(focusRef.kind, focusRef.name, focusRef.namespace)])
   const relatedPodNames = new Set()
   const relations = [] // { key, via }
 
   const addKey = (kind, name, namespace, via) => {
     if (!kind || !name) return
-    const key = matchKey({ kind, name, namespace: namespace || focusRef.namespace })
+    const key = focusEntityKey(kind, name, namespace || focusRef.namespace)
     if (!relatedKeys.has(key)) {
       relatedKeys.add(key)
       if (via) relations.push({ key, via })
@@ -63,7 +249,7 @@ export function buildFocusScope(view, focusRow) {
 
   // ── 2) Workloads that own realm pods / match focus ──
   for (const w of workloads) {
-    const key = matchKey({ kind: w.kind, name: w.name, namespace: w.namespace || focusRef.namespace })
+    const key = focusEntityKey(w.kind, w.name, w.namespace || focusRef.namespace)
     if (w.kind === focusRef.kind && w.name === focusRef.name) {
       relatedKeys.add(key)
       continue
@@ -175,21 +361,23 @@ export function emptyFocusScope() {
 
 /** Rows for the matched list while drilled: focus chain only. */
 export function buildChainRows(view, focusScope, existingRows = []) {
-  if (!focusScope?.active) return existingRows
+  const baseRows = asArray(existingRows)
+  if (!focusScope?.active) return baseRows
 
-  const byKey = new Map(existingRows.map((r) => [r.key, r]))
+  const byKey = new Map(baseRows.map((r) => [r.key, r]))
   const snap = view?.state?.snapshot || {}
   const keys = focusScope.relatedKeysArr?.length
     ? focusScope.relatedKeysArr
-    : [...(focusScope.relatedKeys || [])]
+    : asArray(focusScope.relatedKeys)
 
   // Prefer stable order: focus root, other workloads, services, pods, config…
   const ordered = sortChainKeys(keys, focusScope.focusKey)
 
   const rows = []
   for (const key of ordered) {
-    if (byKey.has(key)) {
-      rows.push({ ...byKey.get(key), inFocusChain: true })
+    const existing = lookupChainRow(key, byKey)
+    if (existing) {
+      rows.push({ ...existing, inFocusChain: true })
       continue
     }
     const synthesized = synthesizeRow(key, snap, focusScope)
@@ -197,18 +385,52 @@ export function buildChainRows(view, focusScope, existingRows = []) {
   }
 
   // Always include focus row even if missing from snapshot enrichment
-  if (focusScope.focusKey && !rows.some((r) => r.key === focusScope.focusKey)) {
-    const focusExisting = byKey.get(focusScope.focusKey)
+  if (focusScope.focusKey && !rows.some((r) => rowKeysMatch(r.key, focusScope.focusKey))) {
+    const focusExisting = lookupChainRow(focusScope.focusKey, byKey)
     if (focusExisting) rows.unshift({ ...focusExisting, inFocusChain: true })
+    else {
+      const synthesized = synthesizeRow(focusScope.focusKey, snap, focusScope)
+      if (synthesized) rows.unshift(synthesized)
+    }
   }
 
   return rows
 }
 
+function rowKeysMatch(a, b) {
+  if (!a || !b) return false
+  if (a === b) return true
+  const pa = parseInspectKey(a)
+  const pb = parseInspectKey(b)
+  return Boolean(pa && pb && pa.kind === pb.kind && pa.name === pb.name
+    && (pa.namespace || '') === (pb.namespace || ''))
+}
+
+function lookupChainRow(key, byKey) {
+  if (byKey.has(key)) return byKey.get(key)
+  const parsed = parseInspectKey(key)
+  if (!parsed) return null
+  const candidates = [
+    buildInspectKey(parsed.kind, parsed.name, parsed.namespace),
+    buildInspectKey(parsed.kind, parsed.name, ''),
+    `${parsed.kind}/${parsed.name}`,
+  ].filter(Boolean)
+  for (const candidate of candidates) {
+    if (byKey.has(candidate)) return byKey.get(candidate)
+  }
+  for (const row of byKey.values()) {
+    if (row.kind === parsed.kind && row.name === parsed.name) return row
+  }
+  return null
+}
+
 function synthesizeRow(key, snap, focusScope) {
-  const [kind, ...rest] = key.split('/')
-  const name = rest.join('/')
+  const parsed = parseInspectKey(key)
+  const kind = parsed?.kind || key.split('/')[0]
+  const name = parsed?.name || key.split('/').slice(1).join('/')
+  const namespace = parsed?.namespace || focusScope.focusRef?.namespace || ''
   if (!kind || !name) return null
+  const rowKey = buildInspectKey(kind, name, namespace) || key
 
   const pods = snap.pods || []
   const workloads = snap.workloads || []
@@ -253,12 +475,13 @@ function synthesizeRow(key, snap, focusScope) {
   }
 
   return {
-    key,
-    ref: { kind, name, namespace: focusScope.focusRef?.namespace },
+    key: rowKey,
+    ref: { kind, name, namespace },
     score: 0,
     matchBy: 'focus-chain',
     kind,
     name,
+    namespace,
     kindBadge: kindBadge(kind),
     ready,
     total,
@@ -396,7 +619,7 @@ function resolveRoot(focusRef, relatedKeys, workloads) {
     return focusRef
   }
   for (const w of workloads) {
-    const key = matchKey({ kind: w.kind, name: w.name })
+    const key = focusEntityKey(w.kind, w.name, w.namespace || focusRef.namespace)
     if (relatedKeys.has(key) && (w.kind === 'Deployment' || w.kind === 'StatefulSet' || w.kind === 'DaemonSet')) {
       return { kind: w.kind, name: w.name, namespace: w.namespace || focusRef.namespace }
     }
@@ -413,7 +636,11 @@ function namesRelated(a, b) {
 
 export function focusMetrics(view, focusScope) {
   const pods = view?.state?.snapshot?.pods || []
-  const names = new Set(focusScope?.relatedPodNamesArr || [...(focusScope?.relatedPodNames || [])])
+  const names = new Set(
+    focusScope?.relatedPodNamesArr?.length
+      ? focusScope.relatedPodNamesArr
+      : asArray(focusScope?.relatedPodNames),
+  )
   if (!names.size) {
     return { ready: null, total: null, restarts: null, endpointsReady: null, endpointsTotal: null }
   }
@@ -423,7 +650,11 @@ export function focusMetrics(view, focusScope) {
   const restarts = scoped.reduce((n, p) => n + (p.restartCount || 0), 0)
 
   const services = view?.state?.snapshot?.services || []
-  const keys = new Set(focusScope?.relatedKeysArr || [...(focusScope?.relatedKeys || [])])
+  const keys = new Set(
+    focusScope?.relatedKeysArr?.length
+      ? focusScope.relatedKeysArr
+      : asArray(focusScope?.relatedKeys),
+  )
   let endpointsReady = null
   let endpointsTotal = null
   for (const svc of services) {

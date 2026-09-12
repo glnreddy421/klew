@@ -102,6 +102,7 @@ export function MainContent({
 
   const timeWindowLabel = prefs?.windowMin ? `Last ${prefs.windowMin}m` : 'Last 15m'
   const live = running && prefs?.autoRefresh !== false
+  const investigationActive = running || starting
 
   const handleNavigate = (target) => {
     onNavigate?.(target)
@@ -170,6 +171,7 @@ export function MainContent({
             cluster={cluster}
             clusterStatus={clusterStatus}
             running={running}
+            investigationActive={investigationActive}
             syncing={syncing}
             collecting={overviewCollecting}
             inspectRow={inspectRow}
@@ -185,6 +187,8 @@ export function MainContent({
           <PatternsView
             view={view}
             running={running}
+            investigationActive={investigationActive}
+            onNavigate={handleNavigate}
             onFilterLogs={onFilterLogsFromPatterns}
             onOpenEvidence={onOpenEvidence}
             explorerFilter={explorerFilters?.patterns}
@@ -209,6 +213,8 @@ export function MainContent({
         {tab === 'failures' && (
           <FailuresView
             view={view}
+            investigationActive={investigationActive}
+            onNavigate={handleNavigate}
             onOpenEvidence={onOpenEvidence}
             explorerFilter={explorerFilters?.failures}
           />
@@ -216,6 +222,8 @@ export function MainContent({
         {tab === 'evidence' && (
           <EvidenceView
             view={view}
+            investigationActive={investigationActive}
+            onNavigate={handleNavigate}
             onFilterLogs={onFilterLogsFromPatterns}
             explorerFilter={explorerFilters?.evidence}
           />
@@ -237,6 +245,7 @@ export function MainContent({
     resourcesWrap: tab === 'resources' ? {
       view,
       cluster,
+      clusterStatus,
       catalog: resourcesCatalog.catalog,
       rows: resourcesCatalog.allRows,
       catalogLoading: resourcesCatalog.loading,

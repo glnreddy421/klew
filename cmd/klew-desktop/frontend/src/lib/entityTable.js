@@ -397,7 +397,7 @@ function nodeTableFields(row, tableKind) {
   return {
     roles: displayOrDash(nr.roles || row.tableFields?.roles),
     version: displayOrDash(nr.kubeletVersion || row.tableFields?.version),
-    taints: nr.taintCount ?? row.tableFields?.taints ?? '—',
+    taints: nr.taintsSummary || row.tableFields?.taints || (nr.taintCount != null ? String(nr.taintCount) : '—'),
     nodeReady: nr.ready,
     conditions: readyLabel,
   }
@@ -541,6 +541,13 @@ function daemonSetTableFields(row) {
   return resolveDaemonSetCounts(row)
 }
 
+function formatJobDuration(row) {
+  if (row.jobDuration) return row.jobDuration
+  const fromTable = row.tableFields?.duration
+  if (fromTable) return displayOrDash(fromTable)
+  return '—'
+}
+
 function jobTableFields(row) {
   if (row.kind !== 'Job') return {}
   const conditions = resolveJobConditions(row)
@@ -548,6 +555,7 @@ function jobTableFields(row) {
     completions: formatJobCompletions(row),
     conditions: formatJobConditions(conditions),
     conditionsDetail: conditions,
+    duration: formatJobDuration(row),
   }
 }
 
@@ -758,13 +766,19 @@ export function enrichEntityForTable(row, pods = [], tableKind = '') {
       controlledByTitle: owner.title,
       qos: row.qosClass || '—',
       cpu: isNodeRow
-        ? '—'
-        : (aggregateContainerResource(pod?.containers, 'limitsCPU')
-          || aggregateContainerResource(pod?.containers, 'requestsCPU')),
+        ? (nodeFields.cpu || '—')
+        : (catalogFields.cpu && catalogFields.cpu !== '—'
+          ? catalogFields.cpu
+          : (aggregateContainerResource(pod?.containers, 'limitsCPU')
+            || aggregateContainerResource(pod?.containers, 'requestsCPU')
+            || '—')),
       memory: isNodeRow
-        ? '—'
-        : (aggregateContainerResource(pod?.containers, 'limitsMem')
-          || aggregateContainerResource(pod?.containers, 'requestsMem')),
+        ? (nodeFields.memory || '—')
+        : (catalogFields.memory && catalogFields.memory !== '—'
+          ? catalogFields.memory
+          : (aggregateContainerResource(pod?.containers, 'limitsMem')
+            || aggregateContainerResource(pod?.containers, 'requestsMem')
+            || '—')),
       statusLabel: isNodeRow
         ? (nodeFields.conditions !== '—' ? nodeFields.conditions : statusLabelForRow(row, pod))
         : statusLabelForRow(row, pod),
@@ -774,6 +788,170 @@ export function enrichEntityForTable(row, pods = [], tableKind = '') {
 
 export function enrichEntitiesForTable(entities, pods = [], tableKind = '') {
   return (entities || []).map((row) => enrichEntityForTable(row, pods, tableKind))
+}
+
+const NUMERIC_SORT_COLUMNS = new Set([
+  'restarts',
+  'active',
+  'desired',
+  'current',
+  'ready',
+  'replicas',
+  'updated',
+  'available',
+  'misscheduled',
+  'minPods',
+  'maxPods',
+  'allowedDisruptions',
+  'keys',
+  'revision',
+])
+
+const FRACTION_SORT_COLUMNS = new Set(['pods', 'completions', 'hpaReplicas'])
+
+function isEmptySortValue(value) {
+  if (value == null) return true
+  if (value === '' || value === '—') return true
+  if (typeof value === 'number' && Number.isNaN(value)) return true
+  return false
+}
+
+export function parseSortNumber(value) {
+  if (value == null || value === '' || value === '—') return null
+  const n = Number(String(value).replace(/,/g, ''))
+  return Number.isFinite(n) ? n : null
+}
+
+export function parseSortFraction(value) {
+  const match = String(value || '').match(/(\d+)\s*\/\s*(\d+)/)
+  if (!match) return null
+  return { primary: Number(match[1]), secondary: Number(match[2]) }
+}
+
+export function parseSortDuration(value) {
+  if (!value || value === '—') return null
+  const match = String(value).trim().match(/^(\d+)([smhd])$/)
+  if (!match) return null
+  const amount = Number(match[1])
+  const unit = match[2]
+  const multiplier = { s: 1, m: 60, h: 3600, d: 86400 }[unit]
+  return amount * multiplier
+}
+
+function parseSortBoolean(value) {
+  const normalized = String(value || '').toLowerCase()
+  if (normalized === 'true') return 1
+  if (normalized === 'false') return 0
+  return null
+}
+
+function parseDataKeysCount(value) {
+  if (!value || value === '—') return null
+  const match = String(value).match(/^(\d+)\s+key/)
+  if (!match) return null
+  return Number(match[1])
+}
+
+function compareFractionValues(a, b) {
+  if (!a && !b) return 0
+  if (!a) return 1
+  if (!b) return -1
+  const primary = a.primary - b.primary
+  if (primary !== 0) return primary
+  return a.secondary - b.secondary
+}
+
+function compareSortValues(a, b) {
+  if (isEmptySortValue(a) && isEmptySortValue(b)) return 0
+  if (isEmptySortValue(a)) return 1
+  if (isEmptySortValue(b)) return -1
+
+  if (typeof a === 'object' && a && 'primary' in a) {
+    return compareFractionValues(a, b)
+  }
+
+  if (typeof a === 'number' && typeof b === 'number') return a - b
+
+  return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' })
+}
+
+/** Comparable value for a table column (used for sorting). */
+export function tableSortValue(row, columnId) {
+  const table = row.table || {}
+
+  switch (columnId) {
+    case 'name':
+      return row.name || ''
+    case 'age': {
+      const ms = Date.parse(row.creationTimestamp)
+      if (!Number.isFinite(ms)) return null
+      return Math.max(0, Math.floor((Date.now() - ms) / 1000))
+    }
+    case 'lastSchedule': {
+      const raw = row.lastScheduleTime
+      const parsed = typeof raw === 'object' ? raw?.time || raw?.Time : raw
+      const ms = Date.parse(parsed)
+      if (!Number.isFinite(ms)) return null
+      return Math.max(0, Math.floor((Date.now() - ms) / 1000))
+    }
+    case 'updated':
+      if (row.kind === 'HelmRelease') {
+        const raw = row.tableFields?.updated || row.creationTimestamp
+        const ms = Date.parse(raw)
+        return Number.isFinite(ms) ? ms : tableCellValue(row, columnId)
+      }
+      if (NUMERIC_SORT_COLUMNS.has(columnId)) {
+        return parseSortNumber(tableCellValue(row, columnId))
+      }
+      return tableCellValue(row, columnId)
+    case 'duration':
+      return parseSortDuration(tableCellValue(row, columnId))
+    case 'suspend':
+    case 'defaultClass':
+      return parseSortBoolean(tableCellValue(row, columnId))
+    case 'containers':
+      return table.containers?.length ?? parseSortNumber(tableCellValue(row, columnId))
+    case 'dataKeys':
+      return parseDataKeysCount(table.dataKeys) ?? parseSortNumber(tableCellValue(row, columnId))
+    case 'cpu':
+      if (row.kind === 'Node') return row.nodeResources?.allocatableCpuMilli ?? null
+      return tableCellValue(row, columnId)
+    case 'memory':
+      if (row.kind === 'Node') return row.nodeResources?.allocatableMemoryBytes ?? null
+      return tableCellValue(row, columnId)
+    case 'disk':
+      if (row.kind === 'Node') return row.nodeResources?.allocatableDiskBytes ?? null
+      return tableCellValue(row, columnId)
+    case 'taints':
+      if (row.kind === 'Node') return row.nodeResources?.taintCount ?? parseSortNumber(table.taints)
+      return tableCellValue(row, columnId)
+    default:
+      break
+  }
+
+  if (NUMERIC_SORT_COLUMNS.has(columnId)) {
+    return parseSortNumber(tableCellValue(row, columnId))
+  }
+
+  if (FRACTION_SORT_COLUMNS.has(columnId)) {
+    return parseSortFraction(tableCellValue(row, columnId))
+  }
+
+  return tableCellValue(row, columnId)
+}
+
+/** Compare two enriched table rows for a column. */
+export function compareTableRows(a, b, columnId, direction = 'asc') {
+  const cmp = compareSortValues(tableSortValue(a, columnId), tableSortValue(b, columnId))
+  const ordered = direction === 'desc' ? -cmp : cmp
+  if (ordered !== 0) return ordered
+  return String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' })
+}
+
+/** Sort enriched entity rows by a visible column. */
+export function sortEntitiesForTable(rows, columnId, direction = 'asc') {
+  if (!rows?.length || !columnId) return rows || []
+  return [...rows].sort((a, b) => compareTableRows(a, b, columnId, direction))
 }
 
 export function tableCellValue(row, columnId) {
@@ -821,6 +999,8 @@ export function tableCellValue(row, columnId) {
       return t.misscheduled ?? '—'
     case 'completions':
       return t.completions ?? '—'
+    case 'duration':
+      return t.duration ?? '—'
     case 'schedule':
       return t.schedule ?? '—'
     case 'suspend':
@@ -901,6 +1081,12 @@ export function tableCellValue(row, columnId) {
       return t.allowedDisruptions ?? '—'
     case 'holder':
       return t.holder ?? '—'
+    case 'nodeSelector':
+      return t.nodeSelector ?? '—'
+    case 'tolerations':
+      return t.tolerations ?? t.tolerationsSummary ?? '—'
+    case 'affinity':
+      return t.affinity ?? '—'
     default:
       return t[columnId] ?? '—'
   }

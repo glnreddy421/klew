@@ -88,6 +88,7 @@ type CatalogEntity struct {
 	Misscheduled        *int32             `json:"misscheduled,omitempty"`
 	Succeeded           *int32             `json:"succeeded,omitempty"`
 	Completions         *int32             `json:"completions,omitempty"`
+	JobDuration         string             `json:"jobDuration,omitempty"`
 	Schedule            string             `json:"schedule,omitempty"`
 	Suspend             *bool              `json:"suspend,omitempty"`
 	ActiveJobs          *int32             `json:"activeJobs,omitempty"`
@@ -132,16 +133,59 @@ type CatalogEntity struct {
 	ConfigMapData         []CatalogDataEntry `json:"configMapData,omitempty"`
 	LeaseHolder           string                 `json:"leaseHolder,omitempty"`
 	NodeResources         *NodeCatalogResources  `json:"nodeResources,omitempty"`
+	Scheduling            *CatalogScheduling     `json:"scheduling,omitempty"`
+	CPUUsageMilli         *int64                 `json:"cpuUsageMilli,omitempty"`
+	MemUsageMi            *int64                 `json:"memUsageMi,omitempty"`
+	CPURequestMilli       *int64                 `json:"cpuRequestMilli,omitempty"`
+	CPULimitMilli         *int64                 `json:"cpuLimitMilli,omitempty"`
+	MemRequestMi          *int64                 `json:"memRequestMi,omitempty"`
+	MemLimitMi            *int64                 `json:"memLimitMi,omitempty"`
 	TableFields           map[string]string      `json:"tableFields,omitempty"`
 	HelmStorageKind       string                 `json:"helmStorageKind,omitempty"`
 	HelmStorageName       string                 `json:"helmStorageName,omitempty"`
+}
+
+// CatalogScheduling holds structured scheduling fields for catalog tables.
+type CatalogScheduling struct {
+	NodeSelector []CatalogKVPair           `json:"nodeSelector,omitempty"`
+	Tolerations  []CatalogTolerationRow    `json:"tolerations,omitempty"`
+	Affinity     []CatalogAffinityRuleRow  `json:"affinity,omitempty"`
+	Taints       []CatalogTaintRow         `json:"taints,omitempty"`
+}
+
+type CatalogKVPair struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
+type CatalogTolerationRow struct {
+	Key      string `json:"key"`
+	Operator string `json:"operator,omitempty"`
+	Value    string `json:"value,omitempty"`
+	Effect   string `json:"effect,omitempty"`
+	Seconds  string `json:"seconds,omitempty"`
+}
+
+type CatalogTaintRow struct {
+	Key    string `json:"key"`
+	Value  string `json:"value,omitempty"`
+	Effect string `json:"effect,omitempty"`
+}
+
+type CatalogAffinityRuleRow struct {
+	Type       string `json:"type"`
+	Weight     string `json:"weight,omitempty"`
+	Topology   string `json:"topology,omitempty"`
+	Namespaces string `json:"namespaces,omitempty"`
+	Match      string `json:"match,omitempty"`
 }
 
 // NodeCatalogResources holds Node list/inspector fields from status.capacity/allocatable.
 type NodeCatalogResources struct {
 	Roles                  string `json:"roles,omitempty"`
 	KubeletVersion         string `json:"kubeletVersion,omitempty"`
-	TaintCount             *int32 `json:"taintCount,omitempty"`
+	TaintCount             *int32  `json:"taintCount,omitempty"`
+	TaintsSummary          string  `json:"taintsSummary,omitempty"`
 	CapacityCPUMilli       *int64 `json:"capacityCpuMilli,omitempty"`
 	AllocatableCPUMilli    *int64 `json:"allocatableCpuMilli,omitempty"`
 	CapacityMemoryBytes    *int64 `json:"capacityMemoryBytes,omitempty"`

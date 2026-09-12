@@ -1,6 +1,7 @@
 import { KindIcon } from '../KindIcon'
 import { formatReady } from '../../lib/matches'
-import { kindDisplayLabel } from '../../lib/resourceCatalog.js'
+import { isAccessDenied, isUnavailable, kindDisplayLabel } from '../../lib/resourceCatalog.js'
+import { LoadingState } from '../LoadingSpinner.jsx'
 import { ResourceAccessPanel } from './ResourceAccessPanel.jsx'
 
 function EmptyEntityState({ label, hasSearch }) {
@@ -88,13 +89,7 @@ export function EntityList({
   const accessBlocked = !chainMode
     && entities.length === 0
     && !entitiesLoading
-    && (
-      kindGroup?.accessState === 'forbidden'
-      || kindGroup?.countState?.state === 'forbidden'
-      || (!kindGroup?.discovered && kindGroup?.builtin && !kindGroup?.discoveredOnly)
-      || kindGroup?.accessState === 'unavailable'
-      || kindGroup?.countState?.state === 'unavailable'
-    )
+    && (isAccessDenied(kindGroup) || isUnavailable(kindGroup))
 
   return (
     <section className="entity-list" aria-label={`${label} entities`}>
@@ -116,7 +111,7 @@ export function EntityList({
         ) : (
           <>
             {entitiesLoading && (
-              <p className="entity-list-loading">Loading…</p>
+              <LoadingState message="Loading resources…" compact className="entity-list-loading" />
             )}
             {!entitiesLoading && list.length > 0 && (
               <ul className="entity-list-rows">

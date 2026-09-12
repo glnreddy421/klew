@@ -50,6 +50,9 @@ func TestEnrichNodeCatalogEntity(t *testing.T) {
 	if entity.NodeResources.TaintCount == nil || *entity.NodeResources.TaintCount != 1 {
 		t.Fatalf("taints = %v", entity.NodeResources.TaintCount)
 	}
+	if entity.NodeResources.TaintsSummary == "" {
+		t.Fatalf("taints summary missing")
+	}
 	if entity.NodeResources.Ready == nil || !*entity.NodeResources.Ready {
 		t.Fatalf("ready = %v", entity.NodeResources.Ready)
 	}

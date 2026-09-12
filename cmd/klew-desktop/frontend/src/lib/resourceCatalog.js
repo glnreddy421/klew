@@ -372,7 +372,9 @@ export function applyLazyCountsToTree(tree, lazyCountsByResourceId) {
   const categories = tree.categories.map((cat) => {
     const kinds = cat.kinds.map((kindGroup) => {
       const patch = kindGroup.resourceId && lazyCountsByResourceId[kindGroup.resourceId]
-      if (!patch || kindGroup.matchCount > 0) return kindGroup
+      if (!patch) return kindGroup
+      const terminalAccess = patch.accessState === 'forbidden' || patch.accessState === 'unavailable'
+      if (!terminalAccess && kindGroup.matchCount > 0) return kindGroup
       if (patch.accessState === 'forbidden') {
         return {
           ...kindGroup,
@@ -464,11 +466,11 @@ export function getKindCountDisplay(kindGroup) {
   const access = kindGroup.accessState
   const cs = kindGroup.countState
 
-  if (kindGroup.matchCount != null && kindGroup.matchCount > 0) {
-    return { label: String(kindGroup.matchCount), className: 'count-active' }
-  }
   if (access === 'forbidden' || cs?.state === 'forbidden') {
     return { label: '', className: 'count-denied', title: 'Access denied' }
+  }
+  if (kindGroup.matchCount != null && kindGroup.matchCount > 0) {
+    return { label: String(kindGroup.matchCount), className: 'count-active' }
   }
   if (cs?.state === 'loaded') {
     return {
@@ -611,6 +613,7 @@ export function catalogEntityToRow(entity, fallbackKind) {
     misscheduled: entity.misscheduled,
     succeeded: entity.succeeded,
     completions: entity.completions,
+    jobDuration: entity.jobDuration || '',
     schedule: entity.schedule || '',
     suspend: entity.suspend,
     activeJobs: entity.activeJobs,
@@ -655,6 +658,13 @@ export function catalogEntityToRow(entity, fallbackKind) {
     pdbDisruptionsAllowed: entity.pdbDisruptionsAllowed,
     leaseHolder: entity.leaseHolder || '',
     nodeResources: entity.nodeResources || null,
+    scheduling: entity.scheduling || null,
+    cpuUsageMilli: entity.cpuUsageMilli,
+    memUsageMi: entity.memUsageMi,
+    cpuRequestMilli: entity.cpuRequestMilli,
+    cpuLimitMilli: entity.cpuLimitMilli,
+    memRequestMi: entity.memRequestMi,
+    memLimitMi: entity.memLimitMi,
     tableFields: entity.tableFields || {},
     helmStorageKind: entity.helmStorageKind || '',
     helmStorageName: entity.helmStorageName || '',

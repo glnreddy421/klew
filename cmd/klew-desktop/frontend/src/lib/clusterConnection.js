@@ -106,19 +106,28 @@ function contextLabel(cluster) {
   return cluster?.selectedContext || cluster?.currentContext || 'cluster'
 }
 
+export function activeContextLabel(cluster, { connecting = false, connectingTarget = null } = {}) {
+  if (connecting && connectingTarget?.kind === 'context' && connectingTarget.name) {
+    return connectingTarget.name
+  }
+  return contextLabel(cluster)
+}
+
 export function deriveConnectionState({
   cluster,
   syncing = false,
   connecting = false,
+  connectingTarget = null,
   clusterStatus = null,
   statusLoading = false,
   retryAttempt = 0,
   retryInSec = 0,
   autoRetryExhausted = false,
   maxRetries = 5,
+  dismissed = false,
 }) {
   const context = cluster?.selectedContext || cluster?.currentContext || ''
-  const label = contextLabel(cluster)
+  const label = activeContextLabel(cluster, { connecting, connectingTarget })
   const classified = classifyConnectionError(
     String(cluster?.syncError || '').trim() || String(clusterStatus?.error || '').trim(),
   )
@@ -128,15 +137,32 @@ export function deriveConnectionState({
   }
 
   if (syncing || connecting || (statusLoading && !clusterStatus && !String(cluster?.syncError || '').trim())) {
+    const switchingContext = connecting && connectingTarget?.kind === 'context' && connectingTarget.name
+    const switchingNamespace = connecting && connectingTarget?.kind === 'namespace' && connectingTarget.name
+    const message = switchingContext
+      ? `Switching to ${label}…`
+      : switchingNamespace
+        ? `Switching to namespace ${connectingTarget.name}…`
+        : (connecting ? `Switching to ${label}…` : 'Checking cluster connection…')
+
+    if (dismissed) {
+      return {
+        phase: 'connecting',
+        showBanner: false,
+        title: `Connecting to ${label}`,
+        message,
+        tone: 'info',
+      }
+    }
+
     return {
       phase: 'connecting',
       showBanner: true,
       title: `Connecting to ${label}`,
-      message: connecting
-        ? `Switching to ${label}…`
-        : 'Checking cluster connection…',
+      message,
       tone: 'info',
       showRetry: false,
+      showDismiss: true,
     }
   }
 
@@ -147,6 +173,16 @@ export function deriveConnectionState({
       retryAttempt,
       maxRetries,
     })
+
+    if (dismissed) {
+      return {
+        phase: 'disconnected',
+        showBanner: false,
+        title: `${label} disconnected`,
+        message,
+        tone: 'error',
+      }
+    }
 
     if (retryInSec > 0 && !autoRetryExhausted) {
       return {
@@ -163,6 +199,7 @@ export function deriveConnectionState({
         showRetry: true,
         retryLabel: 'Reconnect now',
         showSettings: true,
+        showDismiss: true,
       }
     }
 
@@ -182,6 +219,7 @@ export function deriveConnectionState({
       showRetry: true,
       retryLabel: autoRetryExhausted ? 'Try again' : 'Reconnect now',
       showSettings: true,
+      showDismiss: true,
     }
   }
 

@@ -15,6 +15,8 @@ export function DiscoverMatches(arg1:main.DiscoverOptions):Promise<Array<model.M
 
 export function GetAppInfo():Promise<version.Info>;
 
+export function GetBrowseMetrics(arg1:main.GetBrowseMetricsOptions):Promise<kube.BrowseMetricsResult>;
+
 export function GetCluster():Promise<kube.ClusterState>;
 
 export function GetClusterStatus():Promise<kube.ClusterStatus>;

@@ -20,7 +20,7 @@ func (clusterRoleProvider) Build(ctx context.Context, req *Request) (*ObjectDeta
 		Summary:  fields("Rules", fmtInt32(int32(len(cr.Rules)))),
 	}
 	var sections []Section
-	sections = append(sections, sectionFields("status", "Status", GroupStatus, fields(
+	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields(
 		"Rules", fmtInt32(int32(len(cr.Rules))),
 		"Aggregation", boolStr(cr.AggregationRule != nil),
 	)))

@@ -15,6 +15,7 @@ function loadCollapsed() {
 function saveCollapsed(value) {
   try {
     localStorage.setItem(COLLAPSE_KEY, value ? '1' : '0')
+    import('../../lib/settingsCache.js').then((m) => m.queueSettingsCacheSync()).catch(() => {})
   } catch {
     // ignore
   }

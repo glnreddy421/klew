@@ -8,6 +8,7 @@ import {
   patternFilterDescription,
   resolvePatternTabKind,
 } from '../lib/patternFilters'
+import { InvestigationSurfaceGuide } from '../components/incident/InvestigationSurfaceGuide.jsx'
 
 const KINDS = [
   { id: 'logs', label: 'Log Patterns', hint: 'Templates and top words from container logs' },
@@ -20,6 +21,8 @@ const KINDS = [
 export function PatternsView({
   view,
   running = false,
+  investigationActive = false,
+  onNavigate,
   onFilterLogs,
   onOpenEvidence,
   explorerFilter,
@@ -65,6 +68,14 @@ export function PatternsView({
 
   function clearExplorerFilter() {
     onExplorerFilterChange?.({ kind: null, signal: null })
+  }
+
+  if (!investigationActive) {
+    return (
+      <div className="inv-page patterns-page">
+        <InvestigationSurfaceGuide surfaceId="patterns" onNavigate={onNavigate} />
+      </div>
+    )
   }
 
   return (

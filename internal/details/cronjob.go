@@ -22,19 +22,23 @@ func (cronJobProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, 
 	if cj.Status.LastScheduleTime != nil {
 		last = fmtTime(cj.Status.LastScheduleTime)
 	}
+	jobRows := jobsForCronJob(ctx, req, cj.Name)
+	podRows := podsForCronJobFromJobs(ctx, req, jobRows)
+	summaryPairs := appendSchedulingSummaryPairs(appendPodSummaryFields([]string{
+		"Schedule", cj.Spec.Schedule,
+		"Suspend", boolStr(suspended),
+		"Last Schedule", last,
+		"Active Jobs", fmtInt32(int32(len(cj.Status.Active))),
+	}, podRows), cj.Spec.JobTemplate.Spec.Template.Spec)
+
 	detail := &ObjectDetail{
 		Title:    "CronJob/" + cj.Name,
 		Category: "workload",
 		Status:   StatusBadge{Tone: tone, Label: label},
-		Summary: fields(
-			"Schedule", cj.Spec.Schedule,
-			"Suspend", boolStr(suspended),
-			"Last Schedule", last,
-			"Active Jobs", fmtInt32(int32(len(cj.Status.Active))),
-		),
+		Summary:  fields(summaryPairs...),
 	}
 	var sections []Section
-	sections = append(sections, sectionFields("status", "Status", GroupStatus, fields(
+	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields(
 		"Last Schedule", last,
 		"Last Successful", fmtTime(cj.Status.LastSuccessfulTime),
 		"Active Jobs", fmtInt32(int32(len(cj.Status.Active))),
@@ -51,16 +55,44 @@ func (cronJobProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, 
 		"Successful Jobs History", fmtInt32Ptr(cj.Spec.SuccessfulJobsHistoryLimit),
 		"Failed Jobs History", fmtInt32Ptr(cj.Spec.FailedJobsHistoryLimit),
 	)))
-	if len(cj.Status.Active) > 0 {
+	if ownerSec := ownerRefsRelationshipSection(cj.OwnerReferences, cj.Namespace); !ownerSec.Empty() {
+		sections = append(sections, ownerSec)
+	}
+	if len(jobRows) > 0 {
+		sections = append(sections, sectionTable("jobs", "Jobs", GroupRelationships,
+			[]string{"Name", "Active", "Succeeded", "Failed", "Start Time"}, jobRows))
+	} else if len(cj.Status.Active) > 0 {
 		var rows [][]string
 		for _, a := range cj.Status.Active {
 			rows = append(rows, []string{a.Kind, a.Name, a.Namespace})
 		}
 		sections = append(sections, sectionTable("activeJobs", "Active Jobs", GroupRelationships,
 			[]string{"Kind", "Name", "Namespace"}, rows))
+	} else {
+		note := "No Jobs found yet — they appear here after the next scheduled run."
+		if last != "" {
+			note = "No active Jobs. Last schedule: " + last + ". Completed Jobs appear here after each run."
+		}
+		sections = append(sections, Section{
+			ID:    "jobs",
+			Title: "Jobs",
+			Group: GroupRelationships,
+			Notes: []string{note},
+		})
+	}
+	if len(podRows) > 0 {
+		sections = append(sections, sectionTable("pods", "Pods", GroupRelationships,
+			[]string{"Name", "Phase", "Ready"}, podRows))
+	} else if len(jobRows) > 0 {
+		sections = append(sections, Section{
+			ID:    "pods",
+			Title: "Pods",
+			Group: GroupRelationships,
+			Notes: []string{"Pods for CronJob Jobs could not be listed — check RBAC for pods/list in this namespace."},
+		})
 	}
 	sections = append(sections, podTemplateSections(&cj.Spec.JobTemplate.Spec.Template, GroupSpec)...)
-	sections = append(sections, metaSections(cj.Labels, cj.Annotations, ownerRefsFromMeta(cj.OwnerReferences, cj.Namespace))...)
+	sections = append(sections, labelsAnnotationsSections(cj.Labels, cj.Annotations)...)
 	if mf := managedFieldsSection(cj.ManagedFields); !mf.Empty() {
 		sections = append(sections, mf)
 	}

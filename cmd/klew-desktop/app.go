@@ -535,6 +535,46 @@ func (a *App) ListCatalogEntities(opts ListCatalogEntitiesOptions) (model.Catalo
 	})
 }
 
+// GetBrowseMetricsOptions configures scope-level CPU/memory usage from metrics-server.
+type GetBrowseMetricsOptions struct {
+	Namespace     string   `json:"namespace"`
+	AllNamespaces  bool     `json:"allNamespaces"`
+	Namespaces     []string `json:"namespaces"`
+	Kubeconfig     string   `json:"kubeconfig"`
+	Context        string   `json:"context"`
+}
+
+// GetBrowseMetrics returns aggregated live pod usage for the browse scope.
+func (a *App) GetBrowseMetrics(opts GetBrowseMetricsOptions) (kube.BrowseMetricsResult, error) {
+	client, ns, err := a.resolveCatalogClient(CatalogOptions{
+		Namespace:     opts.Namespace,
+		AllNamespaces: opts.AllNamespaces,
+		Namespaces:    opts.Namespaces,
+		Kubeconfig:    opts.Kubeconfig,
+		Context:       opts.Context,
+	})
+	if err != nil {
+		return kube.BrowseMetricsResult{}, err
+	}
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	listNS := ns
+	if opts.Namespace != "" {
+		listNS = opts.Namespace
+	} else if len(opts.Namespaces) == 1 {
+		listNS = opts.Namespaces[0]
+	} else if opts.AllNamespaces || len(opts.Namespaces) > 1 {
+		listNS = ""
+	}
+	return kube.CollectBrowseMetrics(ctx, client, kube.CatalogEntityScope{
+		Namespace:     listNS,
+		AllNamespaces: opts.AllNamespaces,
+		Namespaces:    opts.Namespaces,
+	}), nil
+}
+
 // ResourceManifestOptions configures read-only kubectl get -o yaml for the inspector.
 type ResourceManifestOptions struct {
 	ResourceID    string `json:"resourceId"`

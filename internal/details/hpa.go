@@ -32,10 +32,10 @@ func (hpaProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, erro
 		),
 	}
 	var sections []Section
-	sections = append(sections, sectionFields("currentReplicas", "Current Replicas", GroupStatus, fields(
+	sections = append(sections, sectionFields("currentReplicas", "Current Replicas", GroupSummary, fields(
 		"Current", fmtInt32(hpa.Status.CurrentReplicas),
 	)))
-	sections = append(sections, sectionFields("desiredReplicas", "Desired Replicas", GroupStatus, fields(
+	sections = append(sections, sectionFields("desiredReplicas", "Desired Replicas", GroupSummary, fields(
 		"Desired", fmtInt32(hpa.Status.DesiredReplicas),
 		"Min", fmtInt32Ptr(hpa.Spec.MinReplicas),
 		"Max", fmtInt32(hpa.Spec.MaxReplicas),
@@ -45,7 +45,7 @@ func (hpaProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, erro
 			[]string{"Type", "Name", "Target", "Current"}, rows))
 	}
 	if rows := hpaConditionRows(hpa.Status.Conditions); len(rows) > 0 {
-		sections = append(sections, sectionTable("conditions", "Conditions", GroupStatus,
+		sections = append(sections, sectionTable("conditions", "Conditions", GroupSummary,
 			[]string{"Type", "Status", "Reason", "Message"}, rows))
 	}
 	sections = append(sections, sectionFields("scaleTarget", "Scale Target", GroupRelationships, fields(

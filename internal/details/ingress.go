@@ -52,7 +52,7 @@ func (ingressProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, 
 			[]string{"Secret", "Hosts"}, rows))
 	}
 	if addrs := ingressAddresses(ing); len(addrs) > 0 {
-		sections = append(sections, sectionFields("address", "Address", GroupStatus, fields(
+		sections = append(sections, sectionFields("address", "Address", GroupSummary, fields(
 			"LoadBalancer", strings.Join(addrs, ", "),
 		)))
 	}

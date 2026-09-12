@@ -33,13 +33,13 @@ func (namespaceProvider) Build(ctx context.Context, req *Request) (*ObjectDetail
 	sections = append(sections, sectionFields("spec", "Spec", GroupSpec, fields(
 		"Finalizers", strings.Join(finalizers, ", "),
 	)))
-	sections = append(sections, sectionFields("status", "Status", GroupStatus, fields("Phase", phase)))
+	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields("Phase", phase)))
 	if len(ns.Status.Conditions) > 0 {
 		var rows [][]string
 		for _, c := range ns.Status.Conditions {
 			rows = append(rows, []string{string(c.Type), string(c.Status), c.Reason, truncate(c.Message, 120)})
 		}
-		sections = append(sections, sectionTable("conditions", "Conditions", GroupStatus,
+		sections = append(sections, sectionTable("conditions", "Conditions", GroupSummary,
 			[]string{"Type", "Status", "Reason", "Message"}, rows))
 	}
 	var podRows [][]string

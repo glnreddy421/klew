@@ -73,11 +73,18 @@ brew install --cask klew
 
 ## Quick start
 
-1. Launch Klew and select a **context** and **namespace**.
+### Browse (no investigation)
+
+1. Launch Klew and set **Resources scope** (context + namespace(s)) in the top bar.
+2. Open **Resources**, pick a category, and select a row — the inspector loads live object details, focus chain, and manifest.
+
+### Investigate (incident)
+
+1. Set **Investigate scope** to a single namespace in the top bar.
 2. Search for a workload (optional) and click **Investigate**.
 3. Move through Overview, Failures, Patterns, and Evidence as signals arrive.
 
-**Namespace is the boundary.** Klew investigates workloads inside the selected namespace, not the namespace object itself.
+**Namespace is the boundary.** Klew investigates workloads inside the selected namespace, not the namespace object itself. Overview, Patterns, Failures, and Evidence require an active investigation; Resources works without one.
 
 ## Surfaces
 
@@ -87,7 +94,7 @@ brew install --cask klew
 | **Failures** | Concrete runtime failures ranked by severity |
 | **Patterns** | Log and infrastructure event templates |
 | **Evidence** | Correlated signals and supporting observations |
-| **Resources** | Kubernetes catalog and entity detail |
+| **Resources** | Kubernetes catalog browse, focus chain, and live inspector (works without Investigate) |
 | **Graph** | Relationships between affected resources |
 | **Terminal** | Cluster shell for the active context |
 | **Live logs** | Tail container logs from investigation pods |

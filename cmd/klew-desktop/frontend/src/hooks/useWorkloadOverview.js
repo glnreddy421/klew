@@ -4,6 +4,7 @@ import { catalogEntityToRow } from '../lib/resourceCatalog.js'
 import { browseScopeApiParams, normalizeBrowseScope } from '../lib/browseScope.js'
 import { canLoadCatalogEntities } from '../lib/catalogDisplay.js'
 import { buildWorkloadKindCardsFromRows } from '../lib/workloadOverview.js'
+import { normalizeCatalogAccessState } from '../lib/rbacAccess.js'
 
 function scopeReadyForList(kindGroup, api) {
   if (kindGroup?.namespaced === false) return true
@@ -16,6 +17,7 @@ function scopeReadyForList(kindGroup, api) {
  */
 export function useWorkloadOverview({ cluster, browseScope, kindGroups, enabled = true }) {
   const [entitiesByResourceId, setEntitiesByResourceId] = useState({})
+  const [accessStateByResourceId, setAccessStateByResourceId] = useState({})
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const reqRef = useRef(0)
@@ -43,6 +45,7 @@ export function useWorkloadOverview({ cluster, browseScope, kindGroups, enabled 
   useEffect(() => {
     if (!enabled || !loadable.length || !ctx) {
       setEntitiesByResourceId({})
+      setAccessStateByResourceId({})
       setLoading(false)
       setError('')
       return undefined
@@ -72,30 +75,39 @@ export function useWorkloadOverview({ cluster, browseScope, kindGroups, enabled 
         kubeconfig,
         context: ctx,
       })
-        .then((result) => ({
-          resourceId: kindGroup.resourceId,
-          rows: (result?.entities || []).map(catalogEntityToRow),
-          accessState: result?.accessState || 'unknown',
-          error: result?.error,
-        }))
-        .catch((e) => ({
-          resourceId: kindGroup.resourceId,
-          rows: [],
-          accessState: 'error',
-          error: String(e),
-        }))
+        .then((result) => {
+          const errMsg = result?.error || ''
+          return {
+            resourceId: kindGroup.resourceId,
+            rows: (result?.entities || []).map(catalogEntityToRow),
+            accessState: normalizeCatalogAccessState(result?.accessState, errMsg),
+            error: errMsg,
+          }
+        })
+        .catch((e) => {
+          const errMsg = String(e)
+          return {
+            resourceId: kindGroup.resourceId,
+            rows: [],
+            accessState: normalizeCatalogAccessState('error', errMsg),
+            error: errMsg,
+          }
+        })
     })
 
     Promise.all(fetches)
       .then((results) => {
         if (reqRef.current !== id) return
         const byId = {}
+        const accessById = {}
         const errors = []
         for (const result of results) {
           byId[result.resourceId] = result.rows
-          if (result.error) errors.push(result.error)
+          accessById[result.resourceId] = result.accessState
+          if (result.error && result.accessState !== 'forbidden') errors.push(result.error)
         }
         setEntitiesByResourceId(byId)
+        setAccessStateByResourceId(accessById)
         setError(errors[0] || '')
       })
       .finally(() => {
@@ -108,9 +120,20 @@ export function useWorkloadOverview({ cluster, browseScope, kindGroups, enabled 
   }, [enabled, loadableKey, ctx, nsKey, kubeconfig, loadable, browseScope, cluster?.browseScope])
 
   const cards = useMemo(
-    () => buildWorkloadKindCardsFromRows(kindGroups, entitiesByResourceId),
-    [kindGroups, entitiesByResourceId],
+    () => buildWorkloadKindCardsFromRows(kindGroups, entitiesByResourceId, accessStateByResourceId),
+    [kindGroups, entitiesByResourceId, accessStateByResourceId],
   )
 
-  return { cards, loading, error }
+  const podEntities = useMemo(() => {
+    const podGroup = (kindGroups || []).find((kg) => kg.kind === 'Pod')
+    if (!podGroup?.resourceId) return []
+    return entitiesByResourceId[podGroup.resourceId] || []
+  }, [kindGroups, entitiesByResourceId])
+
+  const deniedCount = useMemo(
+    () => Object.values(accessStateByResourceId).filter((s) => s === 'forbidden').length,
+    [accessStateByResourceId],
+  )
+
+  return { cards, podEntities, loading, error, deniedCount }
 }

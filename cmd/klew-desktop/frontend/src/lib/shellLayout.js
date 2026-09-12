@@ -52,6 +52,7 @@ export function saveShellLayout(patch) {
   } catch {
     // ignore
   }
+  import('./settingsCache.js').then((m) => m.queueSettingsCacheSync()).catch(() => {})
 }
 
 export function explorerDefaultCollapsed(tab) {

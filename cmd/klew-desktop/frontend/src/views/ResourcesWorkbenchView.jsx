@@ -9,8 +9,10 @@ import {
   inspectRowForKey,
   isInspectableKey,
   pickDefaultFocus,
+  synthesizeFocusRow,
 } from '../lib/matches'
 import { buildChainRows, buildFocusScope } from '../lib/focusScope'
+import { useFocusChainCatalog } from '../hooks/useFocusChainCatalog.js'
 import { buildComponentInspect } from '../lib/componentInspect'
 import { mergeInspect, normalizeObjectDetail } from '../lib/objectDetails'
 import { GetObjectDetails } from '../../wailsjs/go/main/App'
@@ -18,7 +20,6 @@ import { useScopeBrowse } from '../context/ScopeBrowseContext.jsx'
 import { useShellInspector } from '../context/ShellInspectorContext.jsx'
 import {
   inspectPanelMode,
-  inspectShowsFocusCta,
   layoutConfig,
   listChromeForMode,
   loadLayoutMode,
@@ -33,6 +34,7 @@ export function useResourcesWorkbench() {
 export function ResourcesWorkbenchRoot({
   view,
   cluster,
+  clusterStatus = null,
   catalog: catalogProp,
   catalogLoading: catalogLoadingProp,
   catalogEnriching = false,
@@ -60,6 +62,7 @@ export function ResourcesWorkbenchRoot({
   const value = useResourcesWorkbenchState({
     view,
     cluster,
+    clusterStatus,
     catalog: catalogProp,
     catalogLoading: catalogLoadingProp,
     catalogEnriching,
@@ -112,6 +115,7 @@ export function ResourcesWorkbenchView({ shellMode = false }) {
     catalogEnriching,
     catalogError,
     cluster,
+    clusterStatus,
     view,
     focusKey,
     inspectKey,
@@ -166,7 +170,7 @@ export function ResourcesWorkbenchView({ shellMode = false }) {
       {investigationLoading && (
         <InvestigationLoadingBanner onOpenOverview={() => onNavigate?.('incident')} />
       )}
-      {shellMode && focusPinned && inspectRow && (
+      {focusPinned && inspectRow && (
         <div className="workbench-inline-chrome workbench-inline-chrome-compact">
           <span className="muted mono">{inspectRow.kind}/{inspectRow.name}</span>
           <button type="button" className="text-link-btn" onClick={() => onClearFocus?.()}>Clear focus</button>
@@ -179,6 +183,7 @@ export function ResourcesWorkbenchView({ shellMode = false }) {
           view={view}
           catalog={catalog}
           cluster={cluster}
+          clusterStatus={clusterStatus}
           catalogLoading={catalogLoading}
           catalogEnriching={catalogEnriching}
           catalogError={catalogError}
@@ -218,7 +223,14 @@ export function ResourcesWorkbenchInspector() {
   }, [handleInspect, shellInspector])
 
   if (!ctx?.inspectRow && !ctx?.inspectKey) {
-    return <p className="muted inspector-empty">Select an entity to inspect signals and details.</p>
+    return (
+      <div className="inspector-empty-state">
+        <p className="inspector-empty-title">No resource selected</p>
+        <p className="muted inspector-empty">
+          Select a row in the table to browse Summary, Spec, Relationships, Events, and other live detail tabs.
+        </p>
+      </div>
+    )
   }
   const {
     view,
@@ -248,12 +260,13 @@ export function ResourcesWorkbenchInspector() {
       onInspect={openInspect}
       loading={detailLoading}
       error={detailError}
+      browseMode
       emptyHint={
         inspectKey && !inspectRow
-          ? `Could not open ${inspectKey} for inspection.`
+          ? `Could not open ${inspectKey}. Pick another row or check your cluster access.`
           : focusPinned
-          ? 'Select a component in the focus chain to inspect it.'
-          : 'Select an entity to see signals and details.'
+          ? 'Select a resource in the focus chain to load its details here.'
+          : 'Select a row in the table to load live object details in the tabs below.'
       }
     />
   )
@@ -270,6 +283,7 @@ export function useResourcesCatalog(view, cluster) {
 function useResourcesWorkbenchState({
   view,
   cluster,
+  clusterStatus = null,
   catalog: catalogProp,
   catalogLoading: catalogLoadingProp = false,
   catalogEnriching = false,
@@ -304,21 +318,19 @@ function useResourcesWorkbenchState({
   const layout = layoutConfig(layoutMode)
 
   const listChrome = useMemo(() => {
-    if (shellMode) {
-      const tableChrome = listChromeForMode('clean-professional')
-      return {
-        ...tableChrome,
+    const base = shellMode
+      ? {
+        ...listChromeForMode('clean-professional'),
         entityView: 'table',
         tableDensity: 'standard',
-        showFocusButton: true,
         showEmptyToggle: false,
       }
-    }
-    return listChromeForMode(layoutMode)
+      : listChromeForMode(layoutMode)
+    return { ...base, showFocusButton: true }
   }, [shellMode, layoutMode])
 
   const panelMode = shellMode ? 'detail-tabs' : inspectPanelMode(layoutMode)
-  const showFocusCta = shellMode ? true : inspectShowsFocusCta(layoutMode)
+  const showFocusCta = true
 
   const isAdhocInspectable = useCallback((key, rowList) => {
     return isInspectableKey(key, view, rowList || allRows)
@@ -352,15 +364,46 @@ function useResourcesWorkbenchState({
     if (focusPinned && focusKey) onInspectKeyChange?.(focusKey)
   }, [focusPinned, focusKey, onInspectKeyChange])
 
-  const focusRow = allRows.find((r) => r.key === focusKey) || allRows[0] || null
+  const focusRow = useMemo(() => {
+    if (!focusKey) return allRows[0] || null
+    return (
+      allRows.find((r) => r.key === focusKey)
+      || catalogEntities.find((r) => r.key === focusKey)
+      || synthesizeFocusRow(focusKey, investigationNs || catalogEntities[0]?.namespace || '')
+      || allRows[0]
+      || null
+    )
+  }, [focusKey, allRows, catalogEntities, investigationNs])
+
+  const focusChainCatalog = useFocusChainCatalog({
+    cluster,
+    catalog,
+    browseScope,
+    focusRow,
+    enabled: focusPinned && Boolean(focusRow),
+  })
+
+  const chainSourceRows = useMemo(() => {
+    const byKey = new Map(allRows.map((r) => [r.key, r]))
+    for (const row of catalogEntities) {
+      if (row?.key) byKey.set(row.key, row)
+    }
+    for (const row of focusChainCatalog.rows || []) {
+      if (row?.key) byKey.set(row.key, row)
+    }
+    return [...byKey.values()]
+  }, [allRows, catalogEntities, focusChainCatalog.rows])
+
   const drillDown = useMemo(
-    () => (focusPinned && focusRow ? buildFocusScope(view, focusRow) : null),
-    [focusPinned, focusRow, view],
+    () => (focusPinned && focusRow
+      ? buildFocusScope(view, focusRow, { catalogRows: focusChainCatalog.rows || [] })
+      : null),
+    [focusPinned, focusRow, view, focusChainCatalog.rows],
   )
 
   const rows = useMemo(
-    () => (drillDown?.active ? buildChainRows(view, drillDown, allRows) : allRows),
-    [drillDown, view, allRows],
+    () => (drillDown?.active ? buildChainRows(view, drillDown, chainSourceRows) : allRows),
+    [drillDown, view, allRows, chainSourceRows],
   )
 
   useEffect(() => {
@@ -476,6 +519,7 @@ function useResourcesWorkbenchState({
     catalogEnriching,
     catalogError,
     cluster,
+    clusterStatus,
     view,
     focusKey,
     inspectKey,
