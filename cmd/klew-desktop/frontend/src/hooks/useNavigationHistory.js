@@ -16,8 +16,11 @@ export function navEntryKey(entry) {
 }
 
 export function normalizeNavEntry(partial, current = HOME_NAV) {
+  let tab = partial?.tab ?? current.tab ?? HOME_NAV.tab
+  if (tab === 'commands') tab = 'evidence'
+
   return {
-    tab: partial?.tab ?? current.tab ?? HOME_NAV.tab,
+    tab,
     nodesFocus: partial?.nodesMode ?? partial?.nodesFocus ?? current.nodesFocus ?? HOME_NAV.nodesFocus,
     settingsSection: partial?.settingsSection ?? current.settingsSection ?? HOME_NAV.settingsSection,
   }

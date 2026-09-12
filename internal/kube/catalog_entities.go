@@ -215,6 +215,9 @@ func listCatalogEntitiesOnce(ctx context.Context, client *Client, gvr schema.Gro
 		enrichCatalogTableFields(&entity, item.Object, resource)
 		out = append(out, entity)
 	}
+	if resource == "pods" && len(out) > 0 {
+		enrichListedPodMetrics(reqCtx, client, out, namespace)
+	}
 	return model.CatalogEntityList{
 		Entities:    out,
 		AccessState: model.ResourceAccessAllowed,
@@ -933,7 +936,49 @@ func enrichJobCatalogEntity(entity *model.CatalogEntity, obj map[string]interfac
 	}
 	entity.Succeeded = int32FromObject(obj, "status", "succeeded")
 	entity.Completions = jobCompletionsTarget(obj)
+	entity.JobDuration = jobDurationHint(obj)
 	enrichCatalogConditions(entity, obj)
+}
+
+func jobDurationHint(obj map[string]interface{}) string {
+	status, ok := obj["status"].(map[string]interface{})
+	if !ok {
+		return ""
+	}
+	startRaw := stringFromMap(status, "startTime")
+	if startRaw == "" {
+		return ""
+	}
+	start, err := time.Parse(time.RFC3339, startRaw)
+	if err != nil {
+		return ""
+	}
+	end := time.Now()
+	if completionRaw := stringFromMap(status, "completionTime"); completionRaw != "" {
+		if completion, err := time.Parse(time.RFC3339, completionRaw); err == nil {
+			end = completion
+		}
+	}
+	return formatCatalogDuration(end.Sub(start))
+}
+
+func formatCatalogDuration(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	sec := int(d.Seconds())
+	if sec < 60 {
+		return fmt.Sprintf("%ds", sec)
+	}
+	min := sec / 60
+	if min < 60 {
+		return fmt.Sprintf("%dm", min)
+	}
+	hr := min / 60
+	if hr < 48 {
+		return fmt.Sprintf("%dh", hr)
+	}
+	return fmt.Sprintf("%dd", hr/24)
 }
 
 func jobCompletionsTarget(obj map[string]interface{}) *int32 {
@@ -1082,6 +1127,23 @@ func coerceInt32(v interface{}) *int32 {
 func enrichPodCatalogEntity(entity *model.CatalogEntity, obj map[string]interface{}) {
 	if entity == nil || obj == nil {
 		return
+	}
+	reqCPU, reqMem, limCPU, limMem := podResourceTotalsFromObject(obj)
+	if reqCPU > 0 {
+		v := reqCPU
+		entity.CPURequestMilli = &v
+	}
+	if limCPU > 0 {
+		v := limCPU
+		entity.CPULimitMilli = &v
+	}
+	if reqMem > 0 {
+		v := reqMem
+		entity.MemRequestMi = &v
+	}
+	if limMem > 0 {
+		v := limMem
+		entity.MemLimitMi = &v
 	}
 	if spec, ok := obj["spec"].(map[string]interface{}); ok {
 		if containers, ok := spec["containers"].([]interface{}); ok {

@@ -305,7 +305,10 @@ function relationshipColumnPriority(sectionId, columns = []) {
   }
   if (id === 'endpointslices') return ['Name']
   if (id === 'targetpods') return ['Name']
-  if (id === 'ownerrefs') return ['Name']
+  if (id === 'ownerrefs') return ['Kind', 'Name']
+  if (id === 'pods' || id === 'targetpods') return ['Name']
+  if (id === 'replicasets') return ['Name']
+  if (id === 'jobs' || id === 'activejobs') return ['Name', 'Kind']
   const lower = columns.map((c) => String(c).toLowerCase())
   if (lower.includes('target')) return ['Target', 'Name', 'Pod', 'Kind']
   if (lower.includes('name')) return ['Name', 'Target', 'Pod']
@@ -319,6 +322,9 @@ function relationshipSectionRole(section) {
   if (id === 'legacyaddresses' || id === 'serviceendpoint') return 'Endpoint'
   if (id === 'targetpods') return 'Target pod'
   if (id === 'ownerrefs') return 'Owner'
+  if (id === 'pods') return 'Pod'
+  if (id === 'replicasets') return 'ReplicaSet'
+  if (id === 'jobs' || id === 'activejobs') return 'Job'
   return section?.title || section?.id || 'Related'
 }
 
@@ -328,6 +334,9 @@ function relationshipRowRole(sectionId, columnName, fallback = 'Related') {
   if (id === 'endpointslices' && col === 'name') return 'EndpointSlice'
   if ((id === 'backendaddresses' || id === 'legacyaddresses') && col === 'target') return 'Backend'
   if (id === 'targetpods' && col === 'name') return 'Target pod'
+  if (id === 'pods' && col === 'name') return 'Pod'
+  if (id === 'replicasets' && col === 'name') return 'ReplicaSet'
+  if ((id === 'jobs' || id === 'activejobs') && (col === 'name' || col === 'kind')) return 'Job'
   return fallback
 }
 

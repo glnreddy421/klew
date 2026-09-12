@@ -16,18 +16,22 @@ func (daemonSetProvider) Build(ctx context.Context, req *Request) (*ObjectDetail
 	}
 	desired := ds.Status.DesiredNumberScheduled
 	ready := ds.Status.NumberReady >= desired && desired > 0
+	matchLabels := workloadMatchLabels(ds.Spec.Selector)
+	podRows := podsForSelector(ctx, req, matchLabels)
+	summaryPairs := appendSchedulingSummaryPairs(appendPodSummaryFields([]string{
+		"Ready", fmt.Sprintf("%d/%d", ds.Status.NumberReady, desired),
+		"Updated", fmtInt32(ds.Status.UpdatedNumberScheduled),
+		"Available", fmtInt32(ds.Status.NumberAvailable),
+	}, podRows), ds.Spec.Template.Spec)
+
 	detail := &ObjectDetail{
 		Title:    "DaemonSet/" + ds.Name,
 		Category: "workload",
 		Status:   replicaStatus(ds.Status.NumberReady, desired, ready),
-		Summary: fields(
-			"Ready", fmt.Sprintf("%d/%d", ds.Status.NumberReady, desired),
-			"Updated", fmtInt32(ds.Status.UpdatedNumberScheduled),
-			"Available", fmtInt32(ds.Status.NumberAvailable),
-		),
+		Summary:  fields(summaryPairs...),
 	}
 	var sections []Section
-	sections = append(sections, sectionFields("status", "Status", GroupStatus, fields(
+	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields(
 		"Desired", fmtInt32(ds.Status.DesiredNumberScheduled),
 		"Current", fmtInt32(ds.Status.CurrentNumberScheduled),
 		"Ready", fmtInt32(ds.Status.NumberReady),
@@ -42,6 +46,9 @@ func (daemonSetProvider) Build(ctx context.Context, req *Request) (*ObjectDetail
 		if sel := selectorString(ds.Spec.Selector.MatchLabels); sel != "" {
 			sections = append(sections, sectionFields("selector", "Selector", GroupRelationships, fields("Match Labels", sel)))
 		}
+	}
+	if sec := podsRelationshipSection(ctx, req, matchLabels, podRows); !sec.Empty() {
+		sections = append(sections, sec)
 	}
 	sections = append(sections, podTemplateSections(&ds.Spec.Template, GroupSpec)...)
 	sections = append(sections, metaSections(ds.Labels, ds.Annotations, ownerRefsFromMeta(ds.OwnerReferences, ds.Namespace))...)

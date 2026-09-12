@@ -53,7 +53,11 @@ export function NodeConditionsCell({ row }) {
 }
 
 export function NodeTaintsCell({ row }) {
-  const count = row.nodeResources?.taintCount ?? row.table?.taints
-  if (count == null || count === '') return <span>—</span>
-  return <span className="mono">{count}</span>
+  const summary = row.nodeResources?.taintsSummary || row.table?.taints
+  if (!summary || summary === '—') return <span>—</span>
+  return (
+    <span className="mono entity-table-scheduling-detail" title={String(summary)}>
+      {summary}
+    </span>
+  )
 }

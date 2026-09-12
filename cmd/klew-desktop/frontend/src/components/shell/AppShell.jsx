@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from 'react'
+import { useCallback, useMemo } from 'react'
 import { ActivityRail } from './ActivityRail.jsx'
 import { ContextExplorer } from './ContextExplorer.jsx'
 import { InspectorPanel } from './InspectorPanel.jsx'
@@ -40,6 +40,7 @@ export function AppShell({
   onExplorerFiltersChange,
   graphRelations,
   onGraphRelationsChange,
+  investigationActive = false,
 }) {
   const {
     layout,
@@ -53,7 +54,7 @@ export function AppShell({
   } = useShellLayout(tab)
 
   const explorerCollapsed = layout.explorerCollapsed
-  const inspectorCollapsed = layout.inspectorCollapsed || !showInspector
+  const inspectorLayoutCollapsed = showInspector && layout.inspectorCollapsed
   const inspectorBottom = layout.inspectorPlacement === 'bottom'
 
   const expandInspector = useCallback(() => {
@@ -65,8 +66,8 @@ export function AppShell({
   }, [showInspector, inspectorBottom, layout.inspectorWidth, patch, setInspectorWidth])
 
   const shellInspector = useMemo(
-    () => ({ expandInspector }),
-    [expandInspector],
+    () => ({ expandInspector, onOpenPodLogs }),
+    [expandInspector, onOpenPodLogs],
   )
 
   const startExplorerResize = useCallback((e) => {
@@ -139,7 +140,7 @@ export function AppShell({
     }
     : { width: `${layout.inspectorWidth}px`, minWidth: `${layout.inspectorWidth}px` }
 
-  const inspectorPanel = showInspector && !inspectorCollapsed && (
+  const inspectorPanel = showInspector && !inspectorLayoutCollapsed && (
     <>
       <div
         className={`pane-resize-handle ${inspectorBottom ? 'pane-resize-handle-row' : ''}`}
@@ -151,6 +152,7 @@ export function AppShell({
       <aside
         className={`app-inspector ${inspectorBottom ? 'app-inspector-bottom' : ''}`}
         style={inspectorStyle}
+        aria-label="Inspector"
       >
         <InspectorPanel
           placement={inspectorBottom ? 'bottom' : 'right'}
@@ -202,6 +204,7 @@ export function AppShell({
                   onGraphRelationsChange={onGraphRelationsChange}
                   inspectRow={inspectRow}
                   width={layout.explorerWidth}
+                  investigationActive={investigationActive}
                 />
                 {!explorerCollapsed && (
                   <div

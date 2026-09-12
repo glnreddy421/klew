@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
 import { StatusBadge } from '../components/incident/StatusBadge'
+import { InvestigationSurfaceGuide } from '../components/incident/InvestigationSurfaceGuide.jsx'
+import { SurfaceGuideIcon } from '../components/incident/surfaceGuideIcons.jsx'
 import {
   containerHealthLabel,
   formatClock,
@@ -16,7 +18,7 @@ import {
 /**
  * Failures — severity-ranked pod triage + investigation detail.
  */
-export function FailuresView({ view, explorerFilter }) {
+export function FailuresView({ view, explorerFilter, investigationActive = false, onNavigate }) {
   const state = getState(view)
   const snap = getSnapshot(view)
   const pods = useMemo(() => {
@@ -60,10 +62,28 @@ export function FailuresView({ view, explorerFilter }) {
     || 'None'
   const signalDesc = failureSignalDescription(signal)
 
+  if (!investigationActive) {
+    return (
+      <div className="inv-page failures-page">
+        <InvestigationSurfaceGuide surfaceId="failures" onNavigate={onNavigate} />
+      </div>
+    )
+  }
+
   if (!pods.length) {
     return (
-      <div className="inv-page">
-        <div className="inv-empty muted">No pods in investigation scope.</div>
+      <div className="inv-page failures-page">
+        <div className="surface-guide-wait-card tone-failures">
+          <span className="surface-guide-icon-badge" aria-hidden="true">
+            <SurfaceGuideIcon id="failures" size={18} />
+          </span>
+          <div>
+            <h3 className="surface-guide-wait-title">Waiting for pods in scope</h3>
+            <p className="surface-guide-wait-desc">
+              Failures ranks unhealthy Pods after discovery finishes. Confirm the Investigate namespace has workloads, or wait for the first snapshot.
+            </p>
+          </div>
+        </div>
       </div>
     )
   }

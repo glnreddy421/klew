@@ -133,13 +133,21 @@ function overviewKindGroups(kindGroups) {
 }
 
 /** Build donut cards from async catalog list results (Resources → Workloads → Overview). */
-export function buildWorkloadKindCardsFromRows(kindGroups, entitiesByResourceId = {}) {
+export function buildWorkloadKindCardsFromRows(
+  kindGroups,
+  entitiesByResourceId = {},
+  accessStateByResourceId = {},
+) {
   const groups = overviewKindGroups(kindGroups)
   if (!groups.length) return []
 
   return groups.map((kindGroup) => {
-    const rows = entitiesByResourceId[kindGroup.resourceId] || []
-    const total = rows.length > 0 ? rows.length : kindTotal(kindGroup)
+    const accessState = accessStateByResourceId[kindGroup.resourceId]
+      || kindGroup.accessState
+      || (kindGroup.countState?.state === 'forbidden' ? 'forbidden' : 'unknown')
+    const denied = accessState === 'forbidden'
+    const rows = denied ? [] : (entitiesByResourceId[kindGroup.resourceId] || [])
+    const total = denied ? 0 : (rows.length > 0 ? rows.length : kindTotal(kindGroup))
     let segments = segmentsForKind(kindGroup.kind, rows)
     if (!segments.length && total > 0) {
       segments = [{ label: 'Total', count: total, tone: 'ok' }]
@@ -151,6 +159,8 @@ export function buildWorkloadKindCardsFromRows(kindGroups, entitiesByResourceId 
       segments,
       groupId: 'workloads',
       resourceId: kindGroup.resourceId,
+      accessState,
+      denied,
     }
   })
 }

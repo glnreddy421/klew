@@ -378,6 +378,7 @@ export function applyTheme(id) {
   } catch {
     // ignore storage errors
   }
+  import('./settingsCache.js').then((m) => m.queueSettingsCacheSync()).catch(() => {})
   return theme.id
 }
 

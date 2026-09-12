@@ -119,6 +119,7 @@ export function saveLayoutMode(id) {
   } catch {
     /* ignore */
   }
+  import('./settingsCache.js').then((m) => m.queueSettingsCacheSync()).catch(() => {})
   return next
 }
 
@@ -145,6 +146,7 @@ export function saveListWidth(px) {
   } catch {
     /* ignore */
   }
+  import('./settingsCache.js').then((m) => m.queueSettingsCacheSync()).catch(() => {})
 }
 
 /** List chrome flags derived from workspace layout. */

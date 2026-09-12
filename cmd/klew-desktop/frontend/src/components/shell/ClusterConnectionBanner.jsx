@@ -1,6 +1,7 @@
 export function ClusterConnectionBanner({
   connection,
   onReconnect,
+  onDismiss,
   onOpenSettings,
   reconnectBusy = false,
 }) {
@@ -34,6 +35,16 @@ export function ClusterConnectionBanner({
         {connection.showSettings && onOpenSettings && (
           <button type="button" className="text-link-btn" onClick={onOpenSettings}>
             Kubernetes settings
+          </button>
+        )}
+        {connection.showDismiss && onDismiss && (
+          <button
+            type="button"
+            className="text-link-btn cluster-connection-dismiss-btn"
+            onClick={onDismiss}
+            disabled={reconnectBusy}
+          >
+            Dismiss
           </button>
         )}
         {connection.showRetry && onReconnect && (

@@ -16,17 +16,21 @@ func (replicaSetProvider) Build(ctx context.Context, req *Request) (*ObjectDetai
 	}
 	desired := int32Or(rs.Spec.Replicas, 1)
 	ready := rs.Status.ReadyReplicas >= desired
+	matchLabels := workloadMatchLabels(rs.Spec.Selector)
+	podRows := podsForSelector(ctx, req, matchLabels)
+	summaryPairs := appendSchedulingSummaryPairs(appendPodSummaryFields([]string{
+		"Replicas", fmt.Sprintf("%d/%d", rs.Status.ReadyReplicas, desired),
+		"Fully Labeled", fmtInt32(rs.Status.FullyLabeledReplicas),
+	}, podRows), rs.Spec.Template.Spec)
+
 	detail := &ObjectDetail{
 		Title:    "ReplicaSet/" + rs.Name,
 		Category: "workload",
 		Status:   replicaStatus(rs.Status.ReadyReplicas, desired, ready),
-		Summary: fields(
-			"Replicas", fmt.Sprintf("%d/%d", rs.Status.ReadyReplicas, desired),
-			"Fully Labeled", fmtInt32(rs.Status.FullyLabeledReplicas),
-		),
+		Summary:  fields(summaryPairs...),
 	}
 	var sections []Section
-	sections = append(sections, sectionFields("status", "Status", GroupStatus, fields(
+	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields(
 		"Replicas", fmtInt32(rs.Status.Replicas),
 		"Ready", fmtInt32(rs.Status.ReadyReplicas),
 		"Available", fmtInt32(rs.Status.AvailableReplicas),
@@ -37,6 +41,9 @@ func (replicaSetProvider) Build(ctx context.Context, req *Request) (*ObjectDetai
 		if sel := selectorString(rs.Spec.Selector.MatchLabels); sel != "" {
 			sections = append(sections, sectionFields("selector", "Selector", GroupRelationships, fields("Match Labels", sel)))
 		}
+	}
+	if sec := podsRelationshipSection(ctx, req, matchLabels, podRows); !sec.Empty() {
+		sections = append(sections, sec)
 	}
 	sections = append(sections, podTemplateSections(&rs.Spec.Template, GroupSpec)...)
 	sections = append(sections, metaSections(rs.Labels, rs.Annotations, ownerRefsFromMeta(rs.OwnerReferences, rs.Namespace))...)

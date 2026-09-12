@@ -52,7 +52,7 @@ func (pvcProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, erro
 		),
 	}
 	var sections []Section
-	sections = append(sections, sectionFields("status", "Status", GroupStatus, fields(
+	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields(
 		"Phase", phase,
 		"Capacity", cap,
 	)))

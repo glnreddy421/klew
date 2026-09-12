@@ -18,6 +18,10 @@ export function GetAppInfo() {
   return window['go']['main']['App']['GetAppInfo']();
 }
 
+export function GetBrowseMetrics(arg1) {
+  return window['go']['main']['App']['GetBrowseMetrics'](arg1);
+}
+
 export function GetCluster() {
   return window['go']['main']['App']['GetCluster']();
 }

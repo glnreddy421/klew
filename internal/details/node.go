@@ -27,20 +27,25 @@ func (nodeProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, err
 	if !ready {
 		tone, label = "critical", "NotReady"
 	}
+	summaryPairs := []string{
+		"OS", node.Status.NodeInfo.OperatingSystem,
+		"Kernel", node.Status.NodeInfo.KernelVersion,
+		"Kubelet", node.Status.NodeInfo.KubeletVersion,
+		"Runtime", node.Status.NodeInfo.ContainerRuntimeVersion,
+	}
+	if s := taintsSummaryString(node.Spec.Taints); s != "" {
+		summaryPairs = append(summaryPairs, "Taints", s)
+	}
+
 	detail := &ObjectDetail{
 		Title:    "Node/" + node.Name,
 		Category: "cluster",
 		Status:   StatusBadge{Tone: tone, Label: label},
-		Summary: fields(
-			"OS", node.Status.NodeInfo.OperatingSystem,
-			"Kernel", node.Status.NodeInfo.KernelVersion,
-			"Kubelet", node.Status.NodeInfo.KubeletVersion,
-			"Runtime", node.Status.NodeInfo.ContainerRuntimeVersion,
-		),
+		Summary:  fields(summaryPairs...),
 	}
 	var sections []Section
 	if rows := nodeConditionRows(node.Status.Conditions); len(rows) > 0 {
-		sections = append(sections, sectionTable("conditions", "Conditions", GroupStatus,
+		sections = append(sections, sectionTable("conditions", "Conditions", GroupSummary,
 			[]string{"Type", "Status", "Reason", "Message"}, rows))
 	}
 	if rows := resourceListRows(node.Status.Capacity); len(rows) > 0 {
@@ -52,7 +57,7 @@ func (nodeProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, err
 			[]string{"Resource", "Quantity"}, rows))
 	}
 	if rows := nodeAddressRows(node.Status.Addresses); len(rows) > 0 {
-		sections = append(sections, sectionTable("addresses", "Addresses", GroupStatus,
+		sections = append(sections, sectionTable("addresses", "Addresses", GroupSummary,
 			[]string{"Type", "Address"}, rows))
 	}
 	var podRows [][]string
@@ -66,7 +71,7 @@ func (nodeProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, err
 			[]string{"Namespace", "Name", "Phase", "Ready"}, podRows))
 	}
 	if rows := taintRows(node.Spec.Taints); len(rows) > 0 {
-		sections = append(sections, sectionTable("taints", "Taints", GroupSpec,
+		sections = append(sections, sectionTable("taints", "Taints", GroupSummary,
 			[]string{"Key", "Value", "Effect"}, rows))
 	}
 	sections = append(sections, sectionFields("runtime", "Runtime", GroupRuntime, fields(

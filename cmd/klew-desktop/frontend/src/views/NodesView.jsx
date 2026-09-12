@@ -7,6 +7,7 @@ import {
   nodePressureFlags,
 } from '../lib/investigationViews'
 import { formatNodesVersionLead } from '../lib/clusterVersion'
+import { isRbacForbiddenMessage } from '../lib/rbacAccess.js'
 
 /**
  * Nodes — cluster inventory and investigation-scoped node context.
@@ -91,7 +92,9 @@ export function NodesView({ view, clusterStatus, focus = 'cluster' }) {
             {clusterRows.length === 0 ? (
               <p className="muted inv-pad">
                 {clusterStatus?.error
-                  ? clusterStatus.error
+                  ? (isRbacForbiddenMessage(clusterStatus.error)
+                    ? 'Access denied — node inventory is not listable with the current identity.'
+                    : clusterStatus.error)
                   : 'Cluster node inventory is not available yet.'}
               </p>
             ) : (

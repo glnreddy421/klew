@@ -1,6 +1,8 @@
 package kube
 
 import (
+	"strings"
+
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
@@ -15,11 +17,13 @@ func enrichNodeCatalogEntity(entity *model.CatalogEntity, obj map[string]interfa
 	version := stringFromObject(obj, "status", "nodeInfo", "kubeletVersion")
 	ready := catalogNodeReadyBool(obj)
 	taintCount := catalogNodeTaintCount(obj)
+	taintsSummary := catalogNodeTaintsSummary(obj)
 
 	res := &model.NodeCatalogResources{
 		Roles:          roles,
 		KubeletVersion: version,
 		Ready:          ready,
+		TaintsSummary:  taintsSummary,
 	}
 	if taintCount != nil {
 		res.TaintCount = taintCount
@@ -82,6 +86,39 @@ func catalogNodeTaintCount(obj map[string]interface{}) *int32 {
 	}
 	n := int32(len(taints))
 	return &n
+}
+
+func catalogNodeTaintsSummary(obj map[string]interface{}) string {
+	taints, found, _ := unstructured.NestedSlice(obj, "spec", "taints")
+	if !found || len(taints) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(taints))
+	for _, item := range taints {
+		m, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		key, _, _ := unstructured.NestedString(m, "key")
+		value, _, _ := unstructured.NestedString(m, "value")
+		effect, _, _ := unstructured.NestedString(m, "effect")
+		part := key
+		if value != "" {
+			part += "=" + value
+		}
+		if effect != "" {
+			part += ":" + effect
+		}
+		if part != "" {
+			parts = append(parts, part)
+		}
+	}
+	sortStrings(parts)
+	summary := strings.Join(parts, ", ")
+	if len(summary) > 160 {
+		return summary[:157] + "…"
+	}
+	return summary
 }
 
 func quantityFromNested(obj map[string]interface{}, fields ...string) *resource.Quantity {

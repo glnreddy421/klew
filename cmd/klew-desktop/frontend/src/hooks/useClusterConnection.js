@@ -2,14 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { deriveConnectionState, isClusterDisconnected } from '../lib/clusterConnection.js'
 
 const MAX_AUTO_RETRIES = 5
-const RETRY_DELAYS_SEC = [3, 5, 8, 12, 15]
+const RETRY_DELAY_SEC = 10
 
-export { MAX_AUTO_RETRIES }
+export { MAX_AUTO_RETRIES, RETRY_DELAY_SEC }
 
 export function useClusterConnection({
   cluster,
   syncing,
   connecting,
+  connectingTarget,
   clusterStatus,
   statusLoading,
   syncNow,
@@ -19,6 +20,7 @@ export function useClusterConnection({
   const [retryInSec, setRetryInSec] = useState(0)
   const [autoRetryExhausted, setAutoRetryExhausted] = useState(false)
   const [reconnectBusy, setReconnectBusy] = useState(false)
+  const [dismissed, setDismissed] = useState(false)
 
   const retryTimerRef = useRef(null)
   const countdownRef = useRef(null)
@@ -59,7 +61,14 @@ export function useClusterConnection({
     }
   }, [clearRetryTimers, syncNow, refreshClusterStatus])
 
+  const dismiss = useCallback(() => {
+    clearRetryTimers()
+    setDismissed(true)
+    setRetryInSec(0)
+  }, [clearRetryTimers])
+
   const handleReconnect = useCallback(async () => {
+    setDismissed(false)
     setRetryAttempt(0)
     setAutoRetryExhausted(false)
     await reconnect()
@@ -69,6 +78,7 @@ export function useClusterConnection({
     setRetryAttempt(0)
     setRetryInSec(0)
     setAutoRetryExhausted(false)
+    setDismissed(false)
     clearRetryTimers()
   }, [contextKey, clearRetryTimers])
 
@@ -77,6 +87,7 @@ export function useClusterConnection({
       setRetryAttempt(0)
       setRetryInSec(0)
       setAutoRetryExhausted(false)
+      setDismissed(false)
       clearRetryTimers()
     }
   }, [disconnected, clearRetryTimers])
@@ -84,7 +95,14 @@ export function useClusterConnection({
   useEffect(() => {
     clearRetryTimers()
 
-    if (!disconnected || reconnectBusy || syncing || connecting || statusLoading) {
+    if (
+      dismissed
+      || !disconnected
+      || reconnectBusy
+      || syncing
+      || connecting
+      || statusLoading
+    ) {
       return undefined
     }
 
@@ -94,7 +112,7 @@ export function useClusterConnection({
       return undefined
     }
 
-    const delay = RETRY_DELAYS_SEC[retryAttempt] ?? RETRY_DELAYS_SEC[RETRY_DELAYS_SEC.length - 1]
+    const delay = RETRY_DELAY_SEC
     setRetryInSec(delay)
 
     countdownRef.current = window.setInterval(() => {
@@ -116,6 +134,7 @@ export function useClusterConnection({
     statusLoading,
     reconnect,
     clearRetryTimers,
+    dismissed,
   ])
 
   useEffect(() => () => clearRetryTimers(), [clearRetryTimers])
@@ -124,17 +143,20 @@ export function useClusterConnection({
     cluster,
     syncing: syncing || reconnectBusy,
     connecting,
+    connectingTarget,
     clusterStatus,
     statusLoading,
     retryAttempt: disconnected ? retryAttempt : 0,
     retryInSec: disconnected ? retryInSec : 0,
     autoRetryExhausted,
     maxRetries: MAX_AUTO_RETRIES,
+    dismissed,
   })
 
   return {
     connection,
     reconnect: handleReconnect,
+    dismiss,
     reconnectBusy: reconnectBusy || syncing,
   }
 }

@@ -10,6 +10,7 @@ import { ClusterContextBar } from '../components/overview/ClusterContextBar'
 import { buildClusterContext } from '../lib/clusterContext'
 import { deriveMatchRows, getMatchedObjects } from '../lib/matches'
 import { buildInvestigationOverview } from '../lib/investigationOverview'
+import { InvestigationSurfaceGuide } from '../components/incident/InvestigationSurfaceGuide.jsx'
 
 /**
  * Overview — Investigation Brief with visual correlation graphics.
@@ -19,6 +20,7 @@ export function OverviewView({
   cluster,
   clusterStatus,
   running = false,
+  investigationActive = false,
   syncing = false,
   collecting,
   inspectRow,
@@ -74,7 +76,7 @@ export function OverviewView({
     )
   }
 
-  if (overview.phase === 'empty') {
+  if (!investigationActive || overview.phase === 'empty') {
     return (
       <div className="workbench-surface overview-brief">
         <ClusterContextBar
@@ -82,18 +84,7 @@ export function OverviewView({
           onNavigate={onNavigate}
           onChipAction={handleChipAction}
         />
-        <div className="overview-empty-state">
-          <h2 className="overview-empty-title">Start investigating</h2>
-          <p className="overview-empty-lead muted">
-            Klew correlates Kubernetes resources, events, logs, signals, failures and
-            relationships to help explain what happened.
-          </p>
-          <div className="overview-empty-actions">
-            <button type="button" className="btn btn-outline btn-sm" onClick={() => onNavigate?.('resources')}>
-              Browse resources
-            </button>
-          </div>
-        </div>
+        <InvestigationSurfaceGuide surfaceId="overview" onNavigate={onNavigate} />
       </div>
     )
   }

@@ -12,6 +12,8 @@ import {
   resolveInspectRef,
   summaryMetrics,
 } from '../../lib/inspectEnrich'
+import { collectRelatedPods, isWorkloadWithPods } from '../../lib/relatedPods.js'
+import { useShellInspector } from '../../context/ShellInspectorContext.jsx'
 import { InspectContainersPanel } from './InspectContainersPanel'
 import { RelationshipGraphPanel } from './RelationshipGraph'
 import { ServiceEndpointSummary } from './ServiceEndpointSummary'
@@ -19,6 +21,9 @@ import { HelmReleaseInspectView } from './HelmReleaseInspectView.jsx'
 import { hasContainerPanelData, parseInspectContainers } from '../../lib/inspectContainers'
 import { buildRelationshipGraph } from '../../lib/relationshipGraph'
 import { findServiceEndpointFields } from '../../lib/serviceEndpoints'
+import { isRbacForbiddenMessage } from '../../lib/rbacAccess.js'
+import { InlineLoading, LoadingState } from '../LoadingSpinner.jsx'
+import { activeTabGuide, buildBrowseTabs, INSPECT_TAB_META } from '../../lib/inspectTabGuide.js'
 
 /**
  * Kind-aware object inspector.
@@ -32,6 +37,7 @@ export function ComponentInspectPanel({
   onInspect,
   focusPinned = false,
   showFocusCta = false,
+  browseMode = false,
   loading = false,
   error = null,
 }) {
@@ -45,10 +51,8 @@ export function ComponentInspectPanel({
 
   const metrics = useMemo(() => summaryMetrics(inspect), [inspect])
 
-  const relatedPods = useMemo(() => {
-    if (!inspect?.relatedPods?.length || inspect.kind === 'Pod') return []
-    return inspect.relatedPods
-  }, [inspect])
+  const shellInspector = useShellInspector()
+  const relatedPods = useMemo(() => collectRelatedPods(inspect), [inspect])
 
   const relationshipItems = useMemo(() => {
     if (!inspect) return []
@@ -80,7 +84,7 @@ export function ComponentInspectPanel({
     return (
       <div className="inspect-empty muted">
         {loading
-          ? 'Loading object details…'
+          ? <LoadingState message="Loading object details…" />
           : (emptyHint || 'Select a component to inspect.')}
       </div>
     )
@@ -100,8 +104,13 @@ export function ComponentInspectPanel({
   const focusKey = inspect.key
 
   const relatedPodsBlock = relatedPods.length > 0 ? (
-    <RelatedPodsSection pods={relatedPods} onInspect={onInspect} />
+    <RelatedPodsSection
+      pods={relatedPods}
+      onInspect={onInspect}
+      onOpenPodLogs={shellInspector?.onOpenPodLogs}
+    />
   ) : null
+  const hidePodsTable = relatedPods.length > 0 && isWorkloadWithPods(inspect?.kind)
 
   const relationshipsBlock = hasRelationshipGraph ? (
     <RelationshipGraphPanel
@@ -142,6 +151,7 @@ export function ComponentInspectPanel({
           summaryExtras={summaryExtras}
           groups={groups}
           relatedPodsBlock={relatedPodsBlock}
+          hidePodsTable={hidePodsTable}
           relationshipItems={relationshipItems}
           onInspect={onInspect}
         />
@@ -156,7 +166,10 @@ export function ComponentInspectPanel({
           summaryExtras={summaryExtras}
           groups={groups}
           relatedPodsBlock={relatedPodsBlock}
+          hidePodsTable={hidePodsTable}
           onInspect={onInspect}
+          browseMode={browseMode}
+          loading={loading}
         />
       )
 
@@ -170,8 +183,10 @@ export function ComponentInspectPanel({
           {relatedPodsBlock}
           <StackedSections
             groups={groups}
+            inspect={inspect}
             onInspect={onInspect}
             inspectNamespace={inspect.namespace}
+            hidePodsTable={hidePodsTable}
           />
         </div>
       )
@@ -181,15 +196,19 @@ export function ComponentInspectPanel({
 function fallbackGroups(inspect) {
   if (!inspect) return []
   const groups = []
+  const summarySections = []
   if (inspect.status?.fields?.length) {
-    groups.push({
+    summarySections.push({
       id: 'status',
-      label: 'Status',
-      sections: [{
-        id: 'status',
-        title: 'Status',
-        fields: inspect.status.fields.map((f) => ({ key: f.k, value: f.v })),
-      }],
+      title: 'Status',
+      fields: inspect.status.fields.map((f) => ({ key: f.k, value: f.v })),
+    })
+  }
+  if (summarySections.length) {
+    groups.push({
+      id: 'summary',
+      label: 'Summary',
+      sections: summarySections,
     })
   }
   if (inspect.resourceBars?.length) {
@@ -271,7 +290,9 @@ function InspectIdentityHeader({ inspect, showFocusCta, onFocus, onInspect, load
         </p>
       </div>
       <div className="inspect-header-right">
-        {loading && <span className="muted inspect-loading">Fetching live details…</span>}
+        {loading && (
+          <InlineLoading message="Fetching live details…" className="inspect-loading muted" />
+        )}
         <StatusBadge status={inspect.status.tone} label={inspect.status.label} />
         {showFocusCta && (
           <button
@@ -285,8 +306,13 @@ function InspectIdentityHeader({ inspect, showFocusCta, onFocus, onInspect, load
         )}
       </div>
       {error && (
-        <div className="inspect-fetch-error" role="alert">
-          {error}
+        <div
+          className={`inspect-fetch-error${isRbacForbiddenMessage(error) ? ' inspect-fetch-error-denied' : ''}`}
+          role="alert"
+        >
+          {isRbacForbiddenMessage(error)
+            ? 'Access denied — live details could not be loaded for this object.'
+            : error}
         </div>
       )}
     </header>
@@ -329,6 +355,30 @@ function InspectRefValue({
   mono = false,
 }) {
   const text = value ?? '—'
+  if (/^pods?$/i.test(fieldKey) && String(text).includes(',')) {
+    const names = String(text)
+      .split(',')
+      .map((part) => part.trim())
+      .filter(Boolean)
+    if (names.length > 1) {
+      return (
+        <span className={[className, mono ? 'mono' : ''].filter(Boolean).join(' ')}>
+          {names.map((name, index) => (
+            <span key={name}>
+              {index > 0 ? ', ' : null}
+              <InspectRefValue
+                value={name}
+                fieldKey="Pod"
+                onInspect={onInspect}
+                inspectNamespace={inspectNamespace}
+                mono={mono}
+              />
+            </span>
+          ))}
+        </span>
+      )
+    }
+  }
   const ref = onInspect
     ? resolveInspectRef(text, {
       fieldKey,
@@ -369,6 +419,7 @@ function SignalFirstPanel({
   summaryExtras,
   groups,
   relatedPodsBlock,
+  hidePodsTable = false,
   relationshipItems = [],
   onInspect,
 }) {
@@ -415,6 +466,7 @@ function SignalFirstPanel({
                 relationshipItems={relationshipItems}
                 onInspect={onInspect}
                 inspectNamespace={inspect.namespace}
+                hidePodsTable={hidePodsTable}
               />
             </>
           )}
@@ -429,6 +481,7 @@ function SignalFirstPanel({
             relationshipItems={relationshipItems}
             onInspect={onInspect}
             inspectNamespace={inspect.namespace}
+            hidePodsTable={hidePodsTable}
           />
         </>
       )}
@@ -443,18 +496,27 @@ function DetailTabsPanel({
   summaryExtras,
   groups,
   relatedPodsBlock,
+  hidePodsTable = false,
   onInspect,
+  browseMode = false,
+  loading = false,
 }) {
-  const [tab, setTab] = useState(groups[0]?.id || 'status')
-  const hasSummaryTab = groups.some((g) => g.id === 'summary')
+  const browseTabs = useMemo(
+    () => (browseMode ? buildBrowseTabs(groups, inspect, { loading }) : null),
+    [browseMode, groups, inspect, loading],
+  )
+  const tabs = browseTabs || groups
+  const [tab, setTab] = useState(tabs[0]?.id || 'summary')
+  const showWorkloadPods = isWorkloadWithPods(inspect?.kind)
+  const hasSummaryTab = tabs.some((g) => g.id === 'summary')
   const lastInspectKeyRef = useRef(inspect.key)
   const metrics = useMemo(() => summaryMetrics(inspect), [inspect])
+  const tabRelatedPods = useMemo(() => collectRelatedPods(inspect), [inspect])
   const relationshipItems = useMemo(() => {
     const items = inspect?.relationships || []
-    const hasPodList = inspect?.relatedPods?.length && inspect.kind !== 'Pod'
-    if (!hasPodList) return items
+    if (!tabRelatedPods.length || inspect.kind === 'Pod') return items
     return items.filter((r) => r.kind !== 'Pod' && r.role !== 'Pod' && r.role !== 'Target pod')
-  }, [inspect])
+  }, [inspect, tabRelatedPods])
   const relationshipCenter = useMemo(() => ({
     kind: inspect.kind,
     name: inspect.name,
@@ -467,16 +529,18 @@ function DetailTabsPanel({
   useEffect(() => {
     const objectChanged = lastInspectKeyRef.current !== inspect.key
     lastInspectKeyRef.current = inspect.key
-    const ids = new Set(groups.map((g) => g.id))
+    const ids = new Set(tabs.map((g) => g.id))
 
     setTab((current) => {
-      if (objectChanged) return groups[0]?.id || 'status'
+      if (objectChanged) return tabs[0]?.id || 'summary'
       if (ids.has(current)) return current
-      return groups[0]?.id || 'status'
+      return tabs[0]?.id || 'summary'
     })
-  }, [inspect.key, groups])
+  }, [inspect.key, tabs])
 
-  const active = groups.find((g) => g.id === tab) || groups[0]
+  const active = tabs.find((g) => g.id === tab) || tabs[0]
+  const tabGuide = browseMode ? activeTabGuide(active, { loading }) : null
+  const activeHasContent = browseMode ? active?.hasContent : (active?.sections?.length > 0)
   const serviceEndpoints = useMemo(() => findServiceEndpointFields(inspect), [inspect])
   const relationshipsTabGraph = useMemo(
     () => buildRelationshipGraph({
@@ -504,28 +568,55 @@ function DetailTabsPanel({
     <div className="inspect-panel mode-detail-tabs">
       {header}
       {!hasSummaryTab && summaryExtras}
-      <SignalsBlock inspect={inspect} unhealthy={unhealthy} quietHealthy compact={!!summaryExtras} />
-      {groups.length > 0 && (
+      <SignalsBlock
+        inspect={inspect}
+        unhealthy={unhealthy}
+        quietHealthy
+        compact={!!summaryExtras}
+        browseMode={browseMode}
+      />
+      {tabs.length > 0 && (
         <>
+          {browseMode && (
+            <p className="inspect-browse-intro">
+              Browse live object details from your cluster. Tabs below explain what to look for and fill in as API data arrives.
+            </p>
+          )}
           {!hasSummaryTab && relatedPodsBlock}
           <div className="inspect-tabs" role="tablist" aria-label="Detail sections">
-            {groups.map((g) => (
+            {tabs.map((g) => (
               <button
                 key={g.id}
                 type="button"
                 role="tab"
                 aria-selected={tab === g.id}
-                className={`inspect-tab ${tab === g.id ? 'active' : ''}`}
+                aria-disabled={g.state === 'unavailable'}
+                disabled={g.state === 'unavailable'}
+                title={browseMode ? (INSPECT_TAB_META[g.id]?.description || g.label) : undefined}
+                className={[
+                  'inspect-tab',
+                  tab === g.id ? 'active' : '',
+                  browseMode && g.state === 'empty' ? 'is-empty' : '',
+                  browseMode && g.state === 'loading' ? 'is-loading' : '',
+                  browseMode && g.state === 'unavailable' ? 'is-unavailable' : '',
+                ].filter(Boolean).join(' ')}
                 onClick={() => setTab(g.id)}
               >
                 {g.label}
                 {g.sections.length > 1 && (
                   <span className="inspect-tab-count">{g.sections.length}</span>
                 )}
+                {browseMode && g.state === 'loading' && (
+                  <span className="inspect-tab-badge inspect-tab-badge-loading" aria-hidden="true" />
+                )}
+                {browseMode && g.state === 'empty' && (
+                  <span className="inspect-tab-badge inspect-tab-badge-empty" aria-hidden="true">—</span>
+                )}
               </button>
             ))}
           </div>
           <div className="inspect-tab-panel" role="tabpanel">
+            {browseMode && <InspectTabGuide guide={tabGuide} />}
             {active?.id === 'summary' && metrics.length > 0 && !active.sections.some((s) => s.fields?.length) && (
               <InspectSummaryMetrics
                 metrics={metrics}
@@ -548,7 +639,7 @@ function DetailTabsPanel({
                 onInspect={onInspect}
               />
             )}
-            {active?.id === 'relationships' && relationshipsTabGraph.nodes.length <= 1 && (
+            {active?.id === 'relationships' && relationshipsTabGraph.nodes.length <= 1 && (!browseMode || activeHasContent) && (
               <GroupBody
                 group={active}
                 inspect={inspect}
@@ -558,15 +649,17 @@ function DetailTabsPanel({
                 inspectNamespace={inspect.namespace}
                 sectionCard
                 forceTableFallback
+                hidePodsTable={hidePodsTable}
               />
             )}
+            {(active?.id === 'containers' || active?.id === 'spec') && showWorkloadPods && relatedPodsBlock}
             {active?.id === 'containers' && inspect.kind === 'Pod' && hasContainerPanelData(parseInspectContainers(active.sections)) ? (
               <InspectContainersPanel
                 sections={active.sections}
                 inspectNamespace={inspect.namespace}
                 onInspect={onInspect}
               />
-            ) : active && active.id !== 'relationships' ? (
+            ) : active && active.id !== 'relationships' && (!browseMode || activeHasContent) ? (
               <GroupBody
                 group={active}
                 inspect={inspect}
@@ -575,6 +668,7 @@ function DetailTabsPanel({
                 hideGroupTitle
                 inspectNamespace={inspect.namespace}
                 sectionCard
+                hidePodsTable={hidePodsTable}
               />
             ) : null}
           </div>
@@ -584,14 +678,14 @@ function DetailTabsPanel({
   )
 }
 
-function RelatedPodsSection({ pods, onInspect }) {
+function RelatedPodsSection({ pods, onInspect, onOpenPodLogs }) {
   if (!pods?.length) return null
   return (
     <section className="inspect-section inspect-related-pods">
       <h5 className="inspect-section-label">Pods</h5>
       <ul className="inspect-link-list">
         {pods.map((pod) => (
-          <li key={pod.key}>
+          <li key={pod.key} className="inspect-link-item-with-action">
             <button
               type="button"
               className="inspect-link-row"
@@ -607,6 +701,20 @@ function RelatedPodsSection({ pods, onInspect }) {
               )}
               <RowStatusBadge status={pod.status} />
             </button>
+            {onOpenPodLogs && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm inspect-pod-logs-btn"
+                onClick={() => onOpenPodLogs?.({
+                  podName: pod.name,
+                  namespace: pod.namespace,
+                })}
+                title={`Tail logs for ${pod.name}`}
+                aria-label={`Tail logs for pod ${pod.name}`}
+              >
+                Logs
+              </button>
+            )}
           </li>
         ))}
       </ul>
@@ -620,6 +728,7 @@ function StackedSections({
   relationshipItems = [],
   onInspect,
   inspectNamespace = '',
+  hidePodsTable = false,
 }) {
   if (!groups?.length) return null
   return (
@@ -633,6 +742,7 @@ function StackedSections({
           showHeading
           onInspect={onInspect}
           inspectNamespace={inspectNamespace}
+          hidePodsTable={hidePodsTable}
         />
       ))}
     </div>
@@ -649,6 +759,7 @@ function GroupBody({
   inspectNamespace = '',
   sectionCard = false,
   forceTableFallback = false,
+  hidePodsTable = false,
 }) {
   if (group.id === 'relationships' && inspect && !forceTableFallback) {
     const graph = buildRelationshipGraph({
@@ -689,6 +800,7 @@ function GroupBody({
       )}
       {group.sections.map((s) => {
         if (group.id === 'summary' && s.id === 'serviceEndpoint') return null
+        if (hidePodsTable && (s.id === 'pods' || s.id === 'targetPods')) return null
         return (
           <DetailSection
             key={s.id || s.title}
@@ -704,7 +816,20 @@ function GroupBody({
   )
 }
 
+function isSchedulingTableSection(section) {
+  const id = String(section?.id || '').toLowerCase()
+  if (['nodeselector', 'tolerations', 'nodeaffinity', 'podaffinity', 'podantiaffinity', 'taints'].includes(id)) {
+    return true
+  }
+  const t = `${section?.id || ''} ${section?.title || ''}`.toLowerCase()
+  return /node selector|toleration|affinity|anti-affinity|^taints$/.test(t)
+}
+
 export function DetailSection({ section, groupId, onInspect, inspectNamespace = '', card = false }) {
+  const [tableOpen, setTableOpen] = useState(true)
+  useEffect(() => {
+    setTableOpen(true)
+  }, [section?.id, section?.title, groupId])
   if (!section) return null
   const sectionClass = ['inspect-section', card ? 'inspect-section-card' : ''].filter(Boolean).join(' ')
 
@@ -784,9 +909,27 @@ export function DetailSection({ section, groupId, onInspect, inspectNamespace = 
   const hasNotes = section.notes?.length > 0
   if (!hasFields && !hasKV && !hasTable && !hasNotes) return null
 
+  const tableRowCount = section.table?.rows?.length || 0
+  const collapsibleTable = isSchedulingTableSection(section) && hasTable
+  const sectionTitle = collapsibleTable && tableRowCount > 0
+    ? `${section.title} ${tableRowCount}`
+    : section.title
+
   return (
     <section className={sectionClass}>
-      <h5 className="inspect-section-label">{section.title}</h5>
+      <div className="inspect-section-head">
+        <h5 className="inspect-section-label">{sectionTitle}</h5>
+        {collapsibleTable && (
+          <button
+            type="button"
+            className="inspect-section-toggle btn btn-ghost btn-sm"
+            onClick={() => setTableOpen((open) => !open)}
+            aria-expanded={tableOpen}
+          >
+            {tableOpen ? 'Hide' : 'Show'}
+          </button>
+        )}
+      </div>
       {hasFields && (
         <dl className="inspect-prop-list">
           {section.fields.map((f, i) => (
@@ -825,7 +968,7 @@ export function DetailSection({ section, groupId, onInspect, inspectNamespace = 
           ))}
         </div>
       )}
-      {hasTable && (
+      {hasTable && (!collapsibleTable || tableOpen) && (
         <div className="inspect-table-wrap">
           <table className="inspect-table">
             <thead>
@@ -949,17 +1092,47 @@ function EyeOffIcon() {
   )
 }
 
-function SignalsBlock({ inspect, unhealthy, quietHealthy, compact = false }) {
+function InspectTabGuide({ guide }) {
+  if (!guide) return null
+  return (
+    <div className={`inspect-tab-guide state-${guide.state}`}>
+      <p className="inspect-tab-guide-desc">{guide.description}</p>
+      {guide.state === 'loading' && (
+        <InlineLoading message="Loading live details from the cluster…" className="inspect-tab-guide-status muted" />
+      )}
+      {guide.state === 'empty' && (
+        <p className="inspect-tab-guide-status muted">{guide.emptyHint}</p>
+      )}
+      {guide.state === 'ready' && guide.scanFor && (
+        <p className="inspect-tab-guide-scan muted">
+          <span className="inspect-tab-guide-scan-label">Look for</span>
+          <span>{guide.scanFor}</span>
+        </p>
+      )}
+      {(guide.state === 'empty' || guide.state === 'loading') && guide.whenAvailable && (
+        <p className="inspect-tab-guide-when muted">{guide.whenAvailable}</p>
+      )}
+    </div>
+  )
+}
+
+function SignalsBlock({ inspect, unhealthy, quietHealthy, compact = false, browseMode = false }) {
   if (quietHealthy && !unhealthy) {
     if (compact) return null
-    return <p className="inspect-quiet-ok muted">No anomalies on this component.</p>
+    return (
+      <p className="inspect-quiet-ok muted">
+        {browseMode ? 'No issues flagged on this object.' : 'No anomalies on this component.'}
+      </p>
+    )
   }
 
   return (
     <section className={`inspect-section inspect-anomalies ${unhealthy ? 'has-issues' : 'clear'}`}>
-      <h5 className="inspect-section-label">Signals</h5>
+      <h5 className="inspect-section-label">{browseMode ? 'Issues' : 'Signals'}</h5>
       <p className="inspect-events-hint muted">
-        Anomalies for this component only — not the overall investigation.
+        {browseMode
+          ? 'Problems detected on this object during catalog enrichment.'
+          : 'Anomalies for this component only — not the overall investigation.'}
       </p>
       {inspect.anomalies?.length ? (
         <ul className="inspect-anomaly-list">

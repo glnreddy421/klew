@@ -25,7 +25,7 @@ func (roleBindingProvider) Build(ctx context.Context, req *Request) (*ObjectDeta
 		),
 	}
 	var sections []Section
-	sections = append(sections, sectionFields("status", "Status", GroupStatus, fields(
+	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields(
 		"Namespace", rb.Namespace,
 		"Subjects", fmtInt32(int32(len(rb.Subjects))),
 	)))

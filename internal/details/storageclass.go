@@ -33,7 +33,7 @@ func (storageClassProvider) Build(ctx context.Context, req *Request) (*ObjectDet
 		),
 	}
 	var sections []Section
-	sections = append(sections, sectionFields("status", "Status", GroupStatus, fields(
+	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields(
 		"Provisioner", sc.Provisioner,
 		"Allow Volume Expansion", boolStrPtr(sc.AllowVolumeExpansion),
 	)))

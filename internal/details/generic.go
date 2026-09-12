@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -20,6 +21,9 @@ func (genericProvider) Kind() string { return "_generic" }
 func (genericProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, error) {
 	obj, err := fetchGeneric(ctx, req)
 	if err != nil {
+		if apierrors.IsForbidden(err) || apierrors.IsUnauthorized(err) {
+			return nil, wrapDetailErr(err, req.Ref.Kind, req.Ref.Name)
+		}
 		return buildFromSnapshot(req), nil
 	}
 	detail := &ObjectDetail{
@@ -32,7 +36,7 @@ func (genericProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, 
 		),
 	}
 	var sections []Section
-	sections = append(sections, sectionFields("status", "Status", GroupStatus, fields(
+	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields(
 		"API Version", obj.GetAPIVersion(),
 		"Resource Version", obj.GetResourceVersion(),
 		"Generation", fmtInt64(obj.GetGeneration()),
@@ -40,7 +44,7 @@ func (genericProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, 
 	if status, ok, _ := unstructured.NestedMap(obj.Object, "status"); ok && len(status) > 0 {
 		kv := flattenToMap("", status)
 		if len(kv) > 0 {
-			sections = append(sections, sectionKV("statusFields", "Status Fields", GroupStatus, kvMap(kv)))
+			sections = append(sections, sectionKV("statusFields", "Status Fields", GroupSummary, kvMap(kv)))
 		}
 	}
 	if spec, ok, _ := unstructured.NestedMap(obj.Object, "spec"); ok && len(spec) > 0 {
@@ -168,7 +172,7 @@ func buildFromSnapshot(req *Request) *ObjectDetail {
 		),
 	}
 	detail.Sections = []Section{
-		sectionFields("status", "Status", GroupStatus, fields(
+		sectionFields("status", "Status", GroupSummary, fields(
 			"Kind", req.Ref.Kind,
 			"Name", req.Ref.Name,
 			"Namespace", req.Ref.Namespace,

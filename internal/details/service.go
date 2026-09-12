@@ -49,7 +49,7 @@ func (serviceProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, 
 		sections = append(sections, sectionFields("selectors", "Selectors", GroupRelationships, fields("Selector", sel)))
 	}
 	if rows := serviceLoadBalancerIngressRows(svc); len(rows) > 0 {
-		sections = append(sections, sectionTable("loadBalancer", "Load Balancer", GroupStatus,
+		sections = append(sections, sectionTable("loadBalancer", "Load Balancer", GroupSummary,
 			[]string{"IP", "Hostname", "IP Mode", "Ports"}, rows))
 	}
 
@@ -175,7 +175,7 @@ func legacyEndpointDetailSections(ep *corev1.Endpoints) []Section {
 			ready++
 		}
 	}
-	sections = append(sections, sectionFields("legacyEndpoints", "Legacy Endpoints", GroupStatus, fields(
+	sections = append(sections, sectionFields("legacyEndpoints", "Legacy Endpoints", GroupSummary, fields(
 		"Ready Addresses", fmtInt32(int32(ready)),
 		"Total Addresses", fmtInt32(int32(total)),
 		"Subsets", fmtInt32(int32(len(ep.Subsets))),

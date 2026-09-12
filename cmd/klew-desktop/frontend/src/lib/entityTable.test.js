@@ -3,9 +3,13 @@ import {
   showsNamespaceColumn,
   enrichEntityForTable,
   formatDeploymentConditions,
+  parseSortDuration,
+  parseSortFraction,
+  parseSortNumber,
   parseWorkloadReplicaSignal,
   resolveDeploymentConditions,
   serviceStatusLabel,
+  sortEntitiesForTable,
   tableCellValue,
   truncateSelector,
 } from './entityTable.js'
@@ -24,22 +28,29 @@ describe('Pod table columns', () => {
       'name',
       'namespace',
       'status',
+      'cpu',
+      'memory',
       'containers',
       'restarts',
       'controlledBy',
       'node',
+      'nodeSelector',
+      'tolerations',
+      'affinity',
       'qos',
       'age',
     ])
   })
 
-  it('defaults to name, namespace, status, restarts, age', () => {
+  it('defaults to name, namespace, status, restarts, scheduling columns, age', () => {
     const visible = resolveVisibleColumnIds({
       kind: 'Pod',
       kindGroup: { namespaced: true },
       browseScope: allBrowseScope(),
     })
-    expect(visible).toEqual(['name', 'namespace', 'status', 'restarts', 'age'])
+    expect(visible).toEqual([
+      'name', 'namespace', 'status', 'cpu', 'memory', 'restarts', 'nodeSelector', 'tolerations', 'affinity', 'age',
+    ])
   })
 
   it('hides namespace in single-namespace scope', () => {
@@ -106,7 +117,9 @@ describe('enrichEntityForTable', () => {
 describe('ReplicaSet table columns', () => {
   it('exposes status and replica columns in the picker schema', () => {
     const ids = availableColumnIds('ReplicaSet', { namespaced: true }, allBrowseScope())
-    expect(ids).toEqual(['name', 'namespace', 'status', 'desired', 'current', 'ready', 'age'])
+    expect(ids).toEqual([
+      'name', 'namespace', 'status', 'desired', 'current', 'ready', 'nodeSelector', 'tolerations', 'affinity', 'age',
+    ])
   })
 
   it('defaults to name, namespace, desired, current, ready, age', () => {
@@ -115,7 +128,9 @@ describe('ReplicaSet table columns', () => {
       kindGroup: { namespaced: true },
       browseScope: allBrowseScope(),
     })
-    expect(visible).toEqual(['name', 'namespace', 'desired', 'current', 'ready', 'age'])
+    expect(visible).toEqual([
+      'name', 'namespace', 'desired', 'current', 'ready', 'nodeSelector', 'tolerations', 'affinity', 'age',
+    ])
   })
 
   it('fills replica counts from catalog entity metadata', () => {
@@ -180,7 +195,9 @@ describe('ReplicaSet table columns', () => {
 describe('Deployment table columns', () => {
   it('exposes lens-style deployment columns in the picker schema', () => {
     const ids = availableColumnIds('Deployment', { namespaced: true }, allBrowseScope())
-    expect(ids).toEqual(['name', 'namespace', 'pods', 'replicas', 'age', 'conditions'])
+    expect(ids).toEqual([
+      'name', 'namespace', 'pods', 'replicas', 'nodeSelector', 'tolerations', 'affinity', 'age', 'conditions',
+    ])
   })
 
   it('defaults to name, namespace, pods, replicas, age, conditions', () => {
@@ -189,7 +206,9 @@ describe('Deployment table columns', () => {
       kindGroup: { namespaced: true },
       browseScope: allBrowseScope(),
     })
-    expect(visible).toEqual(['name', 'namespace', 'pods', 'replicas', 'age', 'conditions'])
+    expect(visible).toEqual([
+      'name', 'namespace', 'pods', 'replicas', 'nodeSelector', 'tolerations', 'affinity', 'age', 'conditions',
+    ])
   })
 
   it('fills deployment pods, replicas, and conditions', () => {
@@ -240,7 +259,9 @@ describe('Deployment table columns', () => {
 describe('StatefulSet table columns', () => {
   it('exposes lens-style statefulset columns in the picker schema', () => {
     const ids = availableColumnIds('StatefulSet', { namespaced: true }, allBrowseScope())
-    expect(ids).toEqual(['name', 'namespace', 'pods', 'replicas', 'age'])
+    expect(ids).toEqual([
+      'name', 'namespace', 'pods', 'replicas', 'nodeSelector', 'tolerations', 'affinity', 'age',
+    ])
   })
 
   it('defaults to name, namespace, pods, replicas, age', () => {
@@ -249,7 +270,9 @@ describe('StatefulSet table columns', () => {
       kindGroup: { namespaced: true },
       browseScope: allBrowseScope(),
     })
-    expect(visible).toEqual(['name', 'namespace', 'pods', 'replicas', 'age'])
+    expect(visible).toEqual([
+      'name', 'namespace', 'pods', 'replicas', 'nodeSelector', 'tolerations', 'affinity', 'age',
+    ])
   })
 
   it('fills statefulset pods and replicas from catalog metadata', () => {
@@ -270,7 +293,8 @@ describe('DaemonSet table columns', () => {
   it('exposes lens-style daemonset columns in the picker schema', () => {
     const ids = availableColumnIds('DaemonSet', { namespaced: true }, allBrowseScope())
     expect(ids).toEqual([
-      'name', 'namespace', 'desired', 'current', 'ready', 'updated', 'available', 'misscheduled', 'age',
+      'name', 'namespace', 'desired', 'current', 'ready', 'updated', 'available', 'misscheduled',
+      'nodeSelector', 'tolerations', 'affinity', 'age',
     ])
   })
 
@@ -323,16 +347,26 @@ describe('DaemonSet table columns', () => {
 describe('Job table columns', () => {
   it('exposes lens-style job columns in the picker schema', () => {
     const ids = availableColumnIds('Job', { namespaced: true }, allBrowseScope())
-    expect(ids).toEqual(['name', 'namespace', 'completions', 'age', 'conditions'])
+    expect(ids).toEqual([
+      'name', 'completions', 'age', 'conditions', 'namespace', 'duration', 'controlledBy',
+      'nodeSelector', 'tolerations', 'affinity',
+    ])
   })
 
-  it('defaults to name, namespace, completions, age, conditions', () => {
+  it('defaults to name, completion, age, conditions, namespace', () => {
     const visible = resolveVisibleColumnIds({
       kind: 'Job',
       kindGroup: { namespaced: true },
       browseScope: allBrowseScope(),
     })
-    expect(visible).toEqual(['name', 'namespace', 'completions', 'age', 'conditions'])
+    expect(visible).toEqual([
+      'name', 'completions', 'age', 'conditions', 'namespace', 'nodeSelector', 'tolerations', 'affinity',
+    ])
+  })
+
+  it('keeps namespace visible in single-namespace browse', () => {
+    const ids = availableColumnIds('Job', { namespaced: true }, { mode: 'single', namespace: 'dtool' })
+    expect(ids).toContain('namespace')
   })
 
   it('fills job completions and conditions', () => {
@@ -358,24 +392,35 @@ describe('Job table columns', () => {
     expect(tableCellValue(row, 'completions')).toBe('1/1')
     expect(row.table.conditionsDetail[0]).toMatchObject({ type: 'Complete', status: 'True' })
   })
+
+  it('shows job duration from catalog field', () => {
+    const row = enrichEntityForTable({
+      kind: 'Job',
+      name: 'hello',
+      jobDuration: '3m',
+    })
+    expect(tableCellValue(row, 'duration')).toBe('3m')
+  })
 })
 
 describe('CronJob table columns', () => {
   it('exposes lens-style cronjob columns in the picker schema', () => {
     const ids = availableColumnIds('CronJob', { namespaced: true }, allBrowseScope())
     expect(ids).toEqual([
-      'name', 'namespace', 'schedule', 'suspend', 'active', 'lastSchedule', 'age',
+      'name', 'namespace', 'age', 'schedule', 'suspend', 'active', 'lastSchedule',
+      'nodeSelector', 'tolerations', 'affinity',
     ])
   })
 
-  it('defaults to name, namespace, schedule, suspend, active, last schedule, age', () => {
+  it('defaults to name, namespace, age, schedule, suspend, active, last schedule', () => {
     const visible = resolveVisibleColumnIds({
       kind: 'CronJob',
       kindGroup: { namespaced: true },
       browseScope: allBrowseScope(),
     })
     expect(visible).toEqual([
-      'name', 'namespace', 'schedule', 'suspend', 'active', 'lastSchedule', 'age',
+      'name', 'namespace', 'age', 'schedule', 'suspend', 'active', 'lastSchedule',
+      'nodeSelector', 'tolerations', 'affinity',
     ])
   })
 
@@ -657,5 +702,67 @@ describe('schemaForKind', () => {
     const schema = schemaForKind('ConfigMap')
     expect(schema.defaultVisible).toContain('name')
     expect(schema.defaultVisible).toContain('age')
+  })
+})
+
+describe('entity table sorting', () => {
+  it('parses numeric, fraction, and duration sort values', () => {
+    expect(parseSortNumber('3')).toBe(3)
+    expect(parseSortNumber('—')).toBeNull()
+    expect(parseSortFraction('2/3')).toEqual({ primary: 2, secondary: 3 })
+    expect(parseSortDuration('5m')).toBe(300)
+  })
+
+  it('sorts rows by name ascending and descending', () => {
+    const rows = [
+      enrichEntityForTable({ kind: 'CronJob', name: 'z-job' }),
+      enrichEntityForTable({ kind: 'CronJob', name: 'a-job' }),
+      enrichEntityForTable({ kind: 'CronJob', name: 'm-job' }),
+    ]
+    expect(sortEntitiesForTable(rows, 'name', 'asc').map((r) => r.name))
+      .toEqual(['a-job', 'm-job', 'z-job'])
+    expect(sortEntitiesForTable(rows, 'name', 'desc').map((r) => r.name))
+      .toEqual(['z-job', 'm-job', 'a-job'])
+  })
+
+  it('sorts cronjob schedule and active columns', () => {
+    const rows = [
+      enrichEntityForTable({
+        kind: 'CronJob',
+        name: 'every-minute',
+        schedule: '*/1 * * * *',
+        activeJobs: 2,
+      }),
+      enrichEntityForTable({
+        kind: 'CronJob',
+        name: 'nightly',
+        schedule: '0 2 * * *',
+        activeJobs: 0,
+      }),
+    ]
+    expect(sortEntitiesForTable(rows, 'active', 'asc').map((r) => r.name))
+      .toEqual(['nightly', 'every-minute'])
+    expect(sortEntitiesForTable(rows, 'schedule', 'asc').map((r) => r.name))
+      .toEqual(['every-minute', 'nightly'])
+  })
+
+  it('sorts age by creation timestamp rather than formatted label', () => {
+    const now = Date.now()
+    const rows = [
+      enrichEntityForTable({
+        kind: 'Pod',
+        name: 'old',
+        creationTimestamp: new Date(now - 7200_000).toISOString(),
+      }),
+      enrichEntityForTable({
+        kind: 'Pod',
+        name: 'new',
+        creationTimestamp: new Date(now - 60_000).toISOString(),
+      }),
+    ]
+    expect(sortEntitiesForTable(rows, 'age', 'asc').map((r) => r.name))
+      .toEqual(['new', 'old'])
+    expect(sortEntitiesForTable(rows, 'age', 'desc').map((r) => r.name))
+      .toEqual(['old', 'new'])
   })
 })

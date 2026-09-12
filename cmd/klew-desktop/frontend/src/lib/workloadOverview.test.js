@@ -32,3 +32,12 @@ test('buildWorkloadKindCardsFromRows falls back to catalog counts', () => {
   const cards = buildWorkloadKindCardsFromRows(kindGroups, {})
   assert.equal(cards[1].total, 2)
 })
+
+test('buildWorkloadKindCardsFromRows marks denied kinds', () => {
+  const cards = buildWorkloadKindCardsFromRows(kindGroups, {}, {
+    'apps/v1/deployments': 'forbidden',
+  })
+  const dep = cards.find((c) => c.kind === 'Deployment')
+  assert.equal(dep.denied, true)
+  assert.equal(dep.total, 0)
+})

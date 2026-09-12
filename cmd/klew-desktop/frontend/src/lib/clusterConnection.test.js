@@ -4,6 +4,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  activeContextLabel,
   classifyConnectionError,
   deriveConnectionState,
   isClusterDisconnected,
@@ -29,11 +30,37 @@ test('deriveConnectionState idle without context', () => {
   assert.equal(state.showBanner, false)
 })
 
+test('activeContextLabel prefers target context while switching', () => {
+  assert.equal(
+    activeContextLabel(cluster, {
+      connecting: true,
+      connectingTarget: { kind: 'context', name: 'staging-west' },
+    }),
+    'staging-west',
+  )
+})
+
 test('deriveConnectionState connecting while switching context', () => {
-  const state = deriveConnectionState({ cluster, connecting: true })
+  const state = deriveConnectionState({
+    cluster,
+    connecting: true,
+    connectingTarget: { kind: 'context', name: 'staging-west' },
+  })
   assert.equal(state.phase, 'connecting')
   assert.equal(state.showBanner, true)
-  assert.match(state.message, /Switching to prod-east/)
+  assert.equal(state.title, 'Connecting to staging-west')
+  assert.match(state.message, /Switching to staging-west/)
+  assert.equal(state.showDismiss, true)
+})
+
+test('deriveConnectionState connecting dismissed hides banner', () => {
+  const state = deriveConnectionState({
+    cluster,
+    connecting: true,
+    connectingTarget: { kind: 'context', name: 'staging-west' },
+    dismissed: true,
+  })
+  assert.equal(state.showBanner, false)
 })
 
 test('deriveConnectionState disconnected on sync error', () => {
@@ -60,11 +87,21 @@ test('deriveConnectionState auth disconnect highlights credentials', () => {
 test('deriveConnectionState retrying shows countdown', () => {
   const state = deriveConnectionState({
     cluster: { ...cluster, syncError: 'timeout' },
-    retryInSec: 5,
+    retryInSec: 10,
     maxRetries: 5,
   })
   assert.equal(state.phase, 'retrying')
-  assert.match(state.detail, /Retrying in 5s/)
+  assert.match(state.detail, /Retrying in 10s/)
+  assert.equal(state.showDismiss, true)
+})
+
+test('deriveConnectionState dismissed hides banner while disconnected', () => {
+  const state = deriveConnectionState({
+    cluster: { ...cluster, syncError: 'timeout' },
+    dismissed: true,
+  })
+  assert.equal(state.phase, 'disconnected')
+  assert.equal(state.showBanner, false)
 })
 
 test('deriveConnectionState exhausted shows reconnect attempts', () => {

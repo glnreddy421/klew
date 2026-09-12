@@ -6,6 +6,7 @@ import { useCatalogEntities } from '../hooks/useCatalogEntities.js'
 import { clusterScopeKey, useLazyResourceCounts } from '../hooks/useLazyResourceCounts.js'
 import { isResourcesBrowseAll, RESOURCES_BROWSE_LENS } from '../lib/browseScope.js'
 import { canLoadCatalogEntities, resolveDisplayEntities } from '../lib/catalogDisplay.js'
+import { isAccessDenied } from '../lib/resourceCatalog.js'
 
 const ScopeBrowseContext = createContext(null)
 
@@ -84,6 +85,15 @@ export function ScopeBrowseProvider({
   const effectiveKindGroup = useMemo(() => {
     const group = navWithCounts.selectedKindGroup || kindGroup
     if (!group) return null
+    if (isAccessDenied(group)) {
+      return group
+    }
+    if (lazy.accessState === 'forbidden') {
+      return { ...group, accessState: 'forbidden', countState: { state: 'forbidden' } }
+    }
+    if (lazy.accessState === 'unavailable') {
+      return { ...group, accessState: 'unavailable', countState: { state: 'unavailable' } }
+    }
     if (!catalogAll && investigationEntities.length > 0) {
       return {
         ...group,
@@ -97,12 +107,6 @@ export function ScopeBrowseProvider({
         accessState: 'allowed',
         countState: { state: 'loaded', value: lazy.entities.length },
       }
-    }
-    if (lazy.accessState === 'forbidden') {
-      return { ...group, accessState: 'forbidden', countState: { state: 'forbidden' } }
-    }
-    if (lazy.accessState === 'unavailable') {
-      return { ...group, accessState: 'unavailable', countState: { state: 'unavailable' } }
     }
     return group
   }, [navWithCounts.selectedKindGroup, kindGroup, lazy.accessState, lazy.entities.length, investigationEntities.length, catalogAll])

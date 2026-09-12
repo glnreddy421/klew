@@ -18,17 +18,23 @@ const COL = {
   restarts: { id: 'restarts', label: 'Restarts', className: 'col-num' },
   controlledBy: { id: 'controlledBy', label: 'Owner', className: 'col-controlled' },
   qos: { id: 'qos', label: 'QoS', className: 'col-qos' },
+  cpu: { id: 'cpu', label: 'CPU', className: 'col-cpu' },
+  memory: { id: 'memory', label: 'Memory', className: 'col-memory' },
   pods: { id: 'pods', label: 'Pods', className: 'col-pods' },
   replicas: { id: 'replicas', label: 'Replicas', className: 'col-num' },
   updated: { id: 'updated', label: 'Updated', className: 'col-num' },
   available: { id: 'available', label: 'Available', className: 'col-num' },
   misscheduled: { id: 'misscheduled', label: 'Misscheduled', className: 'col-num' },
-  completions: { id: 'completions', label: 'Completions', className: 'col-num' },
+  completions: { id: 'completions', label: 'Completion', className: 'col-completions' },
   conditions: { id: 'conditions', label: 'Conditions', className: 'col-conditions' },
+  duration: { id: 'duration', label: 'Duration', className: 'col-duration' },
   schedule: { id: 'schedule', label: 'Schedule', className: 'col-schedule' },
   suspend: { id: 'suspend', label: 'Suspend', className: 'col-suspend' },
   active: { id: 'active', label: 'Active', className: 'col-num' },
-  lastSchedule: { id: 'lastSchedule', label: 'Last schedule', className: 'col-age' },
+  lastSchedule: { id: 'lastSchedule', label: 'Last Schedule', className: 'col-last-schedule' },
+  nodeSelector: { id: 'nodeSelector', label: 'Node Selector', className: 'col-node-selector' },
+  tolerations: { id: 'tolerations', label: 'Tolerations', className: 'col-tolerations' },
+  affinity: { id: 'affinity', label: 'Affinity', className: 'col-affinity' },
   type: { id: 'type', label: 'Type', className: 'col-type' },
   clusterIP: { id: 'clusterIP', label: 'Cluster IP', className: 'col-cluster-ip' },
   ports: { id: 'ports', label: 'Ports', className: 'col-ports' },
@@ -64,23 +70,33 @@ const ENDPOINT_RESOURCE_COLUMNS = {
 
 /** Lens-style pods + desired replicas (StatefulSet, DaemonSet-style lists). */
 const WORKLOAD_PODS_COLUMNS = {
-  columnOrder: ['name', 'namespace', 'pods', 'replicas', 'age'],
-  defaultVisible: ['name', 'namespace', 'pods', 'replicas', 'age'],
+  columnOrder: ['name', 'namespace', 'pods', 'replicas', 'nodeSelector', 'tolerations', 'affinity', 'age'],
+  defaultVisible: ['name', 'namespace', 'pods', 'replicas', 'nodeSelector', 'tolerations', 'affinity', 'age'],
   columns: {
     name: COL.name,
     namespace: COL.namespace,
     pods: COL.pods,
     replicas: COL.replicas,
+    nodeSelector: COL.nodeSelector,
+    tolerations: COL.tolerations,
+    affinity: COL.affinity,
     age: COL.age,
   },
 }
 
 /** Lens-style deployment columns. */
 const DEPLOYMENT_COLUMNS = {
-  columnOrder: ['name', 'namespace', 'pods', 'replicas', 'age', 'conditions'],
-  defaultVisible: ['name', 'namespace', 'pods', 'replicas', 'age', 'conditions'],
+  columnOrder: [
+    'name', 'namespace', 'pods', 'replicas', 'nodeSelector', 'tolerations', 'affinity', 'age', 'conditions',
+  ],
+  defaultVisible: [
+    'name', 'namespace', 'pods', 'replicas', 'nodeSelector', 'tolerations', 'affinity', 'age', 'conditions',
+  ],
   columns: {
     ...WORKLOAD_PODS_COLUMNS.columns,
+    nodeSelector: COL.nodeSelector,
+    tolerations: COL.tolerations,
+    affinity: COL.affinity,
     conditions: COL.conditions,
   },
 }
@@ -88,10 +104,11 @@ const DEPLOYMENT_COLUMNS = {
 /** Lens-style daemonset scheduled pod counts. */
 const DAEMONSET_COLUMNS = {
   columnOrder: [
-    'name', 'namespace', 'desired', 'current', 'ready', 'updated', 'available', 'misscheduled', 'age',
+    'name', 'namespace', 'desired', 'current', 'ready', 'updated', 'available', 'misscheduled',
+    'nodeSelector', 'tolerations', 'affinity', 'age',
   ],
   defaultVisible: [
-    'name', 'namespace', 'desired', 'current', 'ready', 'updated', 'available', 'misscheduled', 'age',
+    'name', 'namespace', 'desired', 'current', 'ready', 'nodeSelector', 'tolerations', 'affinity', 'age',
   ],
   columns: {
     name: COL.name,
@@ -102,14 +119,21 @@ const DAEMONSET_COLUMNS = {
     updated: COL.updated,
     available: COL.available,
     misscheduled: COL.misscheduled,
+    nodeSelector: COL.nodeSelector,
+    tolerations: COL.tolerations,
+    affinity: COL.affinity,
     age: COL.age,
   },
 }
 
 /** Lens-style replica counts for controllers (ReplicaSet, Deployment, …). */
 const REPLICA_COUNT_COLUMNS = {
-  columnOrder: ['name', 'namespace', 'status', 'desired', 'current', 'ready', 'age'],
-  defaultVisible: ['name', 'namespace', 'desired', 'current', 'ready', 'age'],
+  columnOrder: [
+    'name', 'namespace', 'status', 'desired', 'current', 'ready', 'nodeSelector', 'tolerations', 'affinity', 'age',
+  ],
+  defaultVisible: [
+    'name', 'namespace', 'desired', 'current', 'ready', 'nodeSelector', 'tolerations', 'affinity', 'age',
+  ],
   columns: {
     name: COL.name,
     namespace: COL.namespace,
@@ -117,6 +141,9 @@ const REPLICA_COUNT_COLUMNS = {
     desired: COL.desired,
     current: COL.current,
     ready: COL.ready,
+    nodeSelector: COL.nodeSelector,
+    tolerations: COL.tolerations,
+    affinity: COL.affinity,
     age: COL.age,
   },
 }
@@ -128,17 +155,25 @@ const REPLICA_COUNT_COLUMNS = {
 export const KIND_TABLE_SCHEMAS = {
   Pod: {
     columnOrder: [
-      'name', 'namespace', 'status', 'containers', 'restarts', 'controlledBy', 'node', 'qos', 'age',
+      'name', 'namespace', 'status', 'cpu', 'memory', 'containers', 'restarts', 'controlledBy', 'node',
+      'nodeSelector', 'tolerations', 'affinity', 'qos', 'age',
     ],
-    defaultVisible: ['name', 'namespace', 'status', 'restarts', 'age'],
+    defaultVisible: [
+      'name', 'namespace', 'status', 'cpu', 'memory', 'restarts', 'nodeSelector', 'tolerations', 'affinity', 'age',
+    ],
     columns: {
       name: COL.name,
       namespace: COL.namespace,
       status: COL.status,
+      cpu: COL.cpu,
+      memory: COL.memory,
       containers: COL.containers,
       restarts: COL.restarts,
       controlledBy: COL.controlledBy,
       node: COL.node,
+      nodeSelector: COL.nodeSelector,
+      tolerations: COL.tolerations,
+      affinity: COL.affinity,
       qos: COL.qos,
       age: COL.age,
     },
@@ -148,19 +183,35 @@ export const KIND_TABLE_SCHEMAS = {
   StatefulSet: { ...WORKLOAD_PODS_COLUMNS },
   DaemonSet: { ...DAEMONSET_COLUMNS },
   Job: {
-    columnOrder: ['name', 'namespace', 'completions', 'age', 'conditions'],
-    defaultVisible: ['name', 'namespace', 'completions', 'age', 'conditions'],
+    columnOrder: [
+      'name', 'completions', 'age', 'conditions', 'namespace', 'duration', 'controlledBy',
+      'nodeSelector', 'tolerations', 'affinity',
+    ],
+    defaultVisible: [
+      'name', 'completions', 'age', 'conditions', 'namespace', 'nodeSelector', 'tolerations', 'affinity',
+    ],
     columns: {
       name: COL.name,
       namespace: COL.namespace,
       completions: COL.completions,
       age: COL.age,
       conditions: COL.conditions,
+      duration: COL.duration,
+      controlledBy: COL.controlledBy,
+      nodeSelector: COL.nodeSelector,
+      tolerations: COL.tolerations,
+      affinity: COL.affinity,
     },
   },
   CronJob: {
-    columnOrder: ['name', 'namespace', 'schedule', 'suspend', 'active', 'lastSchedule', 'age'],
-    defaultVisible: ['name', 'namespace', 'schedule', 'suspend', 'active', 'lastSchedule', 'age'],
+    columnOrder: [
+      'name', 'namespace', 'age', 'schedule', 'suspend', 'active', 'lastSchedule',
+      'nodeSelector', 'tolerations', 'affinity',
+    ],
+    defaultVisible: [
+      'name', 'namespace', 'age', 'schedule', 'suspend', 'active', 'lastSchedule',
+      'nodeSelector', 'tolerations', 'affinity',
+    ],
     columns: {
       name: COL.name,
       namespace: COL.namespace,
@@ -168,6 +219,9 @@ export const KIND_TABLE_SCHEMAS = {
       suspend: COL.suspend,
       active: COL.active,
       lastSchedule: COL.lastSchedule,
+      nodeSelector: COL.nodeSelector,
+      tolerations: COL.tolerations,
+      affinity: COL.affinity,
       age: COL.age,
     },
   },
@@ -300,7 +354,8 @@ export function availableColumnIds(kind, kindGroup, browseScope) {
   let ids = [...(schema.columnOrder || Object.keys(schema.columns))]
 
   const lensNamespaceColumn = kind === 'IngressClass'
-  if (!lensNamespaceColumn && !showsNamespaceColumn(kindGroup, kind, browseScope)) {
+  const forceNamespaceColumn = kind === 'Job' || kind === 'CronJob'
+  if (!lensNamespaceColumn && !forceNamespaceColumn && !showsNamespaceColumn(kindGroup, kind, browseScope)) {
     ids = ids.filter((id) => id !== 'namespace')
   }
 
@@ -339,6 +394,7 @@ export function saveColumnPreferences(kind, columnIds) {
   } catch {
     // ignore quota errors
   }
+  import('./settingsCache.js').then((m) => m.queueSettingsCacheSync()).catch(() => {})
 }
 
 export function resolveVisibleColumnIds({

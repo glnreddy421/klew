@@ -4,7 +4,6 @@ import { buildInspectKey } from './matches'
 /** Group IDs that become inspector tabs (order matters). */
 export const DETAIL_TAB_ORDER = [
   { id: 'summary', label: 'Summary' },
-  { id: 'status', label: 'Status' },
   { id: 'containers', label: 'Containers' },
   { id: 'relationships', label: 'Relationships' },
   { id: 'spec', label: 'Spec' },
@@ -57,6 +56,12 @@ function sectionHasContent(s) {
   return false
 }
 
+function normalizeSectionGroup(group, section) {
+  const g = group || inferGroup(section?.id, section?.title)
+  if (g === 'status' || g === 'scheduling') return 'summary'
+  return g
+}
+
 function groupSections(sections, summary) {
   const byGroup = new Map()
   for (const tab of DETAIL_TAB_ORDER) {
@@ -71,7 +76,7 @@ function groupSections(sections, summary) {
     })
   }
   for (const s of sections) {
-    const g = s.group || inferGroup(s.id, s.title)
+    const g = normalizeSectionGroup(s.group, s)
     if (!byGroup.has(g)) byGroup.set(g, [])
     byGroup.get(g).push(s)
   }
@@ -87,15 +92,16 @@ function inferGroup(id, title) {
   const t = `${id || ''} ${title || ''}`.toLowerCase()
   if (/event/.test(t)) return 'events'
   if (/label|annotation|managed|metadata/.test(t)) return 'metadata'
-  if (/owner|subject|role.?ref|selector|mounted|consumer|target|endpoint|claim|used by|referenced|parent|affected|pod.?schedul/.test(t)) {
+  if (/owner|subject|role.?ref|selector|mounted|consumer|target|endpoint|claim|used by|referenced|parent|affected|pod.?schedul|active.?job|^jobs$|^pods$/.test(t)) {
     return 'relationships'
   }
-  if (/condition|phase|ready|replica|address|capacity|status/.test(t)) return 'status'
+  if (/condition|phase|ready|replica|address|capacity|status/.test(t)) return 'summary'
   if (/container|init.?container|sidecar|probe|volume.?mount|environment|secret.?env|image.?pull|restart.?history|security.?context|allocated/.test(t)) {
     return 'containers'
   }
   if (/resource|qos|runtime|restart/.test(t)) return 'runtime'
-  if (/spec|strategy|port|rule|volume|environ|template|type|policy|affinity|taint|data.?key|secret.?key/.test(t)) {
+  if (/schedul|affinity|toleration|node selector|anti-affinity|^taints$/.test(t)) return 'summary'
+  if (/spec|strategy|port|rule|volume|environ|template|type|policy|taint|data.?key|secret.?key/.test(t)) {
     return 'spec'
   }
   return 'spec'

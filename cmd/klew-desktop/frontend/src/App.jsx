@@ -40,6 +40,9 @@ import { useConsoleDock } from './hooks/useConsoleDock'
 import { useTheme } from './hooks/useTheme'
 import { usePreferences } from './hooks/usePreferences'
 import { startOptionsFromPreferences } from './lib/preferences'
+import { applyUiFont, scheduleFontCacheRefresh } from './lib/fonts'
+import { registerSettingsRefreshHandler, scheduleSettingsCacheRefresh } from './lib/settingsCache'
+import { applyTheme } from './lib/themes'
 import { resolveTerminalShellPref } from './lib/terminalShell'
 import { buildKubectlLogsCommand, podLogsTabTitle } from './lib/podLogsTerminal'
 import { useIdleAutoStop, formatIdleDuration } from './hooks/useIdleAutoStop'
@@ -118,7 +121,15 @@ export default function App() {
   const [focusPinned, setFocusPinned] = useState(false)
   const [inspectKey, setInspectKey] = useState(null)
 
-  const { cluster, syncing, connecting, syncNow, setContext, setNamespace } = useCluster()
+  const {
+    cluster,
+    syncing,
+    connecting,
+    connectingTarget,
+    syncNow,
+    setContext,
+    setNamespace,
+  } = useCluster()
   const [investigationScope, setInvestigationScope] = useState(() => singleBrowseScope(''))
   const [browseScope, setBrowseScope] = useState(() => allBrowseScope())
   const savedBrowseScopeRef = useRef(null)
@@ -207,10 +218,11 @@ export default function App() {
   )
   const resourceCatalog = useResourceCatalog(cluster, effectiveBrowseScope)
   const { clusterStatus, statusLoading, refreshClusterStatus } = useClusterStatus(cluster)
-  const { connection, reconnect, reconnectBusy } = useClusterConnection({
+  const { connection, reconnect, dismiss, reconnectBusy } = useClusterConnection({
     cluster,
     syncing,
     connecting,
+    connectingTarget,
     clusterStatus,
     statusLoading,
     syncNow,
@@ -225,8 +237,31 @@ export default function App() {
   const [terminalLaunchRequest, setTerminalLaunchRequest] = useState(null)
   const pendingPodLogsLaunchRef = useRef(null)
   const { themeId, setTheme } = useTheme()
-  const { prefs, setPreferences } = usePreferences()
+  const { prefs, setPreferences, reloadPreferences } = usePreferences()
   const activeQueryRef = useRef('')
+
+  useEffect(() => {
+    applyUiFont(prefs.uiFont).catch(() => {})
+  }, [prefs.uiFont])
+
+  useEffect(() => {
+    return scheduleFontCacheRefresh(() => prefs.uiFont)
+  }, [prefs.uiFont])
+
+  useEffect(() => {
+    return registerSettingsRefreshHandler((snapshot) => {
+      reloadPreferences()
+      if (snapshot?.themeId) {
+        applyTheme(snapshot.themeId)
+        setTheme(snapshot.themeId)
+      }
+      if (snapshot?.prefs?.uiFont) {
+        applyUiFont(snapshot.prefs.uiFont).catch(() => {})
+      }
+    })
+  }, [reloadPreferences, setTheme])
+
+  useEffect(() => scheduleSettingsCacheRefresh(), [])
 
   useEffect(() => {
     if (typeof SetKubectlOptions !== 'function') return
@@ -515,11 +550,7 @@ export default function App() {
   const handleFocusChange = useCallback((key, opts = {}) => {
     setFocusKey(key)
     setFocusPinned(Boolean(opts.pinned))
-    if (opts.pinned) {
-      consoleDock.openStream()
-      stream.setFollow(true)
-    }
-  }, [stream, consoleDock])
+  }, [])
 
   const handleClearFocus = useCallback(() => {
     setFocusPinned(false)
@@ -862,8 +893,11 @@ export default function App() {
           connection,
           onReconnect: reconnect,
           reconnectBusy,
+          connecting,
+          connectingTarget,
         }}
-        showExplorer={running || starting || scopePicker.open || tab === 'resources'}
+        showExplorer={running || starting || scopePicker.open || tab === 'resources' || ['incident', 'patterns', 'failures', 'evidence', 'graph'].includes(tab)}
+        investigationActive={running || starting}
         showInspector={payload.showInspector}
         inspector={payload.inspector}
         view={view}
@@ -905,7 +939,7 @@ export default function App() {
     return shell
   }
 
-  const showConsoleDock = running || starting || terminal.open || stream.panelState !== PANEL_CLOSED || consoleDock.expanded
+  const showConsoleDock = terminal.open || stream.panelState !== PANEL_CLOSED || consoleDock.expanded
   const maximized = consoleDock.maximized
 
   const filterLogsFromPatterns = useCallback(async (term) => {
@@ -950,6 +984,7 @@ export default function App() {
       <ClusterConnectionBanner
         connection={connection}
         onReconnect={reconnect}
+        onDismiss={dismiss}
         onOpenSettings={() => navigateTo({ tab: 'settings', settingsSection: 'kubernetes' })}
         reconnectBusy={reconnectBusy}
       />

@@ -1,35 +1,42 @@
-import { useEffect, useRef, useState } from 'react'
-import { GetResourceManifest } from '../../wailsjs/go/main/App'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  loadResourceManifest,
+  manifestCacheKey,
+  peekManifestCache,
+} from '../lib/manifestCache.js'
 import { manifestTargetKey } from '../lib/manifestTarget.js'
 
 /**
  * Fetches read-only kubectl get -o yaml for the selected resource.
+ * Uses a small in-memory stale-while-revalidate cache (show cached YAML, refresh async).
  */
 export function useResourceManifest(target, cluster) {
-  const [manifest, setManifest] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
   const reqRef = useRef(0)
 
   const ctx = cluster?.selectedContext || cluster?.currentContext || ''
-  const kubeconfig = cluster?.kubeconfigPath || ''
   const targetKey = manifestTargetKey(target)
+  const cacheKey = useMemo(
+    () => manifestCacheKey(target, cluster),
+    [target, cluster, targetKey, ctx],
+  )
 
-  const fetchManifest = () => {
-    if (!target?.name || !ctx) return Promise.resolve()
+  const [manifest, setManifest] = useState(() => peekManifestCache(cacheKey))
+  const [loading, setLoading] = useState(() => Boolean(cacheKey && !peekManifestCache(cacheKey)))
+  const [refreshing, setRefreshing] = useState(false)
+  const [error, setError] = useState('')
+
+  const runFetch = useCallback((background = false) => {
+    if (!target?.name || !ctx || !cacheKey) return Promise.resolve()
+
     const id = ++reqRef.current
-    setLoading(true)
+    if (background) {
+      setRefreshing(true)
+    } else {
+      setLoading(true)
+    }
     setError('')
 
-    return GetResourceManifest({
-      resourceId: target.resourceId || '',
-      kind: target.kind || '',
-      name: target.name || '',
-      namespace: target.namespace || '',
-      clusterScoped: Boolean(target.clusterScoped),
-      kubeconfig,
-      context: ctx,
-    })
+    return loadResourceManifest(target, cluster, cacheKey)
       .then((result) => {
         if (reqRef.current !== id) return
         setManifest(result)
@@ -41,27 +48,39 @@ export function useResourceManifest(target, cluster) {
       })
       .catch((err) => {
         if (reqRef.current !== id) return
-        setManifest(null)
+        if (!background) setManifest(null)
         setError(String(err?.message || err || 'Failed to fetch manifest'))
       })
       .finally(() => {
-        if (reqRef.current === id) setLoading(false)
+        if (reqRef.current !== id) return
+        setLoading(false)
+        setRefreshing(false)
       })
-  }
+  }, [target, cluster, cacheKey, ctx])
 
   useEffect(() => {
-    if (!targetKey || !ctx) {
+    if (!cacheKey) {
       setManifest(null)
       setError('')
       setLoading(false)
+      setRefreshing(false)
       return undefined
     }
-    fetchManifest()
+
+    const cached = peekManifestCache(cacheKey)
+    setManifest(cached)
+    setError('')
+    setRefreshing(false)
+    setLoading(!cached)
+
+    runFetch(Boolean(cached))
+
     return () => {
       reqRef.current += 1
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targetKey, ctx, kubeconfig])
+  }, [cacheKey, runFetch])
 
-  return { manifest, loading, error, refresh: fetchManifest }
+  const refresh = useCallback(() => runFetch(Boolean(manifest)), [runFetch, manifest])
+
+  return { manifest, loading, refreshing, error, refresh }
 }

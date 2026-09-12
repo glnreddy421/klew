@@ -32,7 +32,7 @@ func (replicationControllerProvider) Build(ctx context.Context, req *Request) (*
 		),
 	}
 	var sections []Section
-	sections = append(sections, sectionFields("status", "Status", GroupStatus, fields(
+	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields(
 		"Replicas", fmtInt32(rc.Status.Replicas),
 		"Ready", fmtInt32(rc.Status.ReadyReplicas),
 		"Available", fmtInt32(rc.Status.AvailableReplicas),
@@ -133,7 +133,7 @@ func (pdbProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, erro
 		"Selector", labelSelectorSummary(pdb.Spec.Selector),
 		"Unhealthy Pod Eviction Policy", evictionPolicy,
 	)))
-	sections = append(sections, sectionFields("status", "Status", GroupStatus, fields(
+	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields(
 		"Disruptions Allowed", fmtInt32(pdb.Status.DisruptionsAllowed),
 		"Current Healthy", fmtInt32(pdb.Status.CurrentHealthy),
 		"Desired Healthy", fmtInt32(pdb.Status.DesiredHealthy),
@@ -145,7 +145,7 @@ func (pdbProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, erro
 		for _, c := range pdb.Status.Conditions {
 			rows = append(rows, []string{string(c.Type), string(c.Status), c.Reason, truncate(c.Message, 120)})
 		}
-		sections = append(sections, sectionTable("conditions", "Conditions", GroupStatus,
+		sections = append(sections, sectionTable("conditions", "Conditions", GroupSummary,
 			[]string{"Type", "Status", "Reason", "Message"}, rows))
 	}
 	sections = append(sections, metaSections(pdb.Labels, pdb.Annotations, ownerRefsFromMeta(pdb.OwnerReferences, pdb.Namespace))...)

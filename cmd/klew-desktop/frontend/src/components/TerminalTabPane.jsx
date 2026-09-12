@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
@@ -13,6 +13,35 @@ import {
 import { EventsOn } from '../../wailsjs/runtime/runtime'
 import { shellLabel } from '../lib/shellLabel'
 import { normalizeTerminalAppearance, terminalXtermTheme } from '../lib/terminalAppearance'
+
+function connectingLabel(contextName, namespace) {
+  const scope = namespace ? `${contextName} / ${namespace}` : contextName
+  return `Connecting to ${scope}`
+}
+
+function TerminalConnectingOverlay({ contextName, namespace }) {
+  const [dots, setDots] = useState('')
+
+  useEffect(() => {
+    let frame = 0
+    const id = window.setInterval(() => {
+      frame = (frame + 1) % 4
+      setDots('.'.repeat(frame))
+    }, 400)
+    return () => window.clearInterval(id)
+  }, [])
+
+  return (
+    <div className="terminal-connecting" role="status" aria-live="polite">
+      <span className="terminal-connecting-prompt" aria-hidden="true">●</span>
+      <span className="terminal-connecting-text">
+        {connectingLabel(contextName, namespace)}
+        <span className="terminal-connecting-dots" aria-hidden="true">{dots || '\u00a0'}</span>
+      </span>
+      <span className="terminal-connecting-cursor" aria-hidden="true">▌</span>
+    </div>
+  )
+}
 
 /**
  * One xterm instance + PTY session for a terminal tab.
@@ -39,6 +68,9 @@ export function TerminalTabPane({
   const appearanceRef = useRef(normalizeTerminalAppearance(appearance))
   const activeRef = useRef(active)
   const mountedRef = useRef(false)
+  const connectingRef = useRef(false)
+  const bootWrittenRef = useRef(false)
+  const [showConnecting, setShowConnecting] = useState(false)
   activeRef.current = active
   shellPrefRef.current = shellPref
   appearanceRef.current = normalizeTerminalAppearance(appearance)
@@ -80,6 +112,32 @@ export function TerminalTabPane({
     onStateChange?.(tab.id, patch)
   }, [onStateChange, tab.id])
 
+  const writeBootStatus = useCallback((term) => {
+    if (!term) return
+    term.write('\r\n\x1b[2m')
+    term.write(`${connectingLabel(contextName, namespace)}…`)
+    term.write('\x1b[0m')
+    bootWrittenRef.current = true
+  }, [contextName, namespace])
+
+  const clearBootStatus = useCallback((term) => {
+    if (!term || !bootWrittenRef.current) return
+    term.write('\x1b[1A\x1b[2K')
+    bootWrittenRef.current = false
+  }, [])
+
+  const beginConnecting = useCallback(() => {
+    connectingRef.current = true
+    setShowConnecting(true)
+  }, [])
+
+  const endConnecting = useCallback(() => {
+    if (!connectingRef.current) return
+    connectingRef.current = false
+    setShowConnecting(false)
+    clearBootStatus(termRef.current)
+  }, [clearBootStatus])
+
   const flushPendingInput = useCallback((id) => {
     if (!id || !pendingInputRef.current) return
     const data = pendingInputRef.current
@@ -106,14 +164,16 @@ export function TerminalTabPane({
         /* ignore */
       }
     }
+    endConnecting()
     report({ sessionId: null, ready: false })
-  }, [report])
+  }, [report, endConnecting])
 
   const startSession = useCallback(async () => {
     const gen = ++startGenRef.current
     report({ error: '', ready: false, shell: '' })
 
     if (!contextName) {
+      endConnecting()
       report({ error: 'Select a cluster context before opening the terminal.' })
       await closeSession()
       return
@@ -122,12 +182,17 @@ export function TerminalTabPane({
     const term = termRef.current
     const fit = fitRef.current
     if (!term || !fit) {
+      endConnecting()
       report({ error: 'Terminal view is not ready yet. Try Restart.', ready: false })
       return
     }
 
     await closeSession()
     if (gen !== startGenRef.current) return
+
+    term.reset()
+    beginConnecting()
+    writeBootStatus(term)
 
     if (activeRef.current && fit) fit.fit()
     const cols = Math.max(term.cols || 0, 80)
@@ -147,7 +212,6 @@ export function TerminalTabPane({
         return
       }
       sessionRef.current = info.id
-      term.reset()
       flushPendingInput(info.id)
       if (tab.initialInput && !tab.initialInputSent) {
         await WriteTerminal(info.id, tab.initialInput).catch(() => {})
@@ -162,9 +226,22 @@ export function TerminalTabPane({
       })
     } catch (err) {
       if (gen !== startGenRef.current) return
+      endConnecting()
       report({ sessionId: null, ready: false, error: String(err), shell: '' })
     }
-  }, [closeSession, contextName, namespace, kubeconfig, report, flushPendingInput])
+  }, [
+    closeSession,
+    contextName,
+    namespace,
+    kubeconfig,
+    report,
+    flushPendingInput,
+    beginConnecting,
+    writeBootStatus,
+    endConnecting,
+    tab.initialInput,
+    tab.initialInputSent,
+  ])
 
   useEffect(() => {
     const el = containerRef.current
@@ -196,11 +273,22 @@ export function TerminalTabPane({
 
     const offOut = EventsOn('terminal:output', (payload) => {
       if (!payload || payload.id !== sessionRef.current) return
+      if (connectingRef.current) {
+        connectingRef.current = false
+        setShowConnecting(false)
+        if (bootWrittenRef.current) {
+          term.write('\x1b[1A\x1b[2K')
+          bootWrittenRef.current = false
+        }
+      }
       term.write(payload.data || '')
     })
     const offExit = EventsOn('terminal:exit', (payload) => {
       if (!payload || payload.id !== sessionRef.current) return
       sessionRef.current = null
+      connectingRef.current = false
+      setShowConnecting(false)
+      bootWrittenRef.current = false
       report({ sessionId: null, ready: false, shell: '' })
     })
 
@@ -272,12 +360,28 @@ export function TerminalTabPane({
     term.refresh(0, Math.max(term.rows - 1, 0))
   }, [appearance, open])
 
+  useEffect(() => {
+    if (!showConnecting) return undefined
+    const timeout = window.setTimeout(() => {
+      endConnecting()
+    }, 8000)
+    return () => window.clearTimeout(timeout)
+  }, [showConnecting, endConnecting, tab.id])
+
   return (
     <div
-      className={`terminal-tab-pane ${active ? 'is-active' : ''}`}
-      ref={containerRef}
+      className={[
+        'terminal-tab-pane',
+        active ? 'is-active' : '',
+        showConnecting ? 'is-connecting' : '',
+      ].filter(Boolean).join(' ')}
       role="tabpanel"
       aria-hidden={!active}
-    />
+    >
+      <div ref={containerRef} className="terminal-xterm-host" />
+      {showConnecting && active && (
+        <TerminalConnectingOverlay contextName={contextName} namespace={namespace} />
+      )}
+    </div>
   )
 }

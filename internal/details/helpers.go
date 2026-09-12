@@ -109,15 +109,21 @@ func ownerRows(refs []model.ObjectRef) [][]string {
 
 func metaSections(labels, annotations map[string]string, owners []model.ObjectRef) []Section {
 	var out []Section
+	out = append(out, labelsAnnotationsSections(labels, annotations)...)
+	if rows := ownerRows(owners); len(rows) > 0 {
+		out = append(out, sectionTable("ownerRefs", "Owner References", GroupRelationships,
+			[]string{"Kind", "Name", "Namespace", "UID"}, rows))
+	}
+	return out
+}
+
+func labelsAnnotationsSections(labels, annotations map[string]string) []Section {
+	var out []Section
 	if kv := kvMap(labels); len(kv) > 0 {
 		out = append(out, sectionKV("labels", "Labels", GroupMetadata, kv))
 	}
 	if kv := kvMap(annotations); len(kv) > 0 {
 		out = append(out, sectionKV("annotations", "Annotations", GroupMetadata, kv))
-	}
-	if rows := ownerRows(owners); len(rows) > 0 {
-		out = append(out, sectionTable("ownerRefs", "Owner References", GroupRelationships,
-			[]string{"Kind", "Name", "Namespace", "UID"}, rows))
 	}
 	return out
 }

@@ -9,6 +9,7 @@ import { ContextPopover, NamespacePopover } from './shell/ClusterNamespacePopove
 import { ClusterConnectionDot } from './shell/ClusterConnectionDot.jsx'
 import { TimeWindowPopover } from './shell/TimeWindowPopover.jsx'
 import { scopeSupportsInvestigate } from '../lib/browseScope.js'
+import { activeContextLabel } from '../lib/clusterConnection.js'
 
 export function TopBar({
   cluster,
@@ -43,6 +44,8 @@ export function TopBar({
   connection = null,
   onReconnect,
   reconnectBusy = false,
+  connecting = false,
+  connectingTarget = null,
 }) {
   const inputRef = useRef(null)
   const [windowMaximized, setWindowMaximized] = useState(false)
@@ -139,7 +142,7 @@ export function TopBar({
             connection={connection}
             onReconnect={onReconnect}
             reconnectBusy={reconnectBusy}
-            contextLabel={cluster?.selectedContext || cluster?.currentContext || ''}
+            contextLabel={activeContextLabel(cluster, { connecting, connectingTarget })}
           />
         </div>
       </div>

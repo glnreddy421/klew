@@ -9,7 +9,6 @@ import (
 // Canonical section group IDs. Not every Kind emits every group.
 const (
 	GroupSummary       = "summary"
-	GroupStatus        = "status"
 	GroupContainers    = "containers"
 	GroupRelationships = "relationships"
 	GroupSpec          = "spec"

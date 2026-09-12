@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ThemePicker } from '../components/ThemePicker'
+import { FontPicker } from '../components/FontPicker'
+import { applyUiFont } from '../lib/fonts'
 import { WorkspaceLayoutPicker } from '../components/incident/WorkspaceLayoutPicker'
 import { TerminalShellSelect } from '../components/TerminalShellSelect'
 import { TerminalAppearancePicker } from '../components/TerminalAppearancePicker'
@@ -199,9 +201,17 @@ export function SettingsView({
         )}
 
         {section === 'appearance' && (
-          <SettingsSection title="Appearance" subtitle="Theme, workspace layout, and live-tail typography.">
+          <SettingsSection title="Appearance" subtitle="Theme, fonts, workspace layout, and live-tail typography.">
             <h4 className="settings-subhead">Theme</h4>
             <ThemePicker themeId={themeId} onChange={onThemeChange} />
+            <h4 className="settings-subhead">Font</h4>
+            <FontPicker
+              value={prefs.uiFont}
+              onChange={(id) => {
+                set({ uiFont: id })
+                applyUiFont(id).catch(() => {})
+              }}
+            />
             <h4 className="settings-subhead">Workspace layout</h4>
             <p className="settings-note muted">
               Choose how resources, entities, and signals are arranged on Overview. You can also switch layouts from the header while investigating.

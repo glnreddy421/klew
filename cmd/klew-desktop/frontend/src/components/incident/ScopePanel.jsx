@@ -1,5 +1,5 @@
 import { useMemo, useEffect } from 'react'
-import { buildCatalogScopeTree, catalogTreeSignature } from '../../lib/resourceCatalog.js'
+import { buildCatalogScopeTree, catalogTreeSignature, isAccessDenied } from '../../lib/resourceCatalog.js'
 import {
   flattenTreeEntities,
   entitySearchPlaceholder,
@@ -11,6 +11,7 @@ import { useResourceNavigation } from '../../hooks/useResourceNavigation.js'
 import { useCatalogEntities } from '../../hooks/useCatalogEntities.js'
 import { clusterScopeKey, useLazyResourceCounts } from '../../hooks/useLazyResourceCounts.js'
 import { useScopeBrowse } from '../../context/ScopeBrowseContext.jsx'
+import { InlineLoading } from '../LoadingSpinner.jsx'
 import { ResourceNav } from './ResourceNav.jsx'
 import { EntityList } from './EntityList.jsx'
 import { EntityTable } from './EntityTable.jsx'
@@ -27,6 +28,7 @@ export function ScopePanel({
   view,
   catalog,
   cluster,
+  clusterStatus = null,
   catalogLoading = false,
   catalogEnriching = false,
   catalogError = '',
@@ -95,7 +97,11 @@ export function ScopePanel({
     })
   }, [chain, nav.selectedGroupId, nav.selectedKind, nav.selectedResourceId, entityChangeSig, onKindChange])
 
-  const chainEntities = useMemo(() => (chain ? flattenTreeEntities(tree) : []), [chain, tree])
+  const chainEntities = useMemo(() => {
+    if (!chain) return []
+    if (rows?.length) return rows
+    return flattenTreeEntities(tree)
+  }, [chain, rows, tree])
   const isOverview = isCategoryOverview(nav.selectedKind)
   const workloadKindGroups = useMemo(
     () => tree?.categories?.find((c) => c.id === 'workloads')?.kinds || [],
@@ -151,9 +157,11 @@ export function ScopePanel({
           </div>
         </div>
         <div className="scope-toolbar-meta">
-          {catalogLoading && <span className="scope-toolbar-hint">Loading catalog…</span>}
+          {catalogLoading && (
+            <InlineLoading message="Loading catalog…" className="scope-toolbar-hint" />
+          )}
           {catalogEnriching && !catalogLoading && (
-            <span className="scope-toolbar-hint">Updating counts…</span>
+            <InlineLoading message="Updating counts…" className="scope-toolbar-hint" />
           )}
           {catalogError && !catalogLoading && (
             <span className="scope-toolbar-hint scope-toolbar-warn" title={catalogError}>
@@ -213,6 +221,7 @@ export function ScopePanel({
             browseScope={browseScope}
             kindGroups={workloadKindGroups}
             catalogLoading={catalogLoading}
+            clusterStatus={clusterStatus}
             onSelectKind={(card) => nav.selectKind(card.groupId, card.kind, card.resourceId)}
           />
         ) : entityView === 'table' ? (
@@ -228,7 +237,9 @@ export function ScopePanel({
             hasSearchQuery={nav.entitySearchQuery.trim()}
             inspectKey={inspectKey}
             focusKey={focusKey}
+            showFocusButton={showFocusButton}
             onSelect={onInspect}
+            onFocus={onFocus}
           />
         ) : (
           <EntityList
@@ -306,6 +317,15 @@ function useScopePanelState({ view, catalog, cluster, rows, chain, enabled, brow
 
   const effectiveKindGroup = useMemo(() => {
     if (!kindGroup) return null
+    if (isAccessDenied(kindGroup)) {
+      return kindGroup
+    }
+    if (lazy.accessState === 'forbidden') {
+      return { ...kindGroup, accessState: 'forbidden', countState: { state: 'forbidden' } }
+    }
+    if (lazy.accessState === 'unavailable') {
+      return { ...kindGroup, accessState: 'unavailable', countState: { state: 'unavailable' } }
+    }
     if (!catalogAll && investigationEntities.length > 0) {
       return {
         ...kindGroup,
@@ -319,12 +339,6 @@ function useScopePanelState({ view, catalog, cluster, rows, chain, enabled, brow
         accessState: 'allowed',
         countState: { state: 'loaded', value: lazy.entities.length },
       }
-    }
-    if (lazy.accessState === 'forbidden') {
-      return { ...kindGroup, accessState: 'forbidden', countState: { state: 'forbidden' } }
-    }
-    if (lazy.accessState === 'unavailable') {
-      return { ...kindGroup, accessState: 'unavailable', countState: { state: 'unavailable' } }
     }
     return kindGroup
   }, [kindGroup, lazy.accessState, lazy.entities.length, investigationEntities.length, catalogAll])

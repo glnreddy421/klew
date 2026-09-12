@@ -39,7 +39,7 @@ func (endpointSliceProvider) Build(ctx context.Context, req *Request) (*ObjectDe
 		),
 	}
 	var sections []Section
-	sections = append(sections, sectionFields("status", "Status", GroupStatus, fields(
+	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields(
 		"Address Type", string(es.AddressType),
 		"Ready Endpoints", fmtInt32(int32(ready)),
 		"Total Endpoints", fmtInt32(int32(total)),

@@ -2,6 +2,8 @@
  * Access-denied / unavailable state for a resource kind.
  */
 
+/** @typedef {'list' | 'get'} RbacAction */
+
 function accessMeta(kindGroup) {
   const api = kindGroup?.apiVersion
     || (kindGroup?.group ? `${kindGroup.group}/${kindGroup.version || 'v1'}` : '')
@@ -10,7 +12,7 @@ function accessMeta(kindGroup) {
   return { api, resource, scope }
 }
 
-export function ResourceAccessPanel({ kindGroup }) {
+export function ResourceAccessPanel({ kindGroup, action = 'list' }) {
   if (!kindGroup) return null
 
   const forbidden = kindGroup.accessState === 'forbidden'
@@ -23,22 +25,26 @@ export function ResourceAccessPanel({ kindGroup }) {
 
   const label = kindGroup.label || kindGroup.kind
   const meta = accessMeta(kindGroup)
+  const capability = action === 'get' ? 'get' : 'list'
+  const capabilityTarget = meta.resource || label.toLowerCase()
 
   if (forbidden) {
     return (
       <div className="resource-access-panel">
         <div className="resource-access-icon" aria-hidden="true">🔒</div>
-        <p className="resource-access-kicker">Access required</p>
+        <p className="resource-access-kicker">Access denied</p>
         <h4 className="resource-access-title">{label}</h4>
         <p className="resource-access-body">
-          Klew discovered this Kubernetes resource, but the current identity cannot list it.
+          {action === 'get'
+            ? 'The current identity cannot read this object.'
+            : 'Klew discovered this Kubernetes resource, but the current identity cannot list it.'}
         </p>
         <dl className="resource-access-meta">
           {meta.api && <><dt>API</dt><dd className="mono">{meta.api}</dd></>}
           {meta.resource && <><dt>Resource</dt><dd className="mono">{meta.resource}</dd></>}
           <dt>Scope</dt><dd>{meta.scope}</dd>
           <dt>Required capability</dt>
-          <dd className="mono">list {meta.resource || label.toLowerCase()}</dd>
+          <dd className="mono">{capability} {capabilityTarget}</dd>
         </dl>
       </div>
     )

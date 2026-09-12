@@ -36,6 +36,7 @@ export function ContextExplorer({
   onGraphRelationsChange,
   inspectRow,
   width,
+  investigationActive = false,
 }) {
   const title = EXPLORER_TITLES[tab] || SURFACE_META[tab]?.title || 'Explorer'
   const focusLabel = inspectRow ? `${inspectRow.kind}/${inspectRow.name}` : activeQuery
@@ -49,6 +50,7 @@ export function ContextExplorer({
           <FailuresExplorer
             view={view}
             filter={explorerFilters.failures}
+            investigationActive={investigationActive}
             onFilterChange={(f) => onExplorerFiltersChange?.({ failures: { ...explorerFilters.failures, ...f } })}
           />
         )
@@ -57,6 +59,7 @@ export function ContextExplorer({
           <PatternsExplorer
             view={view}
             filter={explorerFilters.patterns}
+            investigationActive={investigationActive}
             onFilterChange={(f) => onExplorerFiltersChange?.({ patterns: { ...explorerFilters.patterns, ...f } })}
           />
         )
@@ -65,6 +68,7 @@ export function ContextExplorer({
           <EvidenceExplorer
             view={view}
             filter={explorerFilters.evidence}
+            investigationActive={investigationActive}
             onFilterChange={(f) => onExplorerFiltersChange?.({ evidence: { ...explorerFilters.evidence, ...f } })}
           />
         )
@@ -82,6 +86,7 @@ export function ContextExplorer({
             timeWindowLabel={timeWindowLabel}
             live={live}
             activeQuery={activeQuery}
+            investigationActive={investigationActive}
           />
         )
       default:
@@ -89,7 +94,7 @@ export function ContextExplorer({
     }
   }, [
     tab, view, explorerFilters, onExplorerFiltersChange, prefs, onPrefsChange,
-    graphRelations, onGraphRelationsChange, focusLabel, timeWindowLabel, live, activeQuery,
+    graphRelations, onGraphRelationsChange, focusLabel, timeWindowLabel, live, activeQuery, investigationActive,
   ])
 
   if (tab === 'settings') return null

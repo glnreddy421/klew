@@ -36,6 +36,16 @@ describe('resolveInspectRef', () => {
       .toBe('Secret/dtool/oci-publishing-gitlab-token')
   })
 
+  it('does not link pod template enum values as pods', () => {
+    const ref = resolveInspectRef('ClusterFirst', {
+      fieldKey: 'DNS Policy',
+      section: { id: 'podTemplate', title: 'Pod Template' },
+      groupId: 'spec',
+      inspectNamespace: 'klew-lab',
+    })
+    expect(ref).toBeNull()
+  })
+
   it('does not treat tolerations count as a node', () => {
     const ref = resolveInspectRef('2', {
       fieldKey: 'Tolerations',
@@ -52,6 +62,23 @@ describe('resolveInspectRef', () => {
       groupId: 'relationships',
     })
     expect(ref?.key).toBe('Node/desktop-worker')
+  })
+
+  it('parses prefixed secret refs from object column using inspect namespace', () => {
+    const ref = resolveInspectRef('secret:oci-publishing-gitlab-token/GITLAB_TOKEN', {
+      columnName: 'object',
+      section: { id: 'env', title: 'Environment' },
+      inspectNamespace: 'dtool',
+    })
+    expect(ref?.key).toBe('Secret/dtool/oci-publishing-gitlab-token')
+  })
+
+  it('links pod names from Job summary fields', () => {
+    const ref = resolveInspectRef('hello-world-29384756', {
+      fieldKey: 'Pod',
+      inspectNamespace: 'klew-lab',
+    })
+    expect(ref?.key).toBe('Pod/klew-lab/hello-world-29384756')
   })
 
   it('parses target pod refs from backend address rows', () => {

@@ -2,10 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import { ResourceNav } from '../../incident/ResourceNav.jsx'
 import { ResourceCategoryIcon } from '../../ResourceCategoryIcon.jsx'
 import { useScopeBrowse } from '../../../context/ScopeBrowseContext.jsx'
+import { categorySupportsOverview } from '../../../lib/resourceNavigation.js'
+import { resourceCategoryToneClass } from '../../../lib/resourceCategoryIcons.js'
 import {
   derivePatternSignalCounts,
   patternExplorerCounts,
 } from '../../../lib/patternFilters.js'
+import { InvestigationSurfaceGuide } from '../../incident/InvestigationSurfaceGuide.jsx'
 
 export function ResourcesExplorer() {
   const ctx = useScopeBrowse()
@@ -32,9 +35,14 @@ function useResourceCategoryNav() {
   const categories = ctx?.nav?.categories || []
   const selectedGroupId = ctx?.nav?.selectedGroupId
   const selectKind = ctx?.nav?.selectKind
+  const selectOverview = ctx?.nav?.selectOverview
   const toggleGroup = ctx?.nav?.toggleGroup
 
   function onCategoryClick(category) {
+    if (categorySupportsOverview(category.id)) {
+      selectOverview?.(category.id)
+      return
+    }
     if (!selectKind) return
     const kind = category.kinds?.[0]
     if (kind) {
@@ -63,6 +71,7 @@ export function ResourcesCategoryStrip({ layout = 'horizontal' }) {
           type="button"
           className={[
             'resources-category-strip-item',
+            resourceCategoryToneClass(category.id),
             selectedGroupId === category.id ? 'is-active' : '',
           ].filter(Boolean).join(' ')}
           title={category.label}
@@ -108,7 +117,10 @@ function ChevronRightIcon() {
   )
 }
 
-export function FailuresExplorer({ view, filter, onFilterChange }) {
+export function FailuresExplorer({ view, filter, onFilterChange, investigationActive = false }) {
+  if (!investigationActive) {
+    return <InvestigationSurfaceGuide surfaceId="failures" variant="explorer" />
+  }
   const stats = deriveFailureStats(view)
   const types = deriveFailureTypes(view)
 
@@ -159,7 +171,10 @@ export function FailuresExplorer({ view, filter, onFilterChange }) {
   )
 }
 
-export function PatternsExplorer({ view, filter, onFilterChange }) {
+export function PatternsExplorer({ view, filter, onFilterChange, investigationActive = false }) {
+  if (!investigationActive) {
+    return <InvestigationSurfaceGuide surfaceId="patterns" variant="explorer" />
+  }
   const patterns = view?.logPatterns || view?.state?.logPatterns || null
   const logTpl = patterns?.templates || []
   const eventTpl = patterns?.eventTemplates || []
@@ -217,7 +232,10 @@ export function PatternsExplorer({ view, filter, onFilterChange }) {
   )
 }
 
-export function EvidenceExplorer({ view, filter, onFilterChange }) {
+export function EvidenceExplorer({ view, filter, onFilterChange, investigationActive = false }) {
+  if (!investigationActive) {
+    return <InvestigationSurfaceGuide surfaceId="evidence" variant="explorer" />
+  }
   const evidence = view?.evidence || view?.state?.liveEvidence || []
   const counts = countEvidenceTypes(evidence)
 
@@ -260,7 +278,10 @@ export function GraphExplorer({ focusLabel, relations, onRelationsChange }) {
   )
 }
 
-export function OverviewExplorer({ timeWindowLabel, live, activeQuery }) {
+export function OverviewExplorer({ timeWindowLabel, live, activeQuery, investigationActive = false }) {
+  if (!investigationActive) {
+    return <InvestigationSurfaceGuide surfaceId="overview" variant="explorer" />
+  }
   return (
     <>
       <ExplorerSection title="Investigation">

@@ -35,7 +35,7 @@ func (endpointsProvider) Build(ctx context.Context, req *Request) (*ObjectDetail
 	}
 
 	var sections []Section
-	sections = append(sections, sectionFields("status", "Status", GroupStatus, fields(
+	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields(
 		"Ready Addresses", fmtInt32(int32(ready)),
 		"Total Addresses", fmtInt32(int32(total)),
 		"Subsets", fmtInt32(int32(len(ep.Subsets))),

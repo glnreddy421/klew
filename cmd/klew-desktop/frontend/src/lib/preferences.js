@@ -1,22 +1,24 @@
 /**
- * Desktop preferences — persisted in localStorage.
- * Investigation knobs are applied on the next StartInvestigation, or live when a session is running (refresh interval / auto-refresh).
+ * Desktop preferences — persisted in localStorage and mirrored to IndexedDB
+ * (see settingsCache.js). Snapshot refreshes every hour and on cross-window changes.
+ * Investigation knobs apply on the next StartInvestigation, or live when a session is running.
  */
 
 import { DEFAULT_WORKSPACE_LAYOUT, normalizeLayoutMode, saveLayoutMode } from './incidentLayout'
 import { DEFAULT_TERMINAL_APPEARANCE, normalizeTerminalAppearance } from './terminalAppearance'
+import { DEFAULT_UI_FONT, normalizeUiFont } from './fonts'
 
 export const PREFS_STORAGE_KEY = 'klew.desktop.preferences'
 
 /** Bump when defaults change so existing localStorage picks up migrations once. */
-export const PREFS_VERSION = 8
+export const PREFS_VERSION = 9
 
 /** Investigation window lengths supported by the engine (minutes). */
 export const WINDOW_MIN_OPTIONS = [5, 15, 30, 60]
 
 export const SETTINGS_SECTIONS = [
   { id: 'general', label: 'General', hint: 'App defaults & session' },
-  { id: 'appearance', label: 'Appearance', hint: 'Theme & live tail' },
+  { id: 'appearance', label: 'Appearance', hint: 'Theme, fonts & tail' },
   { id: 'investigation', label: 'Investigation', hint: 'Windows & refresh' },
   { id: 'concurrency', label: 'Concurrency', hint: 'Log stream limits' },
   { id: 'kubernetes', label: 'Kubernetes', hint: 'Kubeconfig & metrics' },
@@ -28,11 +30,14 @@ export const SETTINGS_SECTIONS = [
 export function defaultPreferences() {
   return {
     // General
-    openStreamOnInvestigate: true,
+    openStreamOnInvestigate: false,
     followLogsByDefault: true,
     rememberLastQuery: true,
 
-    // Appearance / terminal (live tail)
+    // Appearance
+    uiFont: DEFAULT_UI_FONT,
+
+    // Live tail
     streamFontSize: 12,
     streamDense: false,
     streamWrapLines: false,
@@ -111,6 +116,10 @@ function migratePreferences(parsed) {
     next.matchClusterKubectl = true
   }
   // v8: single-namespace investigations only (removed all-namespaces pref).
+  // v9: UI font preset (sans + mono pair).
+  if (version < 9) {
+    next.uiFont = DEFAULT_UI_FONT
+  }
   return next
 }
 
@@ -139,6 +148,7 @@ export function savePreferences(prefs) {
   } catch {
     /* ignore quota */
   }
+  import('./settingsCache.js').then((m) => m.queueSettingsCacheSync()).catch(() => {})
   return next
 }
 
@@ -149,6 +159,8 @@ export function normalizePreferences(p) {
     openStreamOnInvestigate: bool(src.openStreamOnInvestigate, d.openStreamOnInvestigate),
     followLogsByDefault: bool(src.followLogsByDefault, d.followLogsByDefault),
     rememberLastQuery: bool(src.rememberLastQuery, d.rememberLastQuery),
+
+    uiFont: normalizeUiFont(src.uiFont ?? d.uiFont),
 
     streamFontSize: clampInt(src.streamFontSize, 10, 18, d.streamFontSize),
     streamDense: bool(src.streamDense, d.streamDense),
