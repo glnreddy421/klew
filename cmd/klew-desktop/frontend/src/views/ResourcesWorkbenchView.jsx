@@ -13,6 +13,7 @@ import {
 } from '../lib/matches'
 import { buildChainRows, buildFocusScope } from '../lib/focusScope'
 import { useFocusChainCatalog } from '../hooks/useFocusChainCatalog.js'
+import { buildWorkloadTrace, isWorkloadTraceKind } from '../lib/workloadTrace.js'
 import { buildComponentInspect } from '../lib/componentInspect'
 import { mergeInspect, normalizeObjectDetail } from '../lib/objectDetails'
 import { GetObjectDetails } from '../../wailsjs/go/main/App'
@@ -245,6 +246,8 @@ export function ResourcesWorkbenchInspector() {
     detailLoading,
     detailError,
     inspectKey,
+    workloadTrace,
+    workloadTraceLoading,
   } = ctx
 
   return (
@@ -261,6 +264,8 @@ export function ResourcesWorkbenchInspector() {
       loading={detailLoading}
       error={detailError}
       browseMode
+      workloadTrace={workloadTrace}
+      workloadTraceLoading={workloadTraceLoading}
       emptyHint={
         inspectKey && !inspectRow
           ? `Could not open ${inspectKey}. Pick another row or check your cluster access.`
@@ -375,12 +380,27 @@ function useResourcesWorkbenchState({
     )
   }, [focusKey, allRows, catalogEntities, investigationNs])
 
+  const traceFocusRow = useMemo(() => {
+    if (focusPinned && focusRow) return focusRow
+    if (inspectKey) {
+      return (
+        catalogEntities.find((r) => r.key === inspectKey)
+        || allRows.find((r) => r.key === inspectKey)
+        || null
+      )
+    }
+    return null
+  }, [focusPinned, focusRow, inspectKey, catalogEntities, allRows])
+
+  const traceCatalogEnabled = Boolean(traceFocusRow)
+    && (focusPinned || isWorkloadTraceKind(traceFocusRow.kind))
+
   const focusChainCatalog = useFocusChainCatalog({
     cluster,
     catalog,
     browseScope,
-    focusRow,
-    enabled: focusPinned && Boolean(focusRow),
+    focusRow: traceFocusRow || focusRow,
+    enabled: traceCatalogEnabled,
   })
 
   const chainSourceRows = useMemo(() => {
@@ -470,6 +490,15 @@ function useResourcesWorkbenchState({
     [liveDetail, snapshotInspect],
   )
 
+  const workloadTrace = useMemo(() => {
+    if (!traceFocusRow || !isWorkloadTraceKind(traceFocusRow.kind)) return null
+    return buildWorkloadTrace({
+      focusRow: traceFocusRow,
+      catalogRows: focusChainCatalog.rows || [],
+      view,
+    })
+  }, [traceFocusRow, focusChainCatalog.rows, view])
+
   const displayRows = useMemo(() => {
     if (!layout.sortBySignal || focusPinned) return rows
     const rank = { critical: 0, degraded: 1, warning: 1, healthy: 2, unknown: 3 }
@@ -532,6 +561,8 @@ function useResourcesWorkbenchState({
     panelMode,
     detailLoading,
     detailError,
+    workloadTrace,
+    workloadTraceLoading: traceCatalogEnabled && focusChainCatalog.loading,
     browseScope,
     onBrowseScopeChange,
     browseScopeLocked,

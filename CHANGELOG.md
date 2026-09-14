@@ -4,6 +4,23 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-09-14
+
+### Resources browse
+
+- **Workload connection trace** — horizontal Ingress → Service → Deployment → ReplicaSet → Pod path in the inspector when browsing Workloads (no investigation required); click any step to jump.
+- **Resource nav headers** — clearer category accordion styling for Network, Storage, Config, and related groups.
+
+### Top bar & branding
+
+- **Top bar size** — zoom logo, scope, search, and Investigate from 85–130% via the header control or Settings → Appearance; preference persists across sessions.
+- **KLEW wordmark** — vertical KL / EW stack beside the logo.
+
+### Inspector & tables
+
+- Inspector chrome shows resource name, kind, and status in the header.
+- Entity table category tone stripe on column headers; slimmer inspect identity toolbar.
+
 ## [1.2.0] — 2026-09-12
 
 ### Resources browse

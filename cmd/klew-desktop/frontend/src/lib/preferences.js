@@ -7,11 +7,12 @@
 import { DEFAULT_WORKSPACE_LAYOUT, normalizeLayoutMode, saveLayoutMode } from './incidentLayout'
 import { DEFAULT_TERMINAL_APPEARANCE, normalizeTerminalAppearance } from './terminalAppearance'
 import { DEFAULT_UI_FONT, normalizeUiFont } from './fonts'
+import { normalizeTopbarScale, TOPBAR_SCALE_DEFAULT } from './topbarScale'
 
 export const PREFS_STORAGE_KEY = 'klew.desktop.preferences'
 
 /** Bump when defaults change so existing localStorage picks up migrations once. */
-export const PREFS_VERSION = 9
+export const PREFS_VERSION = 10
 
 /** Investigation window lengths supported by the engine (minutes). */
 export const WINDOW_MIN_OPTIONS = [5, 15, 30, 60]
@@ -36,6 +37,7 @@ export function defaultPreferences() {
 
     // Appearance
     uiFont: DEFAULT_UI_FONT,
+    topbarScale: TOPBAR_SCALE_DEFAULT,
 
     // Live tail
     streamFontSize: 12,
@@ -120,6 +122,10 @@ function migratePreferences(parsed) {
   if (version < 9) {
     next.uiFont = DEFAULT_UI_FONT
   }
+  // v10: top bar zoom / scale.
+  if (version < 10) {
+    next.topbarScale = TOPBAR_SCALE_DEFAULT
+  }
   return next
 }
 
@@ -161,6 +167,7 @@ export function normalizePreferences(p) {
     rememberLastQuery: bool(src.rememberLastQuery, d.rememberLastQuery),
 
     uiFont: normalizeUiFont(src.uiFont ?? d.uiFont),
+    topbarScale: normalizeTopbarScale(src.topbarScale ?? d.topbarScale),
 
     streamFontSize: clampInt(src.streamFontSize, 10, 18, d.streamFontSize),
     streamDense: bool(src.streamDense, d.streamDense),

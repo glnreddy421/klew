@@ -5,8 +5,8 @@ import { ResourceCategoryIcon } from '../ResourceCategoryIcon.jsx'
 
 function Chevron({ open }) {
   return (
-    <span className={`scope-chevron ${open ? 'open' : ''}`} aria-hidden="true">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+    <span className={`scope-chevron resource-nav-chevron ${open ? 'open' : ''}`} aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     </span>

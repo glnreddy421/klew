@@ -24,6 +24,7 @@ import { findServiceEndpointFields } from '../../lib/serviceEndpoints'
 import { isRbacForbiddenMessage } from '../../lib/rbacAccess.js'
 import { InlineLoading, LoadingState } from '../LoadingSpinner.jsx'
 import { activeTabGuide, buildBrowseTabs, INSPECT_TAB_META } from '../../lib/inspectTabGuide.js'
+import { WorkloadTraceGraph } from '../workloads/WorkloadTraceGraph.jsx'
 
 /**
  * Kind-aware object inspector.
@@ -40,6 +41,8 @@ export function ComponentInspectPanel({
   browseMode = false,
   loading = false,
   error = null,
+  workloadTrace = null,
+  workloadTraceLoading = false,
 }) {
   const groups = useMemo(
     () => enrichInspectGroups(
@@ -170,6 +173,8 @@ export function ComponentInspectPanel({
           onInspect={onInspect}
           browseMode={browseMode}
           loading={loading}
+          workloadTrace={workloadTrace}
+          workloadTraceLoading={workloadTraceLoading}
         />
       )
 
@@ -249,52 +254,36 @@ function InspectIdentityHeader({ inspect, showFocusCta, onFocus, onInspect, load
       inspectNamespace: inspect.namespace,
     })
     : null
+  const showToolbar = Boolean(
+    loading || showFocusCta || inspect.adhoc || error
+      || (namespaceRef && onInspect && inspect.namespace),
+  )
+  if (!showToolbar) return null
+
   return (
-    <header className="inspect-header inspect-header-actions inspect-identity">
-      <div className="inspect-title-block">
-        <div className="inspect-name-row">
-          <KindIcon kind={inspect.kind} size={18} />
-          <h4 className="inspect-name">
-            <span className="inspect-name-text">{inspect.name}</span>
-          </h4>
-          {inspect.adhoc && (
-            <span className="inspect-adhoc-tag" title="Fetched on demand — not in investigation scope">
-              On demand
-            </span>
-          )}
-        </div>
-        <p className="inspect-identity-meta muted">
-          <span>{inspect.kind}</span>
-          {inspect.namespace ? (
-            <>
-              <span className="inspect-meta-sep">·</span>
-              {namespaceRef && onInspect ? (
-                <button
-                  type="button"
-                  className="inspect-field-link mono"
-                  onClick={() => onInspect(namespaceRef.key)}
-                  title={`Inspect Namespace/${inspect.namespace}`}
-                >
-                  {inspect.namespace}
-                </button>
-              ) : (
-                <span className="mono">{inspect.namespace}</span>
-              )}
-            </>
-          ) : (
-            <>
-              <span className="inspect-meta-sep">·</span>
-              <span>Cluster-scoped</span>
-            </>
-          )}
-        </p>
-      </div>
-      <div className="inspect-header-right">
+    <header className="inspect-toolbar">
+      <div className="inspect-toolbar-start">
         {loading && (
           <InlineLoading message="Fetching live details…" className="inspect-loading muted" />
         )}
-        <StatusBadge status={inspect.status.tone} label={inspect.status.label} />
-        {showFocusCta && (
+        {inspect.adhoc && (
+          <span className="inspect-adhoc-tag" title="Fetched on demand — not in investigation scope">
+            On demand
+          </span>
+        )}
+        {namespaceRef && onInspect && inspect.namespace ? (
+          <button
+            type="button"
+            className="inspect-toolbar-link mono"
+            onClick={() => onInspect(namespaceRef.key)}
+            title={`Inspect Namespace/${inspect.namespace}`}
+          >
+            Open namespace
+          </button>
+        ) : null}
+      </div>
+      {showFocusCta && (
+        <div className="inspect-toolbar-end">
           <button
             type="button"
             className="btn btn-outline inspect-focus-cta"
@@ -303,8 +292,8 @@ function InspectIdentityHeader({ inspect, showFocusCta, onFocus, onInspect, load
           >
             Focus chain
           </button>
-        )}
-      </div>
+        </div>
+      )}
       {error && (
         <div
           className={`inspect-fetch-error${isRbacForbiddenMessage(error) ? ' inspect-fetch-error-denied' : ''}`}
@@ -500,6 +489,8 @@ function DetailTabsPanel({
   onInspect,
   browseMode = false,
   loading = false,
+  workloadTrace = null,
+  workloadTraceLoading = false,
 }) {
   const browseTabs = useMemo(
     () => (browseMode ? buildBrowseTabs(groups, inspect, { loading }) : null),
@@ -564,9 +555,18 @@ function DetailTabsPanel({
     />
   ) : null
 
+  const workloadTraceBlock = browseMode ? (
+    <WorkloadTraceGraph
+      trace={workloadTrace}
+      loading={workloadTraceLoading}
+      onInspect={onInspect}
+    />
+  ) : null
+
   return (
     <div className="inspect-panel mode-detail-tabs">
       {header}
+      {workloadTraceBlock}
       {!hasSummaryTab && summaryExtras}
       <SignalsBlock
         inspect={inspect}
@@ -583,6 +583,7 @@ function DetailTabsPanel({
             </p>
           )}
           {!hasSummaryTab && relatedPodsBlock}
+          <div className="inspect-tabs-scroll">
           <div className="inspect-tabs" role="tablist" aria-label="Detail sections">
             {tabs.map((g) => (
               <button
@@ -614,6 +615,7 @@ function DetailTabsPanel({
                 )}
               </button>
             ))}
+          </div>
           </div>
           <div className="inspect-tab-panel" role="tabpanel">
             {browseMode && <InspectTabGuide guide={tabGuide} />}

@@ -228,6 +228,7 @@ export function ScopePanel({
           <EntityTable
             kind={nav.selectedKind}
             kindGroup={effectiveKindGroup}
+            categoryId={nav.selectedGroupId}
             entities={displayEntities}
             filteredEntities={filteredEntities}
             entitiesLoading={lazy.loading && canLazyLoad}

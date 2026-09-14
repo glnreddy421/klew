@@ -41,6 +41,7 @@ import { useTheme } from './hooks/useTheme'
 import { usePreferences } from './hooks/usePreferences'
 import { startOptionsFromPreferences } from './lib/preferences'
 import { applyUiFont, scheduleFontCacheRefresh } from './lib/fonts'
+import { applyTopbarScale } from './lib/topbarScale'
 import { registerSettingsRefreshHandler, scheduleSettingsCacheRefresh } from './lib/settingsCache'
 import { applyTheme } from './lib/themes'
 import { resolveTerminalShellPref } from './lib/terminalShell'
@@ -245,6 +246,10 @@ export default function App() {
   }, [prefs.uiFont])
 
   useEffect(() => {
+    applyTopbarScale(prefs.topbarScale)
+  }, [prefs.topbarScale])
+
+  useEffect(() => {
     return scheduleFontCacheRefresh(() => prefs.uiFont)
   }, [prefs.uiFont])
 
@@ -257,6 +262,9 @@ export default function App() {
       }
       if (snapshot?.prefs?.uiFont) {
         applyUiFont(snapshot.prefs.uiFont).catch(() => {})
+      }
+      if (snapshot?.prefs?.topbarScale != null) {
+        applyTopbarScale(snapshot.prefs.topbarScale)
       }
     })
   }, [reloadPreferences, setTheme])

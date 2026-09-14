@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { KindIcon } from '../KindIcon'
 import { isAccessDenied, isUnavailable, kindDisplayLabel, resourceMetadataTitle } from '../../lib/resourceCatalog.js'
+import { resourceCategoryToneClass } from '../../lib/resourceCategoryIcons.js'
 import { singleBrowseScope, normalizeBrowseScope } from '../../lib/browseScope.js'
 import {
   enrichEntitiesForTable,
@@ -587,6 +588,7 @@ function TableRow({
 export function EntityTable({
   kind,
   kindGroup,
+  categoryId = '',
   entities = [],
   filteredEntities = [],
   entitiesLoading = false,
@@ -635,20 +637,39 @@ export function EntityTable({
     && !entitiesLoading
     && (isAccessDenied(kindGroup) || isUnavailable(kindGroup))
 
+  const toneClass = resourceCategoryToneClass(categoryId)
+
   return (
     <section className="entity-table" aria-label={`${label} entities`}>
-      <header className="entity-table-header">
+      <header className={`entity-table-header ${toneClass}`.trim()}>
         <div className="entity-table-heading">
-          {kind ? <KindIcon kind={kind} size={16} /> : null}
-          <h4 className="entity-table-title">
-            {label}
-            {resolvedKind === 'Endpoints' && (
-              <span className="entity-table-legacy-tag">legacy</span>
+          {kind ? (
+            <span className="entity-table-icon-badge">
+              <KindIcon kind={kind} size={16} />
+            </span>
+          ) : null}
+          <div className="entity-table-heading-copy">
+            <div className="entity-table-heading-row">
+              <h4 className="entity-table-title">
+                {label}
+                {resolvedKind === 'Endpoints' && (
+                  <span className="entity-table-legacy-tag">legacy</span>
+                )}
+              </h4>
+              {!accessBlocked && (
+                <span className="entity-table-count">{entitiesLoading ? '…' : entities.length}</span>
+              )}
+            </div>
+            {kindGroup && (
+              <p className="entity-table-meta" title={resourceMetadataTitle(kindGroup)}>
+                <span className="entity-table-api mono">
+                  {kindGroup.apiVersion || kindGroup.group
+                    ? `${kindGroup.group || 'core'}/${kindGroup.resource || kind}`
+                    : kind}
+                </span>
+              </p>
             )}
-          </h4>
-          {!accessBlocked && (
-            <span className="entity-table-count">{entitiesLoading ? '…' : entities.length}</span>
-          )}
+          </div>
           {!accessBlocked && selectable.length > 0 && (
             <EntityTableColumnPicker
               columns={selectable}
@@ -657,11 +678,6 @@ export function EntityTable({
             />
           )}
         </div>
-        {kindGroup && (
-          <p className="entity-table-meta muted" title={resourceMetadataTitle(kindGroup)}>
-            {kindGroup.apiVersion || kindGroup.group ? `${kindGroup.group || 'core'}/${kindGroup.resource || kind}` : kind}
-          </p>
-        )}
       </header>
 
       <div className="entity-table-body">

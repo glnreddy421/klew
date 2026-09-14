@@ -2,6 +2,13 @@ import { useEffect, useState } from 'react'
 import { ThemePicker } from '../components/ThemePicker'
 import { FontPicker } from '../components/FontPicker'
 import { applyUiFont } from '../lib/fonts'
+import {
+  applyTopbarScale,
+  normalizeTopbarScale,
+  TOPBAR_SCALE_MAX,
+  TOPBAR_SCALE_MIN,
+  TOPBAR_SCALE_STEP,
+} from '../lib/topbarScale'
 import { WorkspaceLayoutPicker } from '../components/incident/WorkspaceLayoutPicker'
 import { TerminalShellSelect } from '../components/TerminalShellSelect'
 import { TerminalAppearancePicker } from '../components/TerminalAppearancePicker'
@@ -210,6 +217,22 @@ export function SettingsView({
               onChange={(id) => {
                 set({ uiFont: id })
                 applyUiFont(id).catch(() => {})
+              }}
+            />
+            <h4 className="settings-subhead">Top bar size</h4>
+            <p className="settings-note muted">
+              Zoom the header — logo, scope, search, and Investigate. Use the top bar size icon or adjust here (85–130%).
+            </p>
+            <NumberField
+              label="Scale (%)"
+              value={prefs.topbarScale}
+              min={TOPBAR_SCALE_MIN}
+              max={TOPBAR_SCALE_MAX}
+              step={TOPBAR_SCALE_STEP}
+              onChange={(v) => {
+                const next = normalizeTopbarScale(v)
+                set({ topbarScale: next })
+                applyTopbarScale(next)
               }}
             />
             <h4 className="settings-subhead">Workspace layout</h4>

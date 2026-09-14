@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
-import { LogoMark } from './Logo'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { BrandWordmark, LogoMark } from './Logo'
 import { WindowIsMaximised, WindowToggleMaximise, Environment, EventsOn } from '../../wailsjs/runtime/runtime'
 import {
   isBlankInvestigationQuery,
@@ -10,6 +11,14 @@ import { ClusterConnectionDot } from './shell/ClusterConnectionDot.jsx'
 import { TimeWindowPopover } from './shell/TimeWindowPopover.jsx'
 import { scopeSupportsInvestigate } from '../lib/browseScope.js'
 import { activeContextLabel } from '../lib/clusterConnection.js'
+import {
+  applyTopbarScale,
+  bumpTopbarScale,
+  normalizeTopbarScale,
+  TOPBAR_SCALE_MAX,
+  TOPBAR_SCALE_MIN,
+  TOPBAR_SCALE_STEP,
+} from '../lib/topbarScale.js'
 
 export function TopBar({
   cluster,
@@ -93,12 +102,20 @@ export function TopBar({
     }
   }
 
+  const topbarZoom = normalizeTopbarScale(prefs?.topbarScale ?? 100) / 100
+
+  function setTopbarScale(next) {
+    const normalized = applyTopbarScale(next)
+    onPrefsChange?.({ topbarScale: normalized })
+  }
+
   return (
     <header className="topbar topbar-compact">
+      <div className="topbar-scaled" style={{ zoom: topbarZoom }}>
       <div className="topbar-left">
         <div className="topbar-brand">
           <LogoMark />
-          <span className="topbar-brand-name">KLEW</span>
+          <BrandWordmark variant="topbar" />
         </div>
         <div className="topbar-nav-history" role="navigation" aria-label="History">
           <button
@@ -234,8 +251,13 @@ export function TopBar({
         </form>
         </div>
       </div>
+      </div>
 
       <div className="topbar-right">
+        <TopbarScaleControl
+          scale={prefs?.topbarScale ?? 100}
+          onChange={setTopbarScale}
+        />
         {running && (
           <TimeWindowPopover
             live={live}
@@ -287,6 +309,155 @@ export function TopBar({
         )}
       </div>
     </header>
+  )
+}
+
+function TopbarScaleControl({ scale, onChange }) {
+  const [open, setOpen] = useState(false)
+  const [popoverPos, setPopoverPos] = useState(null)
+  const anchorRef = useRef(null)
+  const popoverRef = useRef(null)
+  const normalized = normalizeTopbarScale(scale)
+
+  const updatePopoverPos = () => {
+    const el = anchorRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const width = 148
+    setPopoverPos({
+      top: rect.bottom + 6,
+      left: Math.max(8, rect.right - width),
+    })
+  }
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPopoverPos(null)
+      return undefined
+    }
+    updatePopoverPos()
+    window.addEventListener('resize', updatePopoverPos)
+    window.addEventListener('scroll', updatePopoverPos, true)
+    return () => {
+      window.removeEventListener('resize', updatePopoverPos)
+      window.removeEventListener('scroll', updatePopoverPos, true)
+    }
+  }, [open, normalized])
+
+  useEffect(() => {
+    if (!open) return undefined
+    function onDoc(e) {
+      if (anchorRef.current?.contains(e.target)) return
+      if (popoverRef.current?.contains(e.target)) return
+      setOpen(false)
+    }
+    function onKey(e) {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    const timer = window.setTimeout(() => {
+      document.addEventListener('mousedown', onDoc)
+      document.addEventListener('keydown', onKey)
+    }, 0)
+    return () => {
+      window.clearTimeout(timer)
+      document.removeEventListener('mousedown', onDoc)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  const popover = open && popoverPos ? createPortal(
+    <div
+      ref={popoverRef}
+      className="topbar-scale-popover topbar-scale-popover-fixed"
+      role="dialog"
+      aria-label="Top bar size"
+      style={{
+        position: 'fixed',
+        top: popoverPos.top,
+        left: popoverPos.left,
+        zIndex: 10000,
+      }}
+    >
+      <p className="topbar-scale-popover-title">Top bar size</p>
+      <div className="topbar-scale-popover-actions">
+        <button
+          type="button"
+          className="topbar-scale-step-btn"
+          onClick={() => onChange?.(bumpTopbarScale(normalized, -TOPBAR_SCALE_STEP))}
+          disabled={normalized <= TOPBAR_SCALE_MIN}
+          aria-label="Decrease top bar size"
+        >
+          <ZoomOutIcon />
+        </button>
+        <span className="topbar-scale-popover-value">{normalized}%</span>
+        <button
+          type="button"
+          className="topbar-scale-step-btn"
+          onClick={() => onChange?.(bumpTopbarScale(normalized, TOPBAR_SCALE_STEP))}
+          disabled={normalized >= TOPBAR_SCALE_MAX}
+          aria-label="Increase top bar size"
+        >
+          <ZoomInIcon />
+        </button>
+      </div>
+      {normalized !== 100 && (
+        <button
+          type="button"
+          className="topbar-scale-reset-btn"
+          onClick={() => onChange?.(100)}
+        >
+          Reset to 100%
+        </button>
+      )}
+    </div>,
+    document.body,
+  ) : null
+
+  return (
+    <div className="topbar-scale-anchor" ref={anchorRef}>
+      <button
+        type="button"
+        className={`topbar-icon-btn ${open ? 'is-open' : ''}`.trim()}
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        title={`Top bar size · ${normalized}%`}
+        aria-label={`Top bar size ${normalized} percent`}
+      >
+        <TopbarSizeIcon />
+      </button>
+      {popover}
+    </div>
+  )
+}
+
+function TopbarSizeIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+      <path d="M2.5 12h11" strokeLinecap="round" />
+      <path d="M4 8.5h8" strokeLinecap="round" />
+      <path d="M5.5 5h5" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function ZoomOutIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+      <circle cx="7" cy="7" r="4.25" />
+      <path d="M10.2 10.2 13 13" strokeLinecap="round" />
+      <path d="M5 7h4" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function ZoomInIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+      <circle cx="7" cy="7" r="4.25" />
+      <path d="M10.2 10.2 13 13" strokeLinecap="round" />
+      <path d="M5 7h4M7 5v4" strokeLinecap="round" />
+    </svg>
   )
 }
 

@@ -71,6 +71,8 @@ export function InvestigationSignalsPanel({
   onViewAllSignals,
   expanded = false,
   browseMode = false,
+  workloadTrace = null,
+  workloadTraceLoading = false,
 }) {
   const counts = countSignals(view)
   const signals = topSignals(view, inspect)
@@ -108,6 +110,8 @@ export function InvestigationSignalsPanel({
             error={error}
             emptyHint={emptyHint}
             browseMode={browseMode}
+            workloadTrace={workloadTrace}
+            workloadTraceLoading={workloadTraceLoading}
           />
         </div>
       </div>
