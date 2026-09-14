@@ -5,6 +5,7 @@
 All work in this repository must appear solely under the repository owner's identity.
 
 - **Never** add `Co-authored-by`, `Signed-off-by`, or any other trailer that names Cursor, Composer, Copilot, or other AI/agent tools.
+- Cursor may inject `Co-authored-by: Cursor` via `--trailer` when the agent runs `git commit`; repo `.githooks/commit-msg` strips it. Enable with `git config core.hooksPath .githooks` (local, per clone).
 - **Never** mention Cursor, agents, or AI assistants in commit messages, PR descriptions, or release notes unless the user explicitly asks for that attribution.
 - Use the owner's name and email only (as configured in git). Do not change `user.name` or `user.email`.
 - **Do not create commits or push** unless the user explicitly asks.

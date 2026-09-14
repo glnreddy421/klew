@@ -1,0 +1,6 @@
+#!/bin/sh
+# Strip Cursor agent attribution trailers (injected by IDE tooling, not author intent).
+msg_file="$1"
+[ -n "$msg_file" ] || exit 0
+grep -viE '^(Co-authored-by: Cursor <cursoragent@cursor\.com>|Made-with: Cursor)\s*$' "$msg_file" > "${msg_file}.tmp" && mv "${msg_file}.tmp" "$msg_file"
+exit 0
