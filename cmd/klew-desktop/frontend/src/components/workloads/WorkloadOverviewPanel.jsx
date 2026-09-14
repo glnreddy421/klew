@@ -1,6 +1,8 @@
 import { useMemo } from 'react'
 import { KindIcon } from '../KindIcon'
 import { InlineLoading, LoadingState } from '../LoadingSpinner.jsx'
+import { DataAgeLabel } from '../DataAgeLabel.jsx'
+import { RefreshButton } from '../RefreshButton.jsx'
 import { useWorkloadOverview } from '../../hooks/useWorkloadOverview.js'
 import { summarizeBrowsePodMetrics } from '../../lib/browseMetrics.js'
 import { buildOverviewMetricsSummary } from '../../lib/metricDisplay.js'
@@ -101,14 +103,27 @@ export function WorkloadOverviewPanel({
   clusterStatus = null,
   onSelectKind,
 }) {
-  const { cards, podEntities, loading, error, deniedCount } = useWorkloadOverview({
+  const {
+    cards,
+    podEntities,
+    loading,
+    refreshing,
+    error,
+    deniedCount,
+    hasData,
+    updatedAt,
+    refresh,
+  } = useWorkloadOverview({
     cluster,
     browseScope,
     kindGroups,
     enabled: kindGroups.length > 0,
   })
 
-  const busy = catalogLoading || loading
+  const hasOverview = hasData || cards.some((c) => c.total > 0)
+  const initialLoad = (catalogLoading && !hasOverview) || (loading && !hasOverview)
+  // Only show background refresh while overview data is actively revalidating.
+  const backgroundRefresh = refreshing
 
   const resourceMetrics = useMemo(
     () => buildOverviewMetricsSummary(summarizeBrowsePodMetrics(podEntities)),
@@ -134,7 +149,7 @@ export function WorkloadOverviewPanel({
   if (!kindGroups.length) {
     return (
       <div className="workload-overview-panel">
-        {catalogLoading ? (
+        {catalogLoading && !hasOverview ? (
           <LoadingState message="Loading workload types…" />
         ) : (
           <p className="muted">No workload types discovered in this scope.</p>
@@ -153,7 +168,7 @@ export function WorkloadOverviewPanel({
               Status breakdown for workload types in the current browse scope.
             </p>
           </div>
-          {!busy && cards.length > 0 && (
+          {!initialLoad && cards.length > 0 && (
             <div className="workload-overview-summary" aria-label="Scope summary">
               <div className="workload-overview-stat">
                 <span className="workload-overview-stat-value overview-num">{summary.total}</span>
@@ -169,25 +184,41 @@ export function WorkloadOverviewPanel({
               </div>
             </div>
           )}
+          <RefreshButton
+            onClick={() => refresh?.()}
+            spinning={backgroundRefresh}
+            disabled={initialLoad}
+            title="Refresh overview"
+            className="icon-refresh-btn workload-overview-refresh-btn"
+          />
         </div>
-        {busy && (
+        {backgroundRefresh && (
+          <InlineLoading message="Updating…" className="workload-overview-status muted" />
+        )}
+        {!initialLoad && updatedAt > 0 && (
+          <DataAgeLabel
+            updatedAt={updatedAt}
+            className="workload-overview-status"
+          />
+        )}
+        {initialLoad && (
           <InlineLoading message="Loading overview…" className="workload-overview-status muted" />
         )}
-        {deniedCount > 0 && !busy && (
+        {deniedCount > 0 && !initialLoad && (
           <p className="workload-overview-status scope-toolbar-warn">
             {deniedCount === 1
               ? 'One workload type is not listable with the current identity.'
               : `${deniedCount} workload types are not listable with the current identity.`}
           </p>
         )}
-        {error && !busy && (
+        {error && !initialLoad && (
           <p className="workload-overview-status scope-toolbar-warn" title={error}>
             Some workload lists could not be loaded.
           </p>
         )}
       </header>
 
-      {!busy && (
+      {!initialLoad && (
         <section className="workload-overview-metrics" aria-label="Resource usage">
           <div className="workload-overview-section-head">
             <h3 className="workload-overview-section-title">Resource usage</h3>
@@ -221,12 +252,12 @@ export function WorkloadOverviewPanel({
           <p className="workload-overview-section-lead muted">Health breakdown by kind in the current scope.</p>
         </div>
       <div className="workload-overview-grid-wrap">
-        {busy && (
+        {initialLoad && (
           <div className="workload-overview-grid-loading" aria-hidden="true">
             <LoadingState message="Loading overview…" />
           </div>
         )}
-        <div className={`workload-overview-grid ${busy ? 'is-loading' : ''}`}>
+        <div className={`workload-overview-grid ${initialLoad ? 'is-loading' : ''}`}>
           {cards.map((card) => (
             <WorkloadKindDonut
               key={card.kind}

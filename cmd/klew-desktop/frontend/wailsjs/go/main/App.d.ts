@@ -61,11 +61,15 @@ export function SetKubectlOptions(arg1:boolean,arg2:string,arg3:boolean):Promise
 
 export function SetPollEverySec(arg1:number):Promise<void>;
 
+export function StartCatalogEntityWatch(arg1:main.StartCatalogEntityWatchOptions):Promise<void>;
+
 export function StartInvestigation(arg1:main.StartOptions):Promise<void>;
 
 export function StartLogTail(arg1:main.LogTailOptions):Promise<void>;
 
 export function StartTerminal(arg1:main.TerminalOptions):Promise<main.TerminalInfo>;
+
+export function StopCatalogEntityWatch():Promise<void>;
 
 export function StopInvestigation():Promise<void>;
 

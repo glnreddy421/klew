@@ -75,6 +75,38 @@ func TestIsNamespaceListRestricted(t *testing.T) {
 	}
 }
 
+func TestPreserveClusterPickerOnSyncError(t *testing.T) {
+	prev := ClusterState{
+		CurrentContext:    "docker-desktop",
+		SelectedContext:   "docker-desktop",
+		SelectedNamespace: "default",
+		Cluster:           "docker-desktop",
+		User:              "docker-desktop",
+		Contexts: []ContextOption{
+			{Name: "docker-desktop", Cluster: "docker-desktop", User: "docker-desktop", IsCurrent: true},
+		},
+		Namespaces: []string{"default", "kube-system"},
+	}
+	next := ClusterState{
+		KubeconfigPath: "/Users/me/.kube/config",
+		SyncError:      "read kubeconfig: no such file",
+	}
+
+	got := PreserveClusterPickerOnSyncError(prev, next)
+	if got.SelectedContext != "docker-desktop" {
+		t.Fatalf("SelectedContext = %q", got.SelectedContext)
+	}
+	if got.CurrentContext != "docker-desktop" {
+		t.Fatalf("CurrentContext = %q", got.CurrentContext)
+	}
+	if len(got.Contexts) != 1 {
+		t.Fatalf("contexts = %d", len(got.Contexts))
+	}
+	if got.SyncError == "" {
+		t.Fatal("expected sync error to remain")
+	}
+}
+
 func TestConfigureLoadingRulesMultiPath(t *testing.T) {
 	multi := "/a/config" + string(os.PathListSeparator) + "/b/config"
 	rules := configureLoadingRules(multi)

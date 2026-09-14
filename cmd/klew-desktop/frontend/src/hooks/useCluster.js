@@ -38,9 +38,21 @@ export function useCluster() {
   }, [])
 
   useEffect(() => {
-    GetCluster().then(apply).catch(() => {})
-    SyncCluster().then(apply).catch(() => {})
-    return EventsOn('cluster', apply)
+    let cancelled = false
+    ;(async () => {
+      try {
+        apply(await GetCluster())
+        if (cancelled) return
+        apply(await SyncCluster())
+      } catch {
+        // cluster events will deliver state when the backend recovers
+      }
+    })()
+    const off = EventsOn('cluster', apply)
+    return () => {
+      cancelled = true
+      if (typeof off === 'function') off()
+    }
   }, [apply])
 
   const syncNow = useCallback(async () => {

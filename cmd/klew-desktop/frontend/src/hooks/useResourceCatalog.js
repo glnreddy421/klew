@@ -1,87 +1,113 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { GetResourceCatalog } from '../../wailsjs/go/main/App'
 import { browseScopeApiParams, normalizeBrowseScope } from '../lib/browseScope.js'
+import {
+  CACHE_TTL,
+  catalogIndexCacheKey,
+  loadCatalogCached,
+  peekCatalogCache,
+} from '../lib/catalogCache.js'
 
 /**
  * Fetches discovery-driven resource catalog for the active cluster scope.
  * Loads a fast index first (no per-kind counts), then enriches counts in the background.
+ * Cached ~2 minutes with stale-while-revalidate.
  */
 export function useResourceCatalog(cluster, browseScope) {
-  const [catalog, setCatalog] = useState(null)
-  const [loading, setLoading] = useState(false)
+  const ctx = cluster?.selectedContext || cluster?.currentContext || ''
+  const kubeconfig = cluster?.kubeconfigPath || ''
+  const scope = useMemo(() => normalizeBrowseScope(browseScope), [browseScope])
+  const apiParams = useMemo(() => browseScopeApiParams(scope), [scope])
+  const nsKey = useMemo(() => (
+    apiParams.allNamespaces
+      ? '*'
+      : (apiParams.namespaces.length ? apiParams.namespaces.join(',') : apiParams.namespace)
+  ), [apiParams.allNamespaces, apiParams.namespace, apiParams.namespaces])
+
+  const cacheKey = ctx && (apiParams.allNamespaces || apiParams.namespace || apiParams.namespaces.length)
+    ? catalogIndexCacheKey({ ctx, kubeconfig, nsKey })
+    : ''
+
+  const [catalog, setCatalog] = useState(() => (cacheKey ? peekCatalogCache(cacheKey) : null))
+  const [loading, setLoading] = useState(Boolean(cacheKey && !peekCatalogCache(cacheKey)))
   const [enriching, setEnriching] = useState(false)
   const [error, setError] = useState('')
   const reqRef = useRef(0)
 
-  const ctx = cluster?.selectedContext || cluster?.currentContext || ''
-  const kubeconfig = cluster?.kubeconfigPath || ''
-  const scope = normalizeBrowseScope(browseScope)
-  const api = browseScopeApiParams(scope)
-  const nsKey = api.allNamespaces
-    ? '*'
-    : (api.namespaces.length ? api.namespaces.join(',') : api.namespace)
-
-  useEffect(() => {
-    if (!ctx) {
+  const reload = useCallback(async ({ force = false } = {}) => {
+    if (!cacheKey) {
       setCatalog(null)
       setLoading(false)
       setEnriching(false)
       setError('')
-      return undefined
-    }
-    if (!api.allNamespaces && !api.namespace && api.namespaces.length === 0) {
-      setCatalog(null)
-      setLoading(false)
-      setEnriching(false)
-      setError('')
-      return undefined
+      return
     }
 
     const id = ++reqRef.current
-    setLoading(true)
-    setEnriching(false)
+    const hasCached = Boolean(peekCatalogCache(cacheKey))
+    if (!hasCached) setLoading(true)
+    else setEnriching(true)
     setError('')
 
     const baseOpts = {
       context: ctx,
-      namespace: api.namespace,
-      allNamespaces: api.allNamespaces,
-      namespaces: api.namespaces,
+      namespace: apiParams.namespace,
+      allNamespaces: apiParams.allNamespaces,
+      namespaces: apiParams.namespaces,
       kubeconfig,
-      refresh: false,
+      refresh: force,
     }
 
-    let cancelled = false
+    try {
+      const fastResult = await loadCatalogCached(
+        `${cacheKey}|fast`,
+        CACHE_TTL.catalog,
+        () => GetResourceCatalog({ ...baseOpts, includeCounts: false }),
+        { force },
+      )
+      if (reqRef.current !== id) return
+      setCatalog(fastResult.data)
+      setLoading(false)
+      setEnriching(true)
 
-    GetResourceCatalog({ ...baseOpts, includeCounts: false })
-      .then((fast) => {
-        if (reqRef.current !== id) return null
-        setCatalog(fast)
+      const fullResult = await loadCatalogCached(
+        `${cacheKey}|full`,
+        CACHE_TTL.catalog,
+        () => GetResourceCatalog({ ...baseOpts, includeCounts: true }),
+        { force },
+      )
+      if (reqRef.current !== id) return
+      setCatalog(fullResult.data)
+    } catch (e) {
+      if (reqRef.current !== id) return
+      setError(String(e))
+      if (!peekCatalogCache(`${cacheKey}|fast`)) setCatalog(null)
+    } finally {
+      if (reqRef.current === id) {
         setLoading(false)
-        setEnriching(true)
-        return GetResourceCatalog({ ...baseOpts, includeCounts: true })
-      })
-      .then((full) => {
-        if (cancelled || reqRef.current !== id) return
-        if (full) setCatalog(full)
-      })
-      .catch((e) => {
-        if (reqRef.current !== id) return
-        setError(String(e))
-        setCatalog(null)
-      })
-      .finally(() => {
-        if (reqRef.current === id) {
-          setLoading(false)
-          setEnriching(false)
-        }
-      })
+        setEnriching(false)
+      }
+    }
+  }, [cacheKey, ctx, kubeconfig, apiParams.namespace, apiParams.allNamespaces, apiParams.namespaces])
+
+  useEffect(() => {
+    if (!cacheKey) {
+      setCatalog(null)
+      setLoading(false)
+      setEnriching(false)
+      setError('')
+      return undefined
+    }
+
+    const cached = peekCatalogCache(`${cacheKey}|full`) || peekCatalogCache(`${cacheKey}|fast`)
+    if (cached) setCatalog(cached)
+    setLoading(!cached)
+    reload({ force: false })
 
     return () => {
-      cancelled = true
       reqRef.current += 1
     }
-  }, [ctx, nsKey, kubeconfig])
+  }, [cacheKey, reload])
 
-  return { catalog, loading, enriching, error }
+  return { catalog, loading, enriching, error, refresh: () => reload({ force: true }) }
 }

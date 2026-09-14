@@ -902,6 +902,32 @@ export namespace main {
 	        this.context = source["context"];
 	    }
 	}
+	export class StartCatalogEntityWatchOptions {
+	    resourceId: string;
+	    namespace: string;
+	    allNamespaces: boolean;
+	    namespaces: string[];
+	    clusterScoped: boolean;
+	    kubeconfig: string;
+	    context: string;
+	    watchKey: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new StartCatalogEntityWatchOptions(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.resourceId = source["resourceId"];
+	        this.namespace = source["namespace"];
+	        this.allNamespaces = source["allNamespaces"];
+	        this.namespaces = source["namespaces"];
+	        this.clusterScoped = source["clusterScoped"];
+	        this.kubeconfig = source["kubeconfig"];
+	        this.context = source["context"];
+	        this.watchKey = source["watchKey"];
+	    }
+	}
 	export class StartOptions {
 	    query: string;
 	    namespace: string;

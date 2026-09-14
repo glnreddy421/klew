@@ -2215,6 +2215,37 @@ body {
   white-space: nowrap;
 }
 
+.data-age-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.data-age-label.is-live {
+  color: var(--ok, #6bcf8a);
+}
+
+.data-age-label.is-stale {
+  color: var(--warn);
+}
+
+.data-age-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 6px currentColor;
+  animation: data-age-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes data-age-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
 .scope-toolbar-warn {
   color: var(--warn);
 }
@@ -15844,6 +15875,76 @@ button.cluster-context-chip.is-link:hover {
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
+}
+
+.icon-refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.icon-refresh-btn:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: var(--border-strong, rgba(255, 255, 255, 0.16));
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.icon-refresh-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.icon-refresh.is-spinning {
+  animation: icon-refresh-spin 0.9s linear infinite;
+}
+
+@keyframes icon-refresh-spin {
+  to { transform: rotate(360deg); }
+}
+
+.scope-toolbar-refresh-btn {
+  width: 24px;
+  height: 24px;
+}
+
+.workload-overview-refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-left: auto;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.12s ease, border-color 0.12s ease, background-color 0.12s ease;
+}
+
+.workload-overview-refresh-btn:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--border-light);
+  background: var(--surface-hover);
+}
+
+.workload-overview-refresh-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.workload-overview-refresh-icon.is-spinning {
+  animation: spin 0.9s linear infinite;
 }
 
 .workload-overview-title {

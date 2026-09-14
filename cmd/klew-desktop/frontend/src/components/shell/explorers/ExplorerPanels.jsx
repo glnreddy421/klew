@@ -13,7 +13,7 @@ import { InvestigationSurfaceGuide } from '../../incident/InvestigationSurfaceGu
 export function ResourcesExplorer() {
   const ctx = useScopeBrowse()
   if (!ctx) {
-    return <ExplorerEmpty message="Resources unavailable" />
+    return <ExplorerEmpty message="Connect a cluster context to browse resources" />
   }
   const { nav } = ctx
   return (

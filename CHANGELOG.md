@@ -4,6 +4,27 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 
 ## [Unreleased]
 
+## [1.3.1] — 2026-09-14
+
+### Resources browse — instant feel, live updates
+
+- **Stale-while-revalidate cache** across the Resources surface: catalog index, entity lists, workload overview, and cluster status show cached data instantly on revisit; background refresh keeps data current without blank loading states.
+- **Tiered TTL by scope** — tighter cache for single-namespace browse; longer intervals for all-namespaces and overview fan-out on large clusters.
+- **Live entity watch** — single-namespace (and cluster-scoped) kinds stream changes via Kubernetes watch with debounced relist; wide scopes poll on an interval instead of opening cluster-wide watches.
+- **Visibility-aware refresh** — watches and polls pause when the window/tab is hidden to reduce API load.
+- **Data age & manual refresh** — “Live” / “Updated X ago” labels plus refresh icons on Overview and entity lists.
+
+### Cluster connection
+
+- **Sync no longer wipes context** when kubeconfig read fails temporarily (e.g. Docker Desktop starting); picker state is preserved.
+- **Startup sync sequencing** — `GetCluster` before `SyncCluster` to avoid racing away a good context.
+- **Resources explorer on welcome** — ScopeBrowseProvider wraps the Resources tab even before scope is fully selected.
+
+### Fixes
+
+- Fixed catalog hook dependency loops that caused perpetual “Updating…” spinners on Overview.
+- Cluster status errors are no longer cached as reachable for five minutes.
+
 ## [1.3.0] — 2026-09-14
 
 ### Resources browse

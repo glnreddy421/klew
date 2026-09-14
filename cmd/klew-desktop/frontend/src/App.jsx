@@ -42,6 +42,7 @@ import { usePreferences } from './hooks/usePreferences'
 import { startOptionsFromPreferences } from './lib/preferences'
 import { applyUiFont, scheduleFontCacheRefresh } from './lib/fonts'
 import { applyTopbarScale } from './lib/topbarScale'
+import { invalidateCatalogCache } from './lib/catalogCache.js'
 import { registerSettingsRefreshHandler, scheduleSettingsCacheRefresh } from './lib/settingsCache'
 import { applyTheme } from './lib/themes'
 import { resolveTerminalShellPref } from './lib/terminalShell'
@@ -143,6 +144,7 @@ export default function App() {
   useEffect(() => {
     const ctx = cluster.selectedContext || cluster.currentContext || ''
     if (prevContextRef.current && prevContextRef.current !== ctx) {
+      invalidateCatalogCache()
       const ns = cluster.selectedNamespace || ''
       setInvestigationScope(singleBrowseScope(ns))
       setBrowseScope(allBrowseScope())

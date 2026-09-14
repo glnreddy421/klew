@@ -1,43 +1,80 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { GetClusterStatus } from '../../wailsjs/go/main/App'
+import {
+  CACHE_TTL,
+  clusterStatusCacheKey,
+  loadCatalogCached,
+  peekCatalogCache,
+} from '../lib/catalogCache.js'
 
 const STATUS_POLL_MS = 45000
 
 export function useClusterStatus(cluster) {
-  const [clusterStatus, setClusterStatus] = useState(null)
-  const [statusLoading, setStatusLoading] = useState(false)
+  const contextName = cluster?.selectedContext || cluster?.currentContext || ''
+  const cacheKey = contextName ? clusterStatusCacheKey(contextName) : ''
+
+  const [clusterStatus, setClusterStatus] = useState(() => (
+    cacheKey ? peekCatalogCache(cacheKey) : null
+  ))
+  const [statusLoading, setStatusLoading] = useState(Boolean(cacheKey && !peekCatalogCache(cacheKey)))
+  const [refreshing, setRefreshing] = useState(false)
   const reqRef = useRef(0)
 
-  const contextName = cluster?.selectedContext || cluster?.currentContext || ''
-
-  const refresh = useCallback(async ({ background = false } = {}) => {
-    if (!contextName) {
+  const refresh = useCallback(async ({ background = false, force = false } = {}) => {
+    if (!contextName || !cacheKey) {
       setClusterStatus(null)
       setStatusLoading(false)
+      setRefreshing(false)
       return
     }
 
+    const hasCached = Boolean(peekCatalogCache(cacheKey))
     const id = ++reqRef.current
-    if (!background) setStatusLoading(true)
+    const bg = background || (hasCached && !force)
+
+    if (!bg) setStatusLoading(true)
+    else setRefreshing(true)
+
     try {
-      const status = await GetClusterStatus()
+      const result = await loadCatalogCached(
+        cacheKey,
+        CACHE_TTL.clusterStatus,
+        async () => {
+          const status = await GetClusterStatus()
+          if (status?.apiReachable === false) {
+            throw new Error(status.error || 'Could not reach cluster API')
+          }
+          return status
+        },
+        { force },
+      )
       if (reqRef.current !== id) return
-      setClusterStatus(status)
-    } catch (err) {
-      if (reqRef.current !== id) return
-      setClusterStatus({
-        available: false,
-        apiReachable: false,
-        error: String(err?.message || err || 'Could not reach cluster API'),
-      })
+      setClusterStatus(result.data)
     } finally {
-      if (reqRef.current === id && !background) setStatusLoading(false)
+      if (reqRef.current === id) {
+        setStatusLoading(false)
+        setRefreshing(false)
+      }
     }
-  }, [contextName])
+  }, [contextName, cacheKey])
 
   useEffect(() => {
-    refresh({ background: false })
-  }, [refresh, cluster?.syncedAt])
+    if (!cacheKey) {
+      setClusterStatus(null)
+      setStatusLoading(false)
+      setRefreshing(false)
+      return undefined
+    }
+
+    const cached = peekCatalogCache(cacheKey)
+    if (cached) setClusterStatus(cached)
+    setStatusLoading(!cached)
+    refresh({ background: Boolean(cached), force: false })
+
+    return () => {
+      reqRef.current += 1
+    }
+  }, [cacheKey, refresh, cluster?.syncedAt])
 
   useEffect(() => {
     if (!contextName) return undefined
@@ -45,5 +82,5 @@ export function useClusterStatus(cluster) {
     return () => window.clearInterval(id)
   }, [contextName, refresh])
 
-  return { clusterStatus, statusLoading, refreshClusterStatus: refresh }
+  return { clusterStatus, statusLoading, refreshing, refreshClusterStatus: refresh }
 }

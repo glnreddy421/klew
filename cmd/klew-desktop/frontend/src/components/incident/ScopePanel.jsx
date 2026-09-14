@@ -12,6 +12,8 @@ import { useCatalogEntities } from '../../hooks/useCatalogEntities.js'
 import { clusterScopeKey, useLazyResourceCounts } from '../../hooks/useLazyResourceCounts.js'
 import { useScopeBrowse } from '../../context/ScopeBrowseContext.jsx'
 import { InlineLoading } from '../LoadingSpinner.jsx'
+import { DataAgeLabel } from '../DataAgeLabel.jsx'
+import { RefreshButton } from '../RefreshButton.jsx'
 import { ResourceNav } from './ResourceNav.jsx'
 import { EntityList } from './EntityList.jsx'
 import { EntityTable } from './EntityTable.jsx'
@@ -157,16 +159,32 @@ export function ScopePanel({
           </div>
         </div>
         <div className="scope-toolbar-meta">
-          {catalogLoading && (
+          {catalogLoading && !catalog && (
             <InlineLoading message="Loading catalog…" className="scope-toolbar-hint" />
           )}
-          {catalogEnriching && !catalogLoading && (
+          {(catalogEnriching || (catalogLoading && catalog)) && (
             <InlineLoading message="Updating counts…" className="scope-toolbar-hint" />
           )}
           {catalogError && !catalogLoading && (
             <span className="scope-toolbar-hint scope-toolbar-warn" title={catalogError}>
               Limited discovery
             </span>
+          )}
+          {!isOverview && canLazyLoad && (
+            <RefreshButton
+              onClick={() => lazy.refresh?.()}
+              spinning={lazy.refreshing}
+              disabled={lazy.loading && !displayEntities.length}
+              title="Refresh list"
+              className="icon-refresh-btn scope-toolbar-refresh-btn"
+            />
+          )}
+          {!isOverview && canLazyLoad && lazy?.updatedAt > 0 && (
+            <DataAgeLabel
+              updatedAt={lazy.updatedAt}
+              live={lazy.live}
+              className="scope-toolbar-hint"
+            />
           )}
           {showBrowseLens && (
             <div className="scope-lens-toggle" role="group" aria-label="Resource lens">
@@ -231,7 +249,7 @@ export function ScopePanel({
             categoryId={nav.selectedGroupId}
             entities={displayEntities}
             filteredEntities={filteredEntities}
-            entitiesLoading={lazy.loading && canLazyLoad}
+            entitiesLoading={lazy.loading && canLazyLoad && !displayEntities.length}
             pods={pods}
             browseScope={browseScope}
             onBrowseScopeChange={onBrowseScopeChange}
@@ -248,7 +266,7 @@ export function ScopePanel({
             kindGroup={effectiveKindGroup}
             entities={displayEntities}
             filteredEntities={filteredEntities}
-            entitiesLoading={lazy.loading && canLazyLoad}
+            entitiesLoading={lazy.loading && canLazyLoad && !displayEntities.length}
             hasSearchQuery={nav.entitySearchQuery.trim()}
             inspectKey={inspectKey}
             focusKey={focusKey}

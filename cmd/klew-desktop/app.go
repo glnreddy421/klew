@@ -49,8 +49,15 @@ type App struct {
 	watchCancel context.CancelFunc
 	rootCancel  context.CancelFunc
 
+	catalogWatchMu     sync.Mutex
+	catalogWatchCancel context.CancelFunc
+	catalogWatchKey    string
+
 	lastUIEmit    time.Time
 	uiEmitPending *time.Timer
+
+	lastCatalogEmit    time.Time
+	catalogEmitPending *time.Timer
 }
 
 func NewApp(boot bootOptions) *App { return &App{boot: boot} }
@@ -66,6 +73,7 @@ func (a *App) startup(ctx context.Context) {
 }
 
 func (a *App) shutdown(context.Context) {
+	a.stopCatalogEntityWatch()
 	a.stopInvestigation()
 	if a.terminals != nil {
 		a.terminals.closeAll()
@@ -223,11 +231,12 @@ func (a *App) GetClusterStatus() kube.ClusterStatus {
 // SyncCluster reloads kubeconfig from disk and refreshes namespace list.
 func (a *App) SyncCluster() kube.ClusterState {
 	a.mu.Lock()
-	ctx := a.cluster.SelectedContext
-	ns := a.cluster.SelectedNamespace
+	prev := a.cluster
+	ctx := prev.SelectedContext
+	ns := prev.SelectedNamespace
 	a.mu.Unlock()
 
-	st := a.refreshCluster(ctx, ns)
+	st := kube.PreserveClusterPickerOnSyncError(prev, a.refreshCluster(ctx, ns))
 	a.mu.Lock()
 	a.cluster = st
 	a.mu.Unlock()
@@ -533,6 +542,148 @@ func (a *App) ListCatalogEntities(opts ListCatalogEntitiesOptions) (model.Catalo
 		Namespaces:    opts.Namespaces,
 		ClusterScoped: opts.ClusterScoped,
 	})
+}
+
+// CatalogEntityWatchPayload is pushed to the frontend on catalog:entities events.
+type CatalogEntityWatchPayload struct {
+	WatchKey    string                `json:"watchKey"`
+	ResourceID  string                `json:"resourceId"`
+	Entities    []model.CatalogEntity `json:"entities"`
+	AccessState string                `json:"accessState"`
+	Error       string                `json:"error,omitempty"`
+	UpdatedAt   int64                 `json:"updatedAt"`
+	Live        bool                  `json:"live"`
+}
+
+// StartCatalogEntityWatchOptions configures a live entity list watch for browse mode.
+type StartCatalogEntityWatchOptions struct {
+	ListCatalogEntitiesOptions
+	WatchKey string `json:"watchKey"`
+}
+
+// StartCatalogEntityWatch streams entity list updates for the selected catalog kind.
+// Wide scopes poll periodically; single-namespace scopes use a Kubernetes watch with debounced relist.
+func (a *App) StartCatalogEntityWatch(opts StartCatalogEntityWatchOptions) error {
+	if strings.TrimSpace(opts.WatchKey) == "" {
+		return fmt.Errorf("watchKey is required")
+	}
+	if strings.TrimSpace(opts.ResourceID) == "" {
+		return fmt.Errorf("resourceId is required")
+	}
+	client, ns, err := a.resolveCatalogClient(CatalogOptions{
+		Namespace:     opts.Namespace,
+		AllNamespaces: opts.AllNamespaces,
+		Namespaces:    opts.Namespaces,
+		Kubeconfig:    opts.Kubeconfig,
+		Context:       opts.Context,
+	})
+	if err != nil {
+		return err
+	}
+
+	listNS := ns
+	if opts.Namespace != "" {
+		listNS = opts.Namespace
+	} else if len(opts.Namespaces) == 1 {
+		listNS = opts.Namespaces[0]
+	} else if opts.AllNamespaces || len(opts.Namespaces) > 1 {
+		listNS = ""
+	}
+	if opts.ClusterScoped {
+		listNS = ""
+	}
+	scope := kube.CatalogEntityScope{
+		Namespace:     listNS,
+		AllNamespaces: opts.AllNamespaces,
+		Namespaces:    opts.Namespaces,
+		ClusterScoped: opts.ClusterScoped,
+	}
+
+	a.stopCatalogEntityWatch()
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	watchCtx, cancel := context.WithCancel(ctx)
+
+	a.catalogWatchMu.Lock()
+	a.catalogWatchCancel = cancel
+	a.catalogWatchKey = opts.WatchKey
+	a.catalogWatchMu.Unlock()
+
+	go func() {
+		kube.RunCatalogEntityWatch(watchCtx, client, opts.ResourceID, scope, func(list model.CatalogEntityList, live bool) {
+			if watchCtx.Err() != nil {
+				return
+			}
+			a.emitCatalogEntities(opts.WatchKey, opts.ResourceID, list, live)
+		})
+	}()
+	return nil
+}
+
+// StopCatalogEntityWatch cancels the active browse entity watch/poll session.
+func (a *App) StopCatalogEntityWatch() {
+	a.stopCatalogEntityWatch()
+}
+
+func (a *App) stopCatalogEntityWatch() {
+	a.catalogWatchMu.Lock()
+	cancel := a.catalogWatchCancel
+	pending := a.catalogEmitPending
+	a.catalogWatchCancel = nil
+	a.catalogWatchKey = ""
+	a.catalogEmitPending = nil
+	a.catalogWatchMu.Unlock()
+	if pending != nil {
+		pending.Stop()
+	}
+	if cancel != nil {
+		cancel()
+	}
+}
+
+func (a *App) emitCatalogEntities(watchKey, resourceID string, list model.CatalogEntityList, live bool) {
+	if a.ctx == nil {
+		return
+	}
+	payload := CatalogEntityWatchPayload{
+		WatchKey:    watchKey,
+		ResourceID:  resourceID,
+		Entities:    list.Entities,
+		AccessState: string(list.AccessState),
+		Error:       list.Error,
+		UpdatedAt:   time.Now().UnixMilli(),
+		Live:        live,
+	}
+	a.catalogWatchMu.Lock()
+	now := time.Now()
+	if !a.lastCatalogEmit.IsZero() && now.Sub(a.lastCatalogEmit) < 300*time.Millisecond {
+		if a.catalogEmitPending == nil {
+			delay := 300*time.Millisecond - now.Sub(a.lastCatalogEmit)
+			p := payload
+			a.catalogEmitPending = time.AfterFunc(delay, func() {
+				a.catalogWatchMu.Lock()
+				a.catalogEmitPending = nil
+				a.catalogWatchMu.Unlock()
+				a.emitCatalogEntitiesNow(p)
+			})
+		}
+		a.catalogWatchMu.Unlock()
+		return
+	}
+	a.catalogWatchMu.Unlock()
+	a.emitCatalogEntitiesNow(payload)
+}
+
+func (a *App) emitCatalogEntitiesNow(payload CatalogEntityWatchPayload) {
+	if a.ctx == nil {
+		return
+	}
+	a.catalogWatchMu.Lock()
+	a.lastCatalogEmit = time.Now()
+	a.catalogWatchMu.Unlock()
+	runtime.EventsEmit(a.ctx, "catalog:entities", payload)
 }
 
 // GetBrowseMetricsOptions configures scope-level CPU/memory usage from metrics-server.
@@ -918,11 +1069,12 @@ func (a *App) OpenKubeconfigDir() {
 func (a *App) SetKubeconfigPath(path string) kube.ClusterState {
 	a.mu.Lock()
 	a.cluster.KubeconfigPath = path
-	ctxName := a.cluster.SelectedContext
-	ns := a.cluster.SelectedNamespace
+	prev := a.cluster
+	ctxName := prev.SelectedContext
+	ns := prev.SelectedNamespace
 	a.mu.Unlock()
 
-	st := a.refreshCluster(ctxName, ns)
+	st := kube.PreserveClusterPickerOnSyncError(prev, a.refreshCluster(ctxName, ns))
 	a.mu.Lock()
 	a.cluster = st
 	a.mu.Unlock()
@@ -945,11 +1097,12 @@ func (a *App) SetKubectlOptions(useBundled bool, customPath string, matchCluster
 	kube.SetKubectlOptions(useBundled, customPath, matchClusterKubectl)
 
 	a.mu.Lock()
-	ctxName := a.cluster.SelectedContext
-	ns := a.cluster.SelectedNamespace
+	prev := a.cluster
+	ctxName := prev.SelectedContext
+	ns := prev.SelectedNamespace
 	a.mu.Unlock()
 
-	st := a.refreshCluster(ctxName, ns)
+	st := kube.PreserveClusterPickerOnSyncError(prev, a.refreshCluster(ctxName, ns))
 	a.mu.Lock()
 	a.cluster = st
 	a.mu.Unlock()

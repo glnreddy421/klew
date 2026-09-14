@@ -221,6 +221,42 @@ func fallbackNamespaces(preferred string) []string {
 	return []string{preferred}
 }
 
+// PreserveClusterPickerOnSyncError keeps context/namespace picker data when a refresh
+// fails before kubeconfig can be read (e.g. Docker Desktop still starting).
+func PreserveClusterPickerOnSyncError(prev, next ClusterState) ClusterState {
+	if next.SyncError == "" {
+		return next
+	}
+	if next.SelectedContext != "" && next.CurrentContext != "" && len(next.Contexts) > 0 {
+		return next
+	}
+	if prev.SelectedContext == "" && prev.CurrentContext == "" {
+		return next
+	}
+	if next.SelectedContext == "" {
+		next.SelectedContext = prev.SelectedContext
+	}
+	if next.CurrentContext == "" {
+		next.CurrentContext = prev.CurrentContext
+	}
+	if len(next.Contexts) == 0 {
+		next.Contexts = prev.Contexts
+	}
+	if next.Cluster == "" {
+		next.Cluster = prev.Cluster
+	}
+	if next.User == "" {
+		next.User = prev.User
+	}
+	if len(next.Namespaces) == 0 && len(prev.Namespaces) > 0 {
+		next.Namespaces = prev.Namespaces
+	}
+	if next.SelectedNamespace == "" {
+		next.SelectedNamespace = prev.SelectedNamespace
+	}
+	return next
+}
+
 // KubeconfigModTime returns the newest mod time among kubeconfig files on disk.
 func KubeconfigModTime(kubeconfigPath string) (time.Time, error) {
 	path := kubeconfigPath

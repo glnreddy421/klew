@@ -121,9 +121,38 @@ export function MainContent({
   )
   const showWelcome = !running && !starting && !scopePickerOpen && tab !== 'settings' && !hasBrowseScope
 
+  const resourcesWrap = tab === 'resources' ? {
+    view,
+    cluster,
+    clusterStatus,
+    catalog: resourcesCatalog.catalog,
+    rows: resourcesCatalog.allRows,
+    catalogLoading: resourcesCatalog.loading,
+    catalogEnriching: resourcesCatalog.enriching,
+    catalogError: resourcesCatalog.error,
+    focusKey,
+    focusPinned,
+    onFocusChange,
+    onClearFocus,
+    investigationLoading: resourcesCorrelating,
+    onNavigate: handleNavigate,
+    layoutMode,
+    inspectKey,
+    onInspectKeyChange,
+    shellMode: true,
+    browseScope,
+    onBrowseScopeChange,
+    browseScopeLocked,
+    savedBrowseScopeLabel,
+    investigationNs,
+    investigationSession,
+    resourcesBrowseLens,
+    onResourcesBrowseLensChange,
+  } : null
+
   if (showWelcome) {
     const welcome = <WelcomePanel onOpenSettings={onOpenSettings} />
-    return renderShell?.({ workspace: welcome, showInspector: false }) ?? welcome
+    return renderShell?.({ workspace: welcome, showInspector: false, resourcesWrap }) ?? welcome
   }
 
   if (tab === 'settings') {
@@ -242,34 +271,7 @@ export function MainContent({
     workspace,
     showInspector: tab === 'resources',
     inspector: tab === 'resources' ? <ResourcesWorkbenchInspector /> : null,
-    resourcesWrap: tab === 'resources' ? {
-      view,
-      cluster,
-      clusterStatus,
-      catalog: resourcesCatalog.catalog,
-      rows: resourcesCatalog.allRows,
-      catalogLoading: resourcesCatalog.loading,
-      catalogEnriching: resourcesCatalog.enriching,
-      catalogError: resourcesCatalog.error,
-      focusKey,
-      focusPinned,
-      onFocusChange,
-      onClearFocus,
-      investigationLoading: resourcesCorrelating,
-      onNavigate: handleNavigate,
-      layoutMode,
-      inspectKey,
-      onInspectKeyChange,
-      shellMode: true,
-      browseScope,
-      onBrowseScopeChange,
-      browseScopeLocked,
-      savedBrowseScopeLabel,
-      investigationNs,
-      investigationSession,
-      resourcesBrowseLens,
-      onResourcesBrowseLensChange,
-    } : null,
+    resourcesWrap,
   }
 
   if (renderShell) {

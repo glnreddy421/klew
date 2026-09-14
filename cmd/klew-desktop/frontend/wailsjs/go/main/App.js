@@ -110,6 +110,10 @@ export function SetPollEverySec(arg1) {
   return window['go']['main']['App']['SetPollEverySec'](arg1);
 }
 
+export function StartCatalogEntityWatch(arg1) {
+  return window['go']['main']['App']['StartCatalogEntityWatch'](arg1);
+}
+
 export function StartInvestigation(arg1) {
   return window['go']['main']['App']['StartInvestigation'](arg1);
 }
@@ -120,6 +124,10 @@ export function StartLogTail(arg1) {
 
 export function StartTerminal(arg1) {
   return window['go']['main']['App']['StartTerminal'](arg1);
+}
+
+export function StopCatalogEntityWatch() {
+  return window['go']['main']['App']['StopCatalogEntityWatch']();
 }
 
 export function StopInvestigation() {
