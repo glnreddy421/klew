@@ -306,7 +306,7 @@ func statusFromSignals(signals []model.Signal, b model.EvidenceBundle) model.Ver
 		return model.VerdictUnknown
 	}
 	for _, p := range b.Pods {
-		if !p.Ready {
+		if PodCountsAsUnready(p) {
 			return model.VerdictWarning
 		}
 	}

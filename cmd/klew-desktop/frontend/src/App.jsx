@@ -13,6 +13,7 @@ import {
   SetAutoRefresh,
   SetPollEverySec,
   SetKubectlOptions,
+  RefreshInvestigation,
 } from '../wailsjs/go/main/App'
 import { EventsOn } from '../wailsjs/runtime/runtime'
 import { emptyView } from './lib/constants'
@@ -106,6 +107,7 @@ export default function App() {
   }, [navigateTo])
   const [query, setQuery] = useState('')
   const [running, setRunning] = useState(false)
+  const [refreshingInvestigation, setRefreshingInvestigation] = useState(false)
   const [starting, setStarting] = useState(false)
   const [activeQuery, setActiveQuery] = useState('')
   const [error, setError] = useState('')
@@ -337,17 +339,33 @@ export default function App() {
     }
   }, [applyView, flushView])
 
+  const refreshNow = useCallback(async () => {
+    if (running) {
+      if (refreshingInvestigation) return
+      setRefreshingInvestigation(true)
+      try {
+        await RefreshInvestigation()
+      } catch (err) {
+        setError(String(err))
+      } finally {
+        setRefreshingInvestigation(false)
+      }
+      return
+    }
+    if (!syncing) await syncNow()
+  }, [running, refreshingInvestigation, syncing, syncNow])
+
   useEffect(() => {
     function onKeyDown(e) {
       if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'r') return
       if (isEditableTarget(e.target)) return
-      if (syncing || running) return
+      if (syncing || refreshingInvestigation || starting) return
       e.preventDefault()
-      syncNow()
+      refreshNow()
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [syncNow, syncing, running])
+  }, [refreshNow, syncing, refreshingInvestigation, starting])
 
   useEffect(() => {
     const offSettings = EventsOn('menu:settings', () => {
@@ -880,8 +898,8 @@ export default function App() {
           investigationNs,
           onScopeChange: onInvestigationScopeChange,
           scopeVariant: 'investigate',
-          syncing,
-          onSync: syncNow,
+          syncing: syncing || refreshingInvestigation,
+          onSync: refreshNow,
           onContextChange,
           query,
           onQueryChange: setQuery,

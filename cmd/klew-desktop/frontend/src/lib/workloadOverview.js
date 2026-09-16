@@ -29,11 +29,15 @@ function podSegments(rows) {
 
   for (const item of source) {
     if (!item) continue
-    const health = podHealthLabel(item)
     const phase = String(item.phase || item.signal || '').toLowerCase()
+    if (phase === 'succeeded' || phase === 'completed') {
+      running += 1
+      continue
+    }
+    const health = podHealthLabel(item)
     if (health === 'critical' || phase === 'failed') failed += 1
     else if (health === 'warning' || phase === 'pending') pending += 1
-    else if (health === 'healthy' || phase === 'running' || phase === 'succeeded') running += 1
+    else if (health === 'healthy' || phase === 'running') running += 1
     else other += 1
   }
 

@@ -465,6 +465,10 @@ function synthesizeRow(key, snap, focusScope) {
     }
     const related = pods.filter((p) => (focusScope.relatedPodNamesArr || []).includes(p.name)
       || p.name.startsWith(`${name}-`))
+      .filter((p) => {
+        const phase = String(p.phase || '')
+        return phase !== 'Succeeded' && phase !== 'Failed'
+      })
     restarts = related.reduce((n, p) => n + (p.restartCount || 0), 0)
   } else if (kind === 'Service') {
     const svc = services.find((x) => x.name === name)

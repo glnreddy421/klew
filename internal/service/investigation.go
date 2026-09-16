@@ -113,6 +113,14 @@ func (s *Service) PollInterval() time.Duration {
 	return s.session.PollInterval()
 }
 
+// RefreshSnapshot re-collects investigation workload state now.
+func (s *Service) RefreshSnapshot(ctx context.Context) error {
+	if s == nil || s.session == nil {
+		return fmt.Errorf("no active investigation")
+	}
+	return s.session.RefreshSnapshotNow(ctx)
+}
+
 func (s *Service) LogTailActive() bool {
 	if s == nil || s.session == nil {
 		return false

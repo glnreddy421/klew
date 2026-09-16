@@ -14,3 +14,13 @@ All work in this repository must appear solely under the repository owner's iden
 ## History
 
 Do not rewrite git history unless the user explicitly requests it.
+
+## Resources browse — read-only
+
+The Resources surface (catalog, entity lists, overview, inspector, manifest YAML) must stay **read-only** against the cluster:
+
+- Allowed: `List`, `Get`, `Watch`, discovery, metrics read, manifest fetch.
+- **Never** add Create/Update/Patch/Delete/Apply/Scale (or equivalent) APIs or UI for browse mode.
+- Live watch only **observes** changes made elsewhere; it does not mutate resources.
+- Investigation mode may suggest kubectl commands as text; it must not execute mutating cluster calls unless the user explicitly asks for that capability in a future feature.
+- The embedded terminal is user-driven shell access — not part of the Resources read model.

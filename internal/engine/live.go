@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -38,12 +39,13 @@ type LiveSession struct {
 	cancel  context.CancelFunc
 	wg      sync.WaitGroup
 
-	refreshMu     sync.Mutex
-	autoRefresh   bool
-	pollEvery     time.Duration
-	client        *kube.Client
-	refreshNS     string
-	refreshQuery  string
+	refreshMu         sync.Mutex
+	autoRefresh       bool
+	pollEvery         time.Duration
+	lastStructRefresh time.Time
+	client            *kube.Client
+	refreshNS         string
+	refreshQuery        string
 
 	logMu         sync.Mutex
 	stopLogTail   func()
@@ -78,7 +80,6 @@ func StartLive(ctx context.Context, client *kube.Client, opts LiveOptions) (*Liv
 
 	ctx, cancel := context.WithCancel(ctx)
 	bus := NewBus(1024)
-	sink := func(e model.EvidenceEvent) { bus.Publish(e) }
 
 	bundle, _, err := CollectSnapshot(ctx, client, SnapshotOptions{Namespace: ns, Query: opts.Query, Tail: opts.Tail})
 	if err != nil {
@@ -104,6 +105,11 @@ func StartLive(ctx context.Context, client *kube.Client, opts LiveOptions) (*Liv
 		window:       opts.Window,
 		maxLogReq:    opts.MaxLogRequests,
 		logNS:        ns,
+	}
+
+	sink := func(e model.EvidenceEvent) {
+		bus.Publish(e)
+		session.noteStructuralChange(e)
 	}
 
 	// Consumer must run before snapshot publish so seed events are not dropped
@@ -178,6 +184,93 @@ func (s *LiveSession) PollInterval() time.Duration {
 	s.refreshMu.Lock()
 	defer s.refreshMu.Unlock()
 	return s.pollEvery
+}
+
+func (s *LiveSession) noteStructuralChange(e model.EvidenceEvent) {
+	if s == nil || !shouldRefreshOnStructuralChange(e) {
+		return
+	}
+	s.refreshMu.Lock()
+	if time.Since(s.lastStructRefresh) < 2*time.Second {
+		s.refreshMu.Unlock()
+		return
+	}
+	s.lastStructRefresh = time.Now()
+	enabled := s.autoRefresh
+	client := s.client
+	reducer := s.Reducer
+	ns := s.refreshNS
+	query := s.refreshQuery
+	watcher := s.watcher
+	s.refreshMu.Unlock()
+	if !enabled || client == nil || reducer == nil {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+		defer cancel()
+		if err := RefreshSnapshot(ctx, client, reducer, ns, query); err != nil {
+			slog.Debug("structural snapshot refresh", "err", err)
+			return
+		}
+		if watcher != nil {
+			watcher.SetScopePodNames(podSummaryNames(reducer.State().Snapshot.Pods))
+		}
+	}()
+}
+
+func shouldRefreshOnStructuralChange(e model.EvidenceEvent) bool {
+	if structuralObjectReason(e.Reason) || severityRank(e.Severity) >= severityRank(model.SeverityHigh) {
+		return true
+	}
+	if e.SourceType != model.SourceObjectChange {
+		return false
+	}
+	switch e.SourceKind {
+	case "Container", "Deployment", "ReplicaSet":
+		return true
+	case "Pod":
+		return strings.Contains(e.Message, "phase=Failed") ||
+			strings.Contains(e.Message, "phase=Pending") ||
+			strings.Contains(e.Message, "phase=Unknown")
+	default:
+		return false
+	}
+}
+
+func structuralObjectReason(reason string) bool {
+	switch reason {
+	case "BackOff", "CrashLoopBackOff", "OOMKilled", "Error", "Failed",
+		"FailedScheduling", "FailedMount", "Unhealthy", "Killing":
+		return true
+	default:
+		return false
+	}
+}
+
+// RefreshSnapshotNow re-collects workload state immediately (manual refresh).
+func (s *LiveSession) RefreshSnapshotNow(ctx context.Context) error {
+	if s == nil {
+		return fmt.Errorf("no live session")
+	}
+	s.refreshMu.Lock()
+	client := s.client
+	reducer := s.Reducer
+	ns := s.refreshNS
+	query := s.refreshQuery
+	watcher := s.watcher
+	s.lastStructRefresh = time.Now()
+	s.refreshMu.Unlock()
+	if client == nil || reducer == nil {
+		return fmt.Errorf("live session not ready")
+	}
+	if err := RefreshSnapshot(ctx, client, reducer, ns, query); err != nil {
+		return err
+	}
+	if watcher != nil {
+		watcher.SetScopePodNames(podSummaryNames(reducer.State().Snapshot.Pods))
+	}
+	return nil
 }
 
 func (s *LiveSession) runRefreshLoop(ctx context.Context) {

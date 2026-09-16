@@ -74,6 +74,10 @@ export function PauseLogTail() {
   return window['go']['main']['App']['PauseLogTail']();
 }
 
+export function RefreshInvestigation() {
+  return window['go']['main']['App']['RefreshInvestigation']();
+}
+
 export function RefreshResourceCatalog(arg1) {
   return window['go']['main']['App']['RefreshResourceCatalog'](arg1);
 }

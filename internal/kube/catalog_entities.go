@@ -156,6 +156,11 @@ func listCatalogEntitiesOnce(ctx context.Context, client *Client, gvr schema.Gro
 
 	out := make([]model.CatalogEntity, 0, len(ul.Items))
 	for _, item := range ul.Items {
+		if resource == "pods" {
+			if phase, ok := podStatusPhase(item.Object); ok && (phase == "Succeeded" || phase == "Failed") {
+				continue
+			}
+		}
 		entity := model.CatalogEntity{
 			ResourceID:      resourceID,
 			Name:            item.GetName(),

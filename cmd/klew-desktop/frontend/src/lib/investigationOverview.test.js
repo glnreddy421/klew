@@ -235,6 +235,40 @@ test('stats are compact counts not health KPIs', () => {
   assert.ok(overview.stats.evidence >= 2)
 })
 
+test('stale snapshot with recent critical evidence stays active not quiet', () => {
+  const now = Date.parse('2026-09-15T01:00:00Z')
+  const view = baseView({
+    state: {
+      ...baseView().state,
+      snapshot: {
+        collectedAt: '2026-09-15T00:54:00Z',
+        pods: [{ name: 'payment-api-abc', phase: 'Running', ready: true, containers: [] }],
+        workloads: [],
+        services: [],
+      },
+      verdict: { status: 'healthy', confidence: 0.5 },
+    },
+    evidence: [
+      {
+        id: 'e-new',
+        timestamp: '2026-09-15T00:59:30Z',
+        reason: 'CrashLoopBackOff',
+        severity: 'critical',
+        message: 'back-off restarting failed container',
+      },
+    ],
+  })
+  const rows = deriveMatchRows(view, view.state.matchedObjects)
+  const overview = buildInvestigationOverview(view, {
+    rows,
+    snapshotRefreshSec: 10,
+    now,
+  })
+
+  assert.equal(overview.phase, 'active')
+  assert.equal(overview.verdict.snapshotStale, true)
+})
+
 test('buildInvestigationOverview tolerates non-array correlation fields', () => {
   const view = baseView({
     state: {

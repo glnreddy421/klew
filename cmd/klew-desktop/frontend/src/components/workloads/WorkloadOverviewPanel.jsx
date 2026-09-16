@@ -112,6 +112,7 @@ export function WorkloadOverviewPanel({
     deniedCount,
     hasData,
     updatedAt,
+    live,
     refresh,
   } = useWorkloadOverview({
     cluster,
@@ -140,7 +141,11 @@ export function WorkloadOverviewPanel({
       total += card.total
       for (const seg of card.segments) {
         if (seg.tone === 'ok') healthy += seg.count
-        if (seg.tone === 'warn' || seg.tone === 'crit') attention += seg.count
+        if (seg.label === 'Pending' || seg.label === 'Failed' || seg.tone === 'crit') {
+          attention += seg.count
+        } else if (seg.tone === 'warn' && seg.label !== 'Active') {
+          attention += seg.count
+        }
       }
     }
     return { total, healthy, attention }
@@ -195,11 +200,14 @@ export function WorkloadOverviewPanel({
         {backgroundRefresh && (
           <InlineLoading message="Updating…" className="workload-overview-status muted" />
         )}
-        {!initialLoad && updatedAt > 0 && (
-          <DataAgeLabel
-            updatedAt={updatedAt}
-            className="workload-overview-status"
-          />
+        {!initialLoad && (live || updatedAt > 0) && (
+          <span className="workload-overview-status">
+            {live && <span className="brief-live">● Live</span>}
+            {live && updatedAt > 0 && ' · '}
+            {updatedAt > 0 && (
+              <DataAgeLabel updatedAt={updatedAt} />
+            )}
+          </span>
         )}
         {initialLoad && (
           <InlineLoading message="Loading overview…" className="workload-overview-status muted" />

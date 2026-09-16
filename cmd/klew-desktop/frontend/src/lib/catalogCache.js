@@ -18,17 +18,18 @@ export function entitiesTtlForScope(apiParams = {}) {
   return 30 * 1000
 }
 
-/** Overview refresh cadence while the panel is visible. */
+/** Overview refresh cadence while the Workloads panel is visible (near real-time). */
 export function overviewPollMsForScope(apiParams = {}) {
-  if (apiParams.allNamespaces) return 90 * 1000
-  if (apiParams.namespaces?.length > 1) return 60 * 1000
-  return 45 * 1000
+  if (apiParams.allNamespaces) return 45 * 1000
+  if (apiParams.namespaces?.length > 1) return 20 * 1000
+  return 8 * 1000
 }
 
+/** How long overview snapshots stay fresh before background revalidation. */
 export function overviewTtlForScope(apiParams = {}) {
-  if (apiParams.allNamespaces) return 5 * 60 * 1000
-  if (apiParams.namespaces?.length > 1) return 3 * 60 * 1000
-  return 2 * 60 * 1000
+  if (apiParams.allNamespaces) return 60 * 1000
+  if (apiParams.namespaces?.length > 1) return 20 * 1000
+  return 8 * 1000
 }
 
 const MAX_ENTRIES = 96
@@ -146,7 +147,8 @@ export function entitiesListCacheKey({
 }
 
 export function overviewCacheKey({ ctx, kubeconfig, nsKey, loadableKey }) {
-  return buildCatalogCacheKey('overview', ctx, kubeconfig, nsKey, loadableKey)
+  // v3 — bust caches from before catalog Running pod ready derivation.
+  return buildCatalogCacheKey('overview', 'v3', ctx, kubeconfig, nsKey, loadableKey)
 }
 
 export function catalogIndexCacheKey({ ctx, kubeconfig, nsKey }) {

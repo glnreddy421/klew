@@ -1,3 +1,10 @@
+import {
+  isTerminalPodFailure,
+  isTerminalPodPhase,
+  isTerminalPodSuccess,
+  podHealthLabel,
+} from './investigationViews.js'
+
 export const DEFAULT_PRECHECK = 3
 export const WORKLOAD_ROOT_KINDS = [
   'Deployment',
@@ -251,7 +258,7 @@ export function deriveMatchRows(view, matches) {
       }
     }
 
-    const relatedPods = podsForMatch(ref, pods)
+    const relatedPods = podsForHealth(ref, pods)
     if (relatedPods.length > 0) {
       const podReady = relatedPods.filter((p) => p.ready).length
       const podTotal = relatedPods.length
@@ -295,13 +302,15 @@ export function deriveMatchRows(view, matches) {
 
     if (ref.kind === 'Pod' && relatedPods.length === 1) {
       const p = relatedPods[0]
-      ready = p.ready ? 1 : 0
+      ready = (p.ready || isTerminalPodSuccess(p)) ? 1 : 0
       total = 1
       restarts = p.restartCount || 0
       const worst = worstPodStatus([p])
       status = worst.status
       signal = worst.signal
     }
+
+    ;({ status, signal } = reconcileWorkloadHealth({ status, signal, wl, relatedPods }))
 
     return {
       key,
@@ -338,6 +347,12 @@ function podsForMatch(ref, pods) {
 
 export { podsForMatch }
 
+function podsForHealth(ref, pods) {
+  const related = podsForMatch(ref, pods)
+  if (ref.kind === 'Pod') return related
+  return related.filter((p) => !isTerminalPodPhase(p))
+}
+
 function worstPodStatus(pods) {
   let worst = { status: 'healthy', signal: null, rank: STATUS_RANK.healthy }
   for (const p of pods) {
@@ -348,6 +363,12 @@ function worstPodStatus(pods) {
 }
 
 function podStatus(p) {
+  if (isTerminalPodSuccess(p)) {
+    return { status: 'healthy', signal: 'complete', rank: STATUS_RANK.healthy }
+  }
+  if (isTerminalPodFailure(p)) {
+    return { status: 'critical', signal: 'failed', rank: STATUS_RANK.critical }
+  }
   if (!p.ready) {
     for (const c of p.containers || []) {
       const reason = (c.reason || c.lastReason || '').toLowerCase()
@@ -360,10 +381,23 @@ function podStatus(p) {
     }
     return { status: 'degraded', signal: 'not ready', rank: STATUS_RANK.degraded }
   }
-  if ((p.restartCount || 0) >= 3) {
-    return { status: 'degraded', signal: `${p.restartCount} restarts`, rank: STATUS_RANK.degraded }
-  }
   return { status: 'healthy', signal: null, rank: STATUS_RANK.healthy }
+}
+
+function reconcileWorkloadHealth({ status, signal, wl, relatedPods }) {
+  if (!wl || status !== 'degraded' || !signal?.includes('ready')) return { status, signal }
+  const operational = relatedPods.filter((p) => !isTerminalPodPhase(p))
+  if (!operational.length) return { status, signal }
+  const opReady = operational.filter((p) => p.ready).length
+  const desired = wl.replicas ?? wl.ready ?? 0
+  const apiReady = wl.ready ?? 0
+  if (opReady >= desired && opReady === operational.length) {
+    return { status: 'healthy', signal: null }
+  }
+  if (opReady >= apiReady && opReady === operational.length && apiReady >= desired) {
+    return { status: 'healthy', signal: null }
+  }
+  return { status, signal }
 }
 
 export function pickWorstRow(rows) {
@@ -385,13 +419,28 @@ export function pickDefaultFocus(rows) {
   return byScore[0]?.key || null
 }
 
+const STRIP_HEALTH_KINDS = new Set([
+  'Deployment', 'StatefulSet', 'DaemonSet', 'Job', 'CronJob', 'Service', 'Pod',
+])
+
+/** Rows that should drive the investigation status strip (ignore config/noise). */
+export function scopeHealthRows(rows) {
+  return (rows || []).filter((row) => {
+    if (!STRIP_HEALTH_KINDS.has(row?.kind)) return false
+    if (row.kind === 'Pod' && isTerminalPodSuccess(row)) return false
+    return true
+  })
+}
+
 export function scopeStatus(rows) {
-  const worst = pickWorstRow(rows)
+  const healthRows = scopeHealthRows(rows)
+  const pool = healthRows.length ? healthRows : (rows || [])
+  const worst = pickWorstRow(pool)
   if (!worst) return { status: 'unknown', label: 'HEALTHY' }
   const status = worst.status === 'healthy' ? 'healthy' : worst.status
   const label = status === 'healthy' ? 'HEALTHY' : status === 'critical' ? 'CRITICAL' : 'DEGRADED'
-  const unhealthyCount = rows.filter((r) => r.status && r.status !== 'healthy').length
-  return { status, label, row: worst, unhealthyCount, matchCount: rows.length }
+  const unhealthyCount = pool.filter((r) => r.status && r.status !== 'healthy').length
+  return { status, label, row: worst, unhealthyCount, matchCount: pool.length }
 }
 
 export function filterSignals(signals, focusRow, mode) {
@@ -710,27 +759,20 @@ export function inspectRowForKey(key, view, rows) {
 
 export function podSummaryToInspectRow(p) {
   if (!p?.name) return null
-  let status = 'healthy'
-  if (!p.ready) {
-    status = 'degraded'
-    for (const c of p.containers || []) {
-      const reason = (c.reason || c.lastReason || '').toLowerCase()
-      if (reason.includes('crash') || reason.includes('oom') || reason.includes('backoff')) {
-        status = 'critical'
-        break
-      }
-    }
-  }
+  const health = podHealthLabel(p)
+  const status = health === 'critical' ? 'critical' : health === 'healthy' ? 'healthy' : 'degraded'
+  const terminalOk = isTerminalPodSuccess(p)
   return {
     key: `Pod/${p.name}`,
     kind: 'Pod',
     name: p.name,
     ref: { kind: 'Pod', name: p.name, namespace: p.namespace },
     namespace: p.namespace,
-    ready: p.ready ? 1 : 0,
+    ready: (p.ready || terminalOk) ? 1 : 0,
     total: 1,
     restarts: p.restartCount || 0,
     status,
-    phase: p.phase,
+    phase: p.phase || p.signal || '',
+    signal: terminalOk ? 'complete' : null,
   }
 }

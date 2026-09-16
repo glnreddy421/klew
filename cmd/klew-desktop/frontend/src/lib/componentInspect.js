@@ -5,6 +5,7 @@
  */
 
 import { buildInspectKey } from './matches'
+import { isTerminalPodSuccess, podHealthLabel } from './investigationViews.js'
 
 const WORKLOAD = new Set(['Deployment', 'StatefulSet', 'DaemonSet', 'Job', 'CronJob', 'ReplicaSet'])
 
@@ -187,14 +188,8 @@ function parseSelectorString(raw) {
 
 function relatedPodsForInspect(pods) {
   return (pods || []).map((p) => {
-    let status = p.ready ? 'healthy' : 'degraded'
-    for (const c of p.containers || []) {
-      const reason = (c.reason || c.lastReason || '').toLowerCase()
-      if (reason.includes('crash') || reason.includes('oom') || reason.includes('backoff')) {
-        status = 'critical'
-        break
-      }
-    }
+    const health = podHealthLabel(p)
+    const status = health === 'critical' ? 'critical' : health === 'healthy' ? 'healthy' : 'degraded'
     return {
       key: buildInspectKey('Pod', p.name, p.namespace),
       name: p.name,
@@ -492,7 +487,7 @@ function signalBelongsTo(s, kind, name, relatedPods) {
 function deriveTone(row, resolved, relatedPods) {
   if (row.status === 'critical') return 'critical'
   if (row.status === 'degraded' || row.status === 'warning') return 'degraded'
-  if (relatedPods.some((p) => !p.ready)) return 'degraded'
+  if (relatedPods.some((p) => !p.ready && !isTerminalPodSuccess(p))) return 'degraded'
   if (typeof resolved?.ready === 'number' && typeof resolved?.replicas === 'number' && resolved.ready < resolved.replicas) {
     return 'degraded'
   }

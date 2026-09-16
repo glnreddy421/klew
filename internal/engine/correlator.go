@@ -257,6 +257,12 @@ func workloadHealth(w model.WorkloadSummary) string {
 }
 
 func podHealth(p model.PodSummary) string {
+	if PodTerminalSuccess(p) {
+		return "healthy"
+	}
+	if podTerminalFailure(p) {
+		return "critical"
+	}
 	if p.Phase == "Running" && p.Ready {
 		return "healthy"
 	}

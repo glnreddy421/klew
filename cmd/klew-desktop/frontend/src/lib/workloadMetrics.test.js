@@ -72,4 +72,28 @@ describe('buildWorkloadMetrics', () => {
     expect(metrics.resources.available).toBe(true)
     expect(metrics.healthTone).toBe('warn')
   })
+
+  it('does not count completed job pods as pending or failing', () => {
+    const metrics = buildWorkloadMetrics({
+      tree: mockTree({ Pod: 4, Deployment: 1 }),
+      view: {
+        state: {
+          snapshot: {
+            pods: [
+              { name: 'payment-api-a', ready: true, phase: 'Running' },
+              { name: 'payment-api-b', ready: true, phase: 'Running' },
+              { name: 'payment-api-c', ready: true, phase: 'Running' },
+              { name: 'hello-world-123', ready: false, phase: 'Succeeded' },
+            ],
+            workloads: [{ kind: 'Deployment', name: 'payment-api', ready: 3, replicas: 3 }],
+          },
+        },
+      },
+      clusterStatus: { nodes: { total: 2, ready: 2, notReady: 0 } },
+    })
+    expect(metrics.pods.pending).toBe(0)
+    expect(metrics.pods.failing).toBe(0)
+    expect(metrics.pods.healthy).toBe(4)
+    expect(metrics.healthTone).toBe('ok')
+  })
 })

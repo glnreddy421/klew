@@ -28,13 +28,16 @@ func BuildIncidentSummary(st model.InvestigationState) IncidentSummary {
 	b := st.Snapshot
 	ready, unready, restarts, affected := 0, 0, 0, 0
 	for _, p := range b.Pods {
+		if PodTerminalSuccess(p) {
+			continue
+		}
 		if p.Ready {
 			ready++
 		} else {
 			unready++
 		}
 		restarts += int(p.RestartCount)
-		if !p.Ready || p.RestartCount > 0 {
+		if PodCountsAsUnready(p) || p.RestartCount > 0 {
 			affected++
 		}
 	}

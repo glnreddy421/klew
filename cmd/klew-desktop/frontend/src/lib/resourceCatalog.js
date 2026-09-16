@@ -12,6 +12,7 @@ import {
   isVirtualPresentationEntry,
 } from './resourcePresentation.js'
 import { buildInspectKey } from './matches.js'
+import { isTerminalPodSuccess } from './investigationViews.js'
 import { parseJobCompletionSignal, parseWorkloadReplicaSignal } from './entityTable.js'
 
 /** Ephemeral auth review APIs — create-only, not meaningful in the resource browser. */
@@ -249,7 +250,7 @@ function syntheticPodRow(p) {
     ready: p.ready ? 1 : 0,
     total: 1,
     restarts: p.restartCount || 0,
-    status: p.ready ? 'healthy' : 'degraded',
+    status: (p.ready || isTerminalPodSuccess(p)) ? 'healthy' : 'degraded',
   }
 }
 
@@ -575,11 +576,25 @@ function hydrateCatalogWorkloadFields(row) {
   return row
 }
 
+function catalogPodReady(entity, phaseHint) {
+  const phase = String(phaseHint || '').toLowerCase()
+  if (phase === 'succeeded' || phase === 'completed') return true
+  const containers = (entity.containers || []).filter((c) => !c.init)
+  if (containers.length) return containers.every((c) => c.ready !== false)
+  if (phase === 'running') return true
+  if (phase === 'pending') return false
+  return undefined
+}
+
 export function catalogEntityToRow(entity, fallbackKind) {
   const kind = entity.kind || fallbackKind || 'Resource'
   const ns = entity.namespace || ''
   const key = buildInspectKey(kind, entity.name, ns)
   const hint = entity.statusHint || ''
+  const podPhaseHint = kind === 'Pod' ? hint : ''
+  const podReady = kind === 'Pod' ? catalogPodReady(entity, podPhaseHint) : undefined
+  const podTerminalOk = kind === 'Pod'
+    && ['succeeded', 'completed'].includes(podPhaseHint.toLowerCase())
   return hydrateCatalogServiceFields(hydrateCatalogWorkloadFields({
     key,
     kind,
@@ -595,6 +610,8 @@ export function catalogEntityToRow(entity, fallbackKind) {
     },
     status: catalogStatusTone(hint, kind),
     signal: hint,
+    phase: podPhaseHint || undefined,
+    ready: kind === 'Pod' ? (podReady ?? podTerminalOk) : undefined,
     creationTimestamp: entity.creationTimestamp || '',
     node: entity.nodeName || '',
     nodeName: entity.nodeName || '',
@@ -689,6 +706,7 @@ function catalogStatusTone(hint, kind = '') {
     if (total > 0 && ready < total) return 'degraded'
     if (total > 0 && ready >= total) return 'healthy'
   }
+  if (h === 'succeeded' || h === 'completed') return 'healthy'
   if (h === 'running' || h === 'active' || h === 'bound' || h.startsWith('1/1')) return 'healthy'
   if (h === 'deployed' || h === 'superseded') return 'healthy'
   if (h === 'pending' || h.includes('progress') || h.includes('pending-')) return 'degraded'

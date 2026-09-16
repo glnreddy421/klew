@@ -4,6 +4,25 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 
 ## [Unreleased]
 
+## [1.3.2] — 2026-09-16
+
+### Investigation health
+
+- **Finished job pods** (Succeeded/Completed) no longer count as pending or degraded — CronJob completion no longer drags scope health down.
+- **Catalog Running pods** derive readiness from phase and container status so the Pods donut matches the cluster.
+- **Status strip** ignores config noise and terminal pods; deployment health reconciles against live pod state.
+- **Manual snapshot refresh** (`RefreshInvestigation`) and structural auto-refresh on pod failures keep investigation counts current.
+
+### Workloads overview
+
+- **Near real-time overview** — 8s poll, live pod watch while Overview is open, cache bust for stale health data.
+- **Completed/failed pods** filtered from browse lists and discovery matches.
+
+### Fixes
+
+- Backend summary, verdict, and correlator agree with frontend on operational vs finished pods.
+- Release CI uses Node 24.
+
 ## [1.3.1] — 2026-09-14
 
 ### Resources browse — instant feel, live updates

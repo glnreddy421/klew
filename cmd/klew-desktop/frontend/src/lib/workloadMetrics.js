@@ -27,11 +27,16 @@ function summarizePods(pods) {
   let healthy = 0
   for (const pod of pods) {
     if (!pod) continue
+    const phase = String(pod.phase || pod.signal || '').toLowerCase()
+    if (phase === 'succeeded' || phase === 'completed') {
+      running += 1
+      healthy += 1
+      continue
+    }
     const health = podHealthLabel(pod)
-    const phase = String(pod.phase || '').toLowerCase()
     if (health === 'critical') failing += 1
     else if (health === 'warning' || phase === 'pending') pending += 1
-    else if (health === 'healthy' || phase === 'running' || phase === 'succeeded') {
+    else if (health === 'healthy' || phase === 'running') {
       running += 1
       healthy += 1
     } else pending += 1

@@ -187,6 +187,12 @@ func DiscoverMatches(ctx context.Context, c *Client, scope model.NamespaceScope,
 			if needle != "" && !strings.Contains(strings.ToLower(n), needle) {
 				continue
 			}
+			if kindLabel == "Pod" {
+				phase, _ := podStatusPhase(item.Object)
+				if phase == "Succeeded" || phase == "Failed" {
+					continue
+				}
+			}
 			k := item.GetKind()
 			if k == "" {
 				k = kindLabel
@@ -265,6 +271,18 @@ func scoreNameMatch(haystack, needle string) float64 {
 		return 0.8
 	}
 	return 0.3
+}
+
+func podStatusPhase(obj map[string]interface{}) (string, bool) {
+	if obj == nil {
+		return "", false
+	}
+	status, ok := obj["status"].(map[string]interface{})
+	if !ok {
+		return "", false
+	}
+	phase, ok := status["phase"].(string)
+	return phase, ok && phase != ""
 }
 
 func dedupeMatches(in []model.MatchedObject) []model.MatchedObject {

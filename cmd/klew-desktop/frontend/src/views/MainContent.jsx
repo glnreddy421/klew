@@ -210,6 +210,7 @@ export function MainContent({
             onInspectKeyChange={onInspectKeyChange}
             timeWindowLabel={timeWindowLabel}
             live={live}
+            snapshotRefreshSec={prefs?.refreshSec ?? 10}
           />
         )}
         {tab === 'patterns' && (

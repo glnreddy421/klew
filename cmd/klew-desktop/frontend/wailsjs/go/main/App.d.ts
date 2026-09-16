@@ -43,6 +43,8 @@ export function OpenNewWindow(arg1:main.OpenWindowOptions):Promise<void>;
 
 export function PauseLogTail():Promise<void>;
 
+export function RefreshInvestigation():Promise<void>;
+
 export function RefreshResourceCatalog(arg1:main.CatalogOptions):Promise<model.ResourceCatalog>;
 
 export function ResizeTerminal(arg1:string,arg2:number,arg3:number):Promise<void>;

@@ -12,8 +12,14 @@ export function InvestigationHeader({
       <div className="brief-verdict-top">
         <span className="brief-kicker">Investigation</span>
         <span className="brief-window-context muted">
-          {verdict.live && <span className="brief-live">● Live</span>}
-          {verdict.live && ' · '}
+          {verdict.snapshotStale && verdict.snapshotAgeLabel ? (
+            <span className="data-age-label is-stale" title="Workload health may lag — refreshing from cluster">
+              Workload state · {verdict.snapshotAgeLabel.replace(/^Updated /, '')}
+            </span>
+          ) : verdict.live ? (
+            <span className="brief-live">● Live</span>
+          ) : null}
+          {(verdict.live || verdict.snapshotStale) && ' · '}
           {verdict.windowLabel || timeWindowLabel}
           {visibilityWarning && (
             <span className="inv-limited-badge" title={visibilityWarning.message}>

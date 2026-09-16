@@ -272,9 +272,9 @@ export function TopBar({
           type="button"
           className="topbar-icon-btn"
           onClick={onSync}
-          disabled={syncing || running || starting}
-          title="Refresh investigation"
-          aria-label="Refresh investigation"
+          disabled={syncing || starting}
+          title={running ? 'Refresh investigation snapshot' : 'Sync kubeconfig'}
+          aria-label={running ? 'Refresh investigation snapshot' : 'Sync kubeconfig'}
         >
           <SyncIcon spinning={syncing} />
         </button>

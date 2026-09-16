@@ -23,8 +23,9 @@ function readyFromCell(value) {
 function statusFromPhase(phase, ready) {
   const p = String(phase || '').toLowerCase()
   if (p === 'failed' || p === 'error') return 'critical'
+  if (p === 'succeeded' || p === 'completed') return 'healthy'
   if (p === 'pending' || ready < 1) return 'degraded'
-  if (p === 'running' || p === 'succeeded') return 'healthy'
+  if (p === 'running') return 'healthy'
   return 'unknown'
 }
 

@@ -11,6 +11,14 @@ export function getSnapshot(view) {
   return getState(view).snapshot || {}
 }
 
+/** Snapshot collect time in ms (Overview workload health source). */
+export function snapshotCollectedAtMs(view) {
+  const ts = getSnapshot(view).collectedAt
+  if (!ts) return 0
+  const ms = new Date(ts).getTime()
+  return Number.isFinite(ms) ? ms : 0
+}
+
 /** Coerce backend/text fields that should be string arrays. */
 export function asStringArray(value) {
   if (Array.isArray(value)) {
@@ -62,14 +70,40 @@ export function healthRank(h) {
   }
 }
 
+/** Pod phase from snapshot or catalog rows (catalog uses statusHint as signal). */
+export function podPhase(p) {
+  return String(p?.phase || p?.signal || '').toLowerCase()
+}
+
+export function isTerminalPodSuccess(p) {
+  const phase = podPhase(p)
+  return phase === 'succeeded' || phase === 'completed'
+}
+
+export function isTerminalPodFailure(p) {
+  return podPhase(p) === 'failed'
+}
+
+/** Pod has finished (Job/CronJob success or failure) — not a live workload problem. */
+export function isTerminalPodPhase(p) {
+  return isTerminalPodSuccess(p) || isTerminalPodFailure(p)
+}
+
 export function podHealthLabel(p) {
+  if (isTerminalPodSuccess(p)) return 'healthy'
+  if (isTerminalPodFailure(p)) return 'critical'
   for (const c of p?.containers || []) {
     const lr = String(c.lastReason || '').toLowerCase()
     if (c.lastReason === 'OOMKilled' || lr.includes('crash')) return 'critical'
   }
-  if (p?.ready && p?.phase === 'Running') return 'healthy'
+  const phase = podPhase(p)
+  if (phase === 'running') {
+    if (p?.ready === false) return 'warning'
+    return 'healthy'
+  }
   if ((p?.restartCount || 0) > 3) return 'critical'
-  if (!p?.ready) return 'warning'
+  if (phase === 'pending') return 'warning'
+  if (p?.ready === false) return 'warning'
   return 'unknown'
 }
 

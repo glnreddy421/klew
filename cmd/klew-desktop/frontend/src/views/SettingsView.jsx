@@ -26,7 +26,7 @@ const HELP_LINKS = [
 const KEYBOARD_SHORTCUTS = [
   { keys: '⌘K', action: 'Focus search' },
   { keys: '⌘N', action: 'Open a new window for another cluster' },
-  { keys: '⌘R', action: 'Sync kubeconfig and refresh namespaces' },
+  { keys: '⌘R', action: 'Refresh investigation snapshot, or sync kubeconfig when idle' },
   { keys: '⌘C', action: 'Toggle sidebar labels' },
 ]
 

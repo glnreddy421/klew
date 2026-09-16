@@ -170,7 +170,7 @@ function syntheticPodRow(p) {
     ready: p.ready ? 1 : 0,
     total: 1,
     restarts: p.restartCount || 0,
-    status: p.ready ? 'healthy' : 'degraded',
+    status: (p.ready || String(p.phase || p.signal || '').toLowerCase() === 'succeeded') ? 'healthy' : 'degraded',
   }
 }
 

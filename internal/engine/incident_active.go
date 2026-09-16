@@ -45,7 +45,7 @@ func WorkloadNominal(b model.EvidenceBundle) bool {
 		}
 	}
 	for _, p := range b.Pods {
-		if !p.Ready || podActivelyFailing(p) {
+		if PodCountsAsUnready(p) {
 			return false
 		}
 	}

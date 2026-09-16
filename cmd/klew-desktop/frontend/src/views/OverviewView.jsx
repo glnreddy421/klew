@@ -30,12 +30,18 @@ export function OverviewView({
   onInspectKeyChange,
   timeWindowLabel = 'Last 15m',
   live = false,
+  snapshotRefreshSec = 10,
 }) {
   const allMatches = getMatchedObjects(view)
   const allRows = useMemo(() => deriveMatchRows(view, allMatches), [view, allMatches])
   const overview = useMemo(
-    () => buildInvestigationOverview(view, { rows: allRows, timeWindowLabel, live }),
-    [view, allRows, timeWindowLabel, live],
+    () => buildInvestigationOverview(view, {
+      rows: allRows,
+      timeWindowLabel,
+      live,
+      snapshotRefreshSec,
+    }),
+    [view, allRows, timeWindowLabel, live, snapshotRefreshSec],
   )
 
   const [highlightedNodeIds, setHighlightedNodeIds] = useState(() => new Set())
@@ -142,8 +148,14 @@ export function OverviewView({
             in the current window.
           </p>
           <p className="inv-quiet-meta muted">
-            {live && <span className="brief-live">● Live</span>}
-            {live && ' · '}
+            {verdict.snapshotStale && verdict.snapshotAgeLabel ? (
+              <span className="data-age-label is-stale">
+                Workload state · {verdict.snapshotAgeLabel.replace(/^Updated /, '')}
+              </span>
+            ) : live ? (
+              <span className="brief-live">● Live</span>
+            ) : null}
+            {(live || verdict.snapshotStale) && ' · '}
             {windowLabel || timeWindowLabel}
           </p>
         </section>

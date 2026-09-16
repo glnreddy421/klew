@@ -1042,6 +1042,23 @@ func (a *App) SetAutoRefresh(enabled bool) {
 	}
 }
 
+// RefreshInvestigation re-collects workload snapshot for the active live session.
+func (a *App) RefreshInvestigation() error {
+	a.mu.Lock()
+	svc := a.svc
+	a.mu.Unlock()
+	if svc == nil {
+		return fmt.Errorf("no active investigation")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	if err := svc.RefreshSnapshot(ctx); err != nil {
+		return err
+	}
+	a.emitStateNow()
+	return nil
+}
+
 // SetPollEverySec changes the snapshot refresh interval for the active session.
 func (a *App) SetPollEverySec(sec int) {
 	if sec <= 0 {

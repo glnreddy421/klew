@@ -13,8 +13,10 @@ import {
   severityRankTL,
   podHealthLabel,
   investigationWindowLabel,
+  snapshotCollectedAtMs,
   asStringArray,
 } from './investigationViews.js'
+import { formatDataAge, isDataStale } from './dataAge.js'
 import {
   buildVisualChain,
   enrichTimelineVisual,
@@ -31,9 +33,14 @@ const STATUS_RANK = { critical: 3, degraded: 2, warning: 2, healthy: 0, unknown:
 
 /**
  * @param {object} view
- * @param {{ rows?: object[], timeWindowLabel?: string, live?: boolean }} [opts]
+ * @param {{ rows?: object[], timeWindowLabel?: string, live?: boolean, snapshotRefreshSec?: number, now?: number }} [opts]
  */
 export function buildInvestigationOverview(view, opts = {}) {
+  const now = opts.now ?? Date.now()
+  const refreshSec = opts.snapshotRefreshSec ?? 10
+  const collectedAtMs = snapshotCollectedAtMs(view)
+  const snapshotStale = collectedAtMs > 0
+    && isDataStale(collectedAtMs, refreshSec * 1000 * 1.25, { now })
   const state = getState(view)
   const summary = view?.summary || {}
   const verdict = state.verdict || {}
@@ -45,9 +52,13 @@ export function buildInvestigationOverview(view, opts = {}) {
   const timeline = state.timeline || []
   const patterns = view?.logPatterns || state.logPatterns || null
 
-  const phase = detectPhase(view, rows, evidence, timeline, signals)
+  const phase = detectPhase(view, rows, evidence, timeline, signals, { now, snapshotStale })
   const stats = buildStats(view, rows, evidence, patterns, signals)
-  const verdictBlock = buildVerdict(view, rows, worstRow, phase, opts)
+  const verdictBlock = buildVerdict(view, rows, worstRow, phase, {
+    ...opts,
+    snapshotStale,
+    snapshotCollectedAtMs: collectedAtMs,
+  })
   const findings = selectFindings(view, rows, patterns, phase)
   const investigationChain = buildInvestigationChain(state, findings)
   const timelineItems = selectTimelineItems(view, evidence)
@@ -89,7 +100,7 @@ export function buildInvestigationOverview(view, opts = {}) {
   }
 }
 
-function detectPhase(view, rows, evidence, timeline, signals) {
+function detectPhase(view, rows, evidence, timeline, signals, { now = Date.now(), snapshotStale = false } = {}) {
   const matches = getMatchedObjects(view)
   const snap = getSnapshot(view)
   const hasScope = matches.length > 0 || rows.length > 0
@@ -115,9 +126,28 @@ function detectPhase(view, rows, evidence, timeline, signals) {
     && (status === 'healthy' || status === 'ok' || !status)
     && signals.every((s) => !isHighSeverity(s.severity || s.level))
   ) {
+    if (snapshotStale && hasRecentCriticalActivity(evidence, timeline, signals, now)) {
+      return 'active'
+    }
     return 'quiet'
   }
   return 'active'
+}
+
+function hasRecentCriticalActivity(evidence, timeline, signals, now, withinMs = 3 * 60 * 1000) {
+  const recent = (items) => items.some((item) => {
+    const ts = new Date(item.timestamp || item.time || 0).getTime()
+    if (!Number.isFinite(ts) || now - ts > withinMs) return false
+    return isHighSeverity(item.severity || item.level)
+      || isFailureReason(item.reason)
+  })
+  return recent(evidence) || recent(timeline) || signals.some((s) => isHighSeverity(s.severity || s.level))
+}
+
+function isFailureReason(reason) {
+  const r = String(reason || '').toLowerCase()
+  return r.includes('oom') || r.includes('backoff') || r.includes('crash')
+    || r.includes('failed') || r.includes('unhealthy') || r.includes('kill')
 }
 
 function isHighSeverity(sev) {
@@ -141,7 +171,9 @@ function buildStats(view, rows, evidence, patterns, signals) {
     if (r.status && r.status !== 'healthy') affectedSet.add(r.key)
   }
   for (const p of snap.pods || []) {
-    if (podHealthLabel(p) !== 'healthy') affectedSet.add(`Pod/${p.name}`)
+    if (podHealthLabel(p) !== 'healthy' && podHealthLabel(p) !== 'unknown') {
+      affectedSet.add(`Pod/${p.name}`)
+    }
   }
 
   return {
@@ -220,6 +252,10 @@ function buildVerdict(view, rows, worstRow, phase, opts) {
     evidenceCount,
     live: opts.live ?? summary.live ?? false,
     windowLabel: opts.timeWindowLabel || investigationWindowLabel(state),
+    snapshotStale: opts.snapshotStale ?? false,
+    snapshotAgeLabel: opts.snapshotCollectedAtMs
+      ? formatDataAge(opts.snapshotCollectedAtMs, { now: opts.now })
+      : '',
   }
 }
 
