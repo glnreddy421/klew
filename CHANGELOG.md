@@ -4,6 +4,25 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 
 ## [Unreleased]
 
+## [1.3.5] — 2026-09-17
+
+### Home
+
+- **Scroll and layout** — long kubeconfig context lists scroll inside the cluster panel; orbital hero scales down on narrow panes so it is not clipped.
+- **Settings** — Kubernetes settings footer control is icon-only.
+
+### Resources browse
+
+- **Workloads first** — overview loads Pod, Deployment, StatefulSet, and DaemonSet before other kinds; workload nav counts fetch eagerly, other kinds stay lazy.
+- **Show cached data immediately** — catalog, entity lists, and overview use stale-while-revalidate: last snapshot renders at once, refresh runs in the background with a light “Refreshing…” hint.
+- **Overview while discovering** — Workloads overview can render before API discovery finishes; presentation fallback keeps the workloads nav usable.
+- **Load on open** — catalog and cluster probes run for the active context only when Resources is opened, not for every context on Home.
+
+### Namespace and performance
+
+- **Namespace switch** — scope changes use a lightweight namespace select instead of a full reconnect spinner.
+- **Workload-only counts** — catalog index can request counts for workload resource IDs only, reducing first paint time on large clusters.
+
 ## [1.3.4] — 2026-09-17
 
 ### Home

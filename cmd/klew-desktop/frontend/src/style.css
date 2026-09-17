@@ -1444,8 +1444,7 @@ body {
 }
 
 /* ── Welcome (idle state — orbit) ── */
-.main-content-connect,
-.main-content-home {
+.main-content-connect {
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -1454,32 +1453,89 @@ body {
 }
 
 .klew-home {
+  flex: 1;
+  min-height: 0;
   width: min(1120px, 100%);
+  margin: 0 auto;
   display: grid;
-  grid-template-columns: minmax(280px, 1fr) minmax(320px, 420px);
-  gap: 32px 40px;
-  align-items: start;
+  grid-template-columns: minmax(260px, 1fr) minmax(300px, 420px);
+  gap: 24px 32px;
+  align-items: stretch;
+  overflow: hidden;
 }
 
 .klew-home-hero {
   min-height: 0;
   padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+}
+
+.klew-home-hero.welcome {
+  min-height: 0;
+  justify-content: flex-start;
+  padding: 0;
 }
 
 .klew-home-hero.welcome-orbit {
-  min-height: auto;
   justify-content: flex-start;
 }
 
 .klew-home-hero .collect-splash {
-  min-height: 420px;
+  flex: 0 0 auto;
+  min-height: 0;
+  width: 100%;
+  max-width: 100%;
+  overflow: visible;
+  padding: 20px 8px 24px;
+  gap: 24px;
+}
+
+/* Compact orbit in the Home rail column — full idle size clips on narrow panes. */
+.klew-home-hero .collect-splash.idle .collect-splash-stage {
+  --orbit-size: 260px;
+  --orbit-core: 72px;
+  --orbit-logo: 44px;
+  --orbit-sat: 34px;
+  --orbit-radius: 112px;
+  --orbit-ring-mid: 32px;
+  --orbit-ring-inner: 56px;
+  --orbit-ring-outer: 5px;
+  --orbit-scan-inset: 8px;
+}
+
+@media (min-width: 1200px) {
+  .klew-home-hero .collect-splash.idle .collect-splash-stage {
+    --orbit-size: 320px;
+    --orbit-core: 90px;
+    --orbit-logo: 54px;
+    --orbit-sat: 42px;
+    --orbit-radius: 140px;
+    --orbit-ring-mid: 42px;
+    --orbit-ring-inner: 70px;
+    --orbit-ring-outer: 6px;
+    --orbit-scan-inset: 10px;
+  }
 }
 
 .klew-home-clusters {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding-top: 8px;
+  gap: 12px;
+  padding-top: 4px;
+  overflow: hidden;
+}
+
+.cluster-home-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
 }
 
 .klew-home-clusters-head h2 {
@@ -1631,16 +1687,35 @@ body {
 }
 
 .klew-home-footer {
+  display: flex;
+  justify-content: flex-end;
   padding-top: 4px;
+}
+
+.klew-home-settings-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.klew-home-settings-btn:hover {
+  background: var(--surface-hover);
+  color: var(--investigation-accent);
+  border-color: color-mix(in srgb, var(--investigation-accent) 35%, var(--border-subtle));
 }
 
 @media (max-width: 960px) {
   .klew-home {
     grid-template-columns: 1fr;
-  }
-
-  .klew-home-hero .collect-splash {
-    min-height: 360px;
+    grid-template-rows: auto minmax(0, 1fr);
   }
 }
 
@@ -15993,6 +16068,15 @@ button.cluster-context-chip.is-link:hover {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.main-content.main-content-home {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
 }
 
 .content-body-workbench {

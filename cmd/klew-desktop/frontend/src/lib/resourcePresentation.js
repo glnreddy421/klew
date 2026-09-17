@@ -178,6 +178,37 @@ export function isVirtualPresentationEntry(entry) {
   return Boolean(entry?.virtual)
 }
 
+/** Builtin workload kind groups for overview prefetch before discovery finishes. */
+export function builtinWorkloadKindGroups() {
+  const cat = BUILTIN_PRESENTATION.find((c) => c.id === 'workloads')
+  if (!cat) return []
+  return cat.resources
+    .filter((entry) => !isDiscoveredOnlyEntry(entry))
+    .map((entry) => ({
+      kind: entry.kind,
+      resourceId: defaultCatalogResourceId(entry),
+      namespaced: defaultNamespaced(entry),
+      builtin: true,
+      discovered: true,
+      label: entry.displayName,
+    }))
+}
+
+/** Workload GVR ids — counted eagerly when a namespace scope opens. */
+export function workloadCatalogResourceIds() {
+  const group = BUILTIN_PRESENTATION.find((cat) => cat.id === 'workloads')
+  if (!group) return []
+  return group.resources.map((entry) => defaultCatalogResourceId(entry)).filter(Boolean)
+}
+
+/** Primary workload kinds for overview — loaded before the rest. */
+export const PRIORITY_WORKLOAD_KINDS = new Set([
+  'Pod',
+  'Deployment',
+  'StatefulSet',
+  'DaemonSet',
+])
+
 /** Stable GVR id for builtin kinds when discovery metadata is incomplete. */
 export function defaultCatalogResourceId(entry) {
   if (entry?.resourceId) return entry.resourceId

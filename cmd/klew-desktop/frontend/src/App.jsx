@@ -45,6 +45,7 @@ import { startOptionsFromPreferences } from './lib/preferences'
 import { applyUiFont, scheduleFontCacheRefresh } from './lib/fonts'
 import { applyTopbarScale } from './lib/topbarScale'
 import { invalidateCatalogCache } from './lib/catalogCache.js'
+import { hasActiveClusterContext } from './lib/clusterIdentity.js'
 import { registerSettingsRefreshHandler, scheduleSettingsCacheRefresh } from './lib/settingsCache'
 import { applyTheme } from './lib/themes'
 import { resolveTerminalShellPref } from './lib/terminalShell'
@@ -159,7 +160,7 @@ export default function App() {
       setBrowseScope(allBrowseScope())
     }
     prevContextRef.current = ctx
-  }, [cluster.selectedContext, cluster.currentContext, cluster.selectedNamespace])
+  }, [cluster.selectedContext, cluster.currentContext])
 
   useEffect(() => {
     const ns = cluster.selectedNamespace || ''
@@ -224,11 +225,14 @@ export default function App() {
   )
   const [monitoringPaused, setMonitoringPaused] = useState(false)
   const clusterMonitoringEnabled = !monitoringPaused
+  const hasActiveContext = hasActiveClusterContext(cluster)
+  // One context per window — catalog/workloads load only after the user opens Resources.
+  const resourcesBrowseEnabled = clusterMonitoringEnabled && hasActiveContext && tab === 'resources'
   const resourceCatalog = useResourceCatalog(cluster, effectiveBrowseScope, {
-    enabled: clusterMonitoringEnabled,
+    enabled: resourcesBrowseEnabled,
   })
   const { clusterStatus, statusLoading, refreshClusterStatus } = useClusterStatus(cluster, {
-    enabled: clusterMonitoringEnabled,
+    enabled: clusterMonitoringEnabled && hasActiveContext && tab !== 'home',
   })
   const {
     connection,
@@ -912,7 +916,12 @@ export default function App() {
 
   function onBrowseScopeChange(nextScope) {
     if (resourcesNamespaceLocked) return
-    setBrowseScope(normalizeBrowseScope(nextScope))
+    const next = normalizeBrowseScope(nextScope)
+    setBrowseScope(next)
+    const ns = next.mode === 'single' ? String(next.namespace || '').trim() : ''
+    if (ns && ns !== (cluster.selectedNamespace || '')) {
+      setNamespace(ns).catch(() => {})
+    }
   }
 
   const onResourcesBrowseLensChange = useCallback((lens) => {

@@ -2,6 +2,7 @@
  * Merges discovery catalog (Kubernetes facts) with presentation schema (UI layout).
  */
 
+import { peekCatalogCache } from './catalogCache.js'
 import {
   BUILTIN_PRESENTATION,
   presentationKey,
@@ -36,7 +37,7 @@ export function kindDisplayLabel(kind, fallback) {
   return `${kind}s`
 }
 
-function flattenCatalogResources(catalog) {
+export function flattenCatalogResources(catalog) {
   if (!catalog) return []
   if (Array.isArray(catalog.resources) && catalog.resources.length) {
     return catalog.resources
@@ -46,6 +47,39 @@ function flattenCatalogResources(catalog) {
     ...(catalog.extensions || []),
     ...(catalog.clusterScoped || []),
   ]
+}
+
+/** Cached catalog index (discovery + optional workload counts). */
+export function peekMergedCatalogFromCache(baseKey) {
+  if (!baseKey) return null
+  const fast = peekCatalogCache(`${baseKey}|fast`)
+  const counts = peekCatalogCache(`${baseKey}|counts-workloads`)
+  if (fast && counts) return mergeCatalogCounts(fast, counts)
+  return fast || counts || null
+}
+
+/** Merge count fields from a partial catalog fetch into the discovery index. */
+export function mergeCatalogCounts(base, patch) {
+  if (!base) return patch || null
+  if (!patch) return base
+  const countsById = new Map()
+  for (const desc of flattenCatalogResources(patch)) {
+    if (desc?.id && desc.count) countsById.set(desc.id, desc.count)
+  }
+  if (!countsById.size) return base
+
+  const mergeList = (list) => (list || []).map((desc) => {
+    const count = countsById.get(desc.id)
+    return count ? { ...desc, count } : desc
+  })
+
+  return {
+    ...base,
+    resources: mergeList(base.resources),
+    namespaced: mergeList(base.namespaced),
+    extensions: mergeList(base.extensions),
+    clusterScoped: mergeList(base.clusterScoped),
+  }
 }
 
 /** Invalidate nav trees when catalog structure or per-kind counts change. */
@@ -290,9 +324,26 @@ function matchEntitiesFor(entry, desc, byKind, byResourceId, allRows, pods) {
 /**
  * Build semantic navigation tree from discovery catalog + investigation scope.
  */
+function buildPresentationFallbackTree() {
+  const discovered = new Map()
+  const categories = BUILTIN_PRESENTATION.map((cat) => {
+    const kinds = cat.resources
+      .map((entry) => mergeBuiltinEntry(entry, discovered, []))
+      .filter(Boolean)
+    return {
+      id: cat.id,
+      label: cat.label,
+      count: 0,
+      kinds,
+    }
+  })
+  return { count: 0, categories }
+}
+
 export function buildCatalogScopeTree(catalog, rows, pods) {
   const list = Array.isArray(rows) ? rows : []
   if (!catalog) {
+    if (!list.length) return buildPresentationFallbackTree()
     return buildRowsOnlyScopeTree(list, pods)
   }
 

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { GetResourceCatalog } from '../../wailsjs/go/main/App'
 import { browseScopeApiParams, normalizeBrowseScope } from '../lib/browseScope.js'
+import { mergeCatalogCounts, peekMergedCatalogFromCache } from '../lib/resourceCatalog.js'
+import { workloadCatalogResourceIds } from '../lib/resourcePresentation.js'
 import {
   CACHE_TTL,
   catalogIndexCacheKey,
@@ -10,8 +12,8 @@ import {
 
 /**
  * Fetches discovery-driven resource catalog for the active cluster scope.
- * Loads a fast index first (no per-kind counts), then enriches counts in the background.
- * Cached ~2 minutes with stale-while-revalidate.
+ * Shows cached index immediately; loads discovery fast, then workload counts.
+ * Other kind counts fill in when the user opens that kind (lazy entity list).
  */
 export function useResourceCatalog(cluster, browseScope, { enabled = true } = {}) {
   const ctx = cluster?.selectedContext || cluster?.currentContext || ''
@@ -28,11 +30,22 @@ export function useResourceCatalog(cluster, browseScope, { enabled = true } = {}
     ? catalogIndexCacheKey({ ctx, kubeconfig, nsKey })
     : ''
 
-  const [catalog, setCatalog] = useState(() => (cacheKey ? peekCatalogCache(cacheKey) : null))
-  const [loading, setLoading] = useState(Boolean(cacheKey && !peekCatalogCache(cacheKey)))
+  const [catalog, setCatalog] = useState(() => peekMergedCatalogFromCache(cacheKey))
+  const [loading, setLoading] = useState(() => (
+    Boolean(cacheKey && !peekCatalogCache(`${cacheKey}|fast`))
+  ))
   const [enriching, setEnriching] = useState(false)
   const [error, setError] = useState('')
   const reqRef = useRef(0)
+
+  const applyCachedCatalog = useCallback((key) => {
+    const merged = peekMergedCatalogFromCache(key)
+    if (merged) {
+      setCatalog(merged)
+      setLoading(false)
+    }
+    return merged
+  }, [])
 
   const reload = useCallback(async ({ force = false } = {}) => {
     if (!enabled || !cacheKey) {
@@ -44,8 +57,9 @@ export function useResourceCatalog(cluster, browseScope, { enabled = true } = {}
     }
 
     const id = ++reqRef.current
-    const hasCached = Boolean(peekCatalogCache(cacheKey))
-    if (!hasCached) setLoading(true)
+    const hasFast = Boolean(peekCatalogCache(`${cacheKey}|fast`))
+    applyCachedCatalog(cacheKey)
+    if (!hasFast) setLoading(true)
     else setEnriching(true)
     setError('')
 
@@ -66,18 +80,25 @@ export function useResourceCatalog(cluster, browseScope, { enabled = true } = {}
         { force },
       )
       if (reqRef.current !== id) return
-      setCatalog(fastResult.data)
+      let merged = fastResult.data
+      setCatalog(merged)
       setLoading(false)
       setEnriching(true)
 
-      const fullResult = await loadCatalogCached(
-        `${cacheKey}|full`,
+      const workloadIds = workloadCatalogResourceIds()
+      const countsResult = await loadCatalogCached(
+        `${cacheKey}|counts-workloads`,
         CACHE_TTL.catalog,
-        () => GetResourceCatalog({ ...baseOpts, includeCounts: true }),
+        () => GetResourceCatalog({
+          ...baseOpts,
+          includeCounts: true,
+          countResourceIds: workloadIds,
+        }),
         { force },
       )
       if (reqRef.current !== id) return
-      setCatalog(fullResult.data)
+      merged = mergeCatalogCounts(merged, countsResult.data)
+      setCatalog(merged)
     } catch (e) {
       if (reqRef.current !== id) return
       setError(String(e))
@@ -88,7 +109,16 @@ export function useResourceCatalog(cluster, browseScope, { enabled = true } = {}
         setEnriching(false)
       }
     }
-  }, [cacheKey, ctx, kubeconfig, apiParams.namespace, apiParams.allNamespaces, apiParams.namespaces, enabled])
+  }, [
+    cacheKey,
+    ctx,
+    kubeconfig,
+    apiParams.namespace,
+    apiParams.allNamespaces,
+    apiParams.namespaces,
+    enabled,
+    applyCachedCatalog,
+  ])
 
   useEffect(() => {
     if (!enabled || !cacheKey) {
@@ -104,15 +134,14 @@ export function useResourceCatalog(cluster, browseScope, { enabled = true } = {}
       return undefined
     }
 
-    const cached = peekCatalogCache(`${cacheKey}|full`) || peekCatalogCache(`${cacheKey}|fast`)
-    if (cached) setCatalog(cached)
-    setLoading(!cached)
+    const cached = applyCachedCatalog(cacheKey)
+    setLoading(!peekCatalogCache(`${cacheKey}|fast`))
     reload({ force: false })
 
     return () => {
       reqRef.current += 1
     }
-  }, [cacheKey, reload, cluster?.syncedAt, enabled])
+  }, [cacheKey, cluster?.syncedAt, reload, enabled, applyCachedCatalog])
 
   return { catalog, loading, enriching, error, refresh: () => reload({ force: true }) }
 }

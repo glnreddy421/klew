@@ -4,6 +4,7 @@ import {
   presentationKey,
   isBuiltinPresentationKey,
   builtinCategoryForKey,
+  builtinWorkloadKindGroups,
   defaultNamespaced,
 } from './resourcePresentation.js'
 import {
@@ -200,5 +201,18 @@ describe('buildCatalogScopeTree presentation merge', () => {
     )
     const custom = tree.categories.find((c) => c.id === 'custom')
     expect(custom.kinds.some((k) => k.kind === 'Application')).toBe(true)
+  })
+
+  it('builds presentation fallback tree before discovery', () => {
+    const tree = buildCatalogScopeTree(null, [], [])
+    const workloads = tree.categories.find((c) => c.id === 'workloads')
+    expect(workloads?.kinds.some((k) => k.kind === 'Pod')).toBe(true)
+    expect(workloads?.kinds.some((k) => k.kind === 'Deployment')).toBe(true)
+  })
+
+  it('exposes builtin workload kind groups for prefetch', () => {
+    const kinds = builtinWorkloadKindGroups()
+    expect(kinds.some((k) => k.kind === 'Pod' && k.resourceId === 'v1/pods')).toBe(true)
+    expect(kinds.every((k) => k.builtin)).toBe(true)
   })
 })

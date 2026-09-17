@@ -8,6 +8,7 @@ import { EventsOn } from '../../wailsjs/runtime/runtime'
 import { catalogEntityToRow } from '../lib/resourceCatalog.js'
 import { browseScopeApiParams, normalizeBrowseScope } from '../lib/browseScope.js'
 import { canLoadCatalogEntities } from '../lib/catalogDisplay.js'
+import { PRIORITY_WORKLOAD_KINDS } from '../lib/resourcePresentation.js'
 import { buildWorkloadKindCardsFromRows } from '../lib/workloadOverview.js'
 import { normalizeCatalogAccessState } from '../lib/rbacAccess.js'
 import {
@@ -89,11 +90,31 @@ async function fetchOverviewPayload({ loadable, api, kubeconfig, ctx }) {
   }
 }
 
+function mergeOverviewPayload(base, extra) {
+  return {
+    entitiesByResourceId: {
+      ...(base?.entitiesByResourceId || {}),
+      ...(extra?.entitiesByResourceId || {}),
+    },
+    accessStateByResourceId: {
+      ...(base?.accessStateByResourceId || {}),
+      ...(extra?.accessStateByResourceId || {}),
+    },
+    error: extra?.error || base?.error || '',
+  }
+}
+
 /**
  * Workloads overview — near real-time in single-namespace scope (live pod watch + 8s poll).
  * Cluster-wide node counts stay on the slower cluster-status hook.
  */
-export function useWorkloadOverview({ cluster, browseScope, kindGroups, enabled = true }) {
+export function useWorkloadOverview({
+  cluster,
+  browseScope,
+  kindGroups,
+  enabled = true,
+  prefetchOnly = false,
+}) {
   const ctx = cluster?.selectedContext || cluster?.currentContext || ''
   const kubeconfig = cluster?.kubeconfigPath || ''
   const scope = useMemo(
@@ -197,26 +218,66 @@ export function useWorkloadOverview({ cluster, browseScope, kindGroups, enabled 
       return
     }
 
-    const hasCached = Boolean(peekCatalogCache(cacheKey))
+    const fullCached = peekCatalogCache(cacheKey)
+    const priorityCached = peekCatalogCache(`${cacheKey}|priority`)
+    const hasCached = Boolean(fullCached || priorityCached)
     const id = ++reqRef.current
 
-    if (!hasCached) setLoading(true)
-    else setRefreshing(true)
+    if (fullCached) {
+      applyPayload(fullCached, Date.now())
+      setLoading(false)
+    } else if (priorityCached) {
+      applyPayload(priorityCached, Date.now())
+      setLoading(false)
+    } else {
+      setLoading(true)
+    }
+    setRefreshing(Boolean(fullCached || priorityCached))
 
     try {
-      const result = await loadCatalogCached(
-        cacheKey,
-        overviewTtl,
-        () => fetchOverviewPayload({
-          loadable: loadableNow,
-          api: apiParams,
-          kubeconfig,
-          ctx,
-        }),
-        { force },
-      )
-      if (reqRef.current !== id) return
-      applyPayload(result.data, Date.now())
+      const priority = loadableNow.filter((kg) => PRIORITY_WORKLOAD_KINDS.has(kg.kind))
+      const rest = loadableNow.filter((kg) => !PRIORITY_WORKLOAD_KINDS.has(kg.kind))
+
+      const fetchPartial = (kinds) => fetchOverviewPayload({
+        loadable: kinds,
+        api: apiParams,
+        kubeconfig,
+        ctx,
+      })
+
+      let merged = emptyOverviewPayload()
+      if (priority.length) {
+        const priorityResult = await loadCatalogCached(
+          `${cacheKey}|priority`,
+          overviewTtl,
+          () => fetchPartial(priority),
+          { force: force || !hasCached },
+        )
+        if (reqRef.current !== id) return
+        merged = priorityResult.data
+        applyPayload(merged, Date.now())
+        setLoading(false)
+      }
+
+      if (rest.length) {
+        setRefreshing(true)
+        const restResult = await fetchPartial(rest)
+        if (reqRef.current !== id) return
+        merged = mergeOverviewPayload(merged, restResult)
+        writeCatalogCache(cacheKey, { ...merged, updatedAt: Date.now() })
+        applyPayload(merged, Date.now())
+      } else if (priority.length) {
+        writeCatalogCache(cacheKey, { ...merged, updatedAt: Date.now() })
+      } else {
+        const result = await loadCatalogCached(
+          cacheKey,
+          overviewTtl,
+          () => fetchPartial(loadableNow),
+          { force },
+        )
+        if (reqRef.current !== id) return
+        applyPayload(result.data, Date.now())
+      }
     } catch (e) {
       if (reqRef.current !== id) return
       setError(String(e))
@@ -239,7 +300,7 @@ export function useWorkloadOverview({ cluster, browseScope, kindGroups, enabled 
   useVisiblePanelRefresh(
     () => reload({ force: true }),
     overviewPollMs,
-    enabled && Boolean(cacheKey),
+    enabled && Boolean(cacheKey) && !prefetchOnly,
   )
 
   useEffect(() => {
@@ -251,9 +312,19 @@ export function useWorkloadOverview({ cluster, browseScope, kindGroups, enabled 
       return undefined
     }
 
-    applyPayload(peekCatalogCache(cacheKey) || emptyOverviewPayload())
-    setLoading(!peekCatalogCache(cacheKey))
-    reload({ force: true })
+    const fullCached = peekCatalogCache(cacheKey)
+    const priorityCached = peekCatalogCache(`${cacheKey}|priority`)
+    if (fullCached) {
+      applyPayload(fullCached)
+      setLoading(false)
+    } else if (priorityCached) {
+      applyPayload(priorityCached)
+      setLoading(false)
+    } else {
+      applyPayload(emptyOverviewPayload())
+      setLoading(true)
+    }
+    reload({ force: false })
 
     return () => {
       reqRef.current += 1
@@ -261,7 +332,7 @@ export function useWorkloadOverview({ cluster, browseScope, kindGroups, enabled 
   }, [enabled, cacheKey, applyPayload, reload])
 
   useEffect(() => {
-    if (!enabled || !watchMode || !podGroup || !podWatchKey) {
+    if (prefetchOnly || !enabled || !watchMode || !podGroup || !podWatchKey) {
       return undefined
     }
 
@@ -314,6 +385,7 @@ export function useWorkloadOverview({ cluster, browseScope, kindGroups, enabled 
       setLive(false)
     }
   }, [
+    prefetchOnly,
     enabled,
     watchMode,
     podGroup,

@@ -783,6 +783,7 @@ export namespace main {
 	    kubeconfig: string;
 	    context: string;
 	    includeCounts: boolean;
+	    countResourceIds: string[];
 	    refresh: boolean;
 	
 	    static createFrom(source: any = {}) {
@@ -797,6 +798,7 @@ export namespace main {
 	        this.kubeconfig = source["kubeconfig"];
 	        this.context = source["context"];
 	        this.includeCounts = source["includeCounts"];
+	        this.countResourceIds = source["countResourceIds"];
 	        this.refresh = source["refresh"];
 	    }
 	}

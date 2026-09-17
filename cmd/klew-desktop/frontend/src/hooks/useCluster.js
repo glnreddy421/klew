@@ -26,6 +26,7 @@ export function useCluster() {
   const [syncing, setSyncing] = useState(false)
   const [connecting, setConnecting] = useState(false)
   const [connectingTarget, setConnectingTarget] = useState(null)
+  const [namespaceBusy, setNamespaceBusy] = useState(false)
 
   const apply = useCallback((st) => {
     if (!st) return
@@ -76,13 +77,11 @@ export function useCluster() {
   }, [apply])
 
   const setNamespace = useCallback(async (name) => {
-    setConnecting(true)
-    setConnectingTarget({ kind: 'namespace', name })
+    setNamespaceBusy(true)
     try {
       apply(await SelectNamespace(name))
     } finally {
-      setConnecting(false)
-      setConnectingTarget(null)
+      setNamespaceBusy(false)
     }
   }, [apply])
 
@@ -91,6 +90,7 @@ export function useCluster() {
     syncing,
     connecting,
     connectingTarget,
+    namespaceBusy,
     syncNow,
     setContext,
     setNamespace,

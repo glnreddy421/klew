@@ -99,7 +99,6 @@ export function WorkloadOverviewPanel({
   cluster,
   browseScope,
   kindGroups = [],
-  catalogLoading = false,
   clusterStatus = null,
   clusterMonitoringEnabled = true,
   onSelectKind,
@@ -123,7 +122,7 @@ export function WorkloadOverviewPanel({
   })
 
   const hasOverview = hasData || cards.some((c) => c.total > 0)
-  const initialLoad = (catalogLoading && !hasOverview) || (loading && !hasOverview)
+  const initialLoad = loading && !hasOverview
   // Only show background refresh while overview data is actively revalidating.
   const backgroundRefresh = refreshing
 
@@ -155,7 +154,7 @@ export function WorkloadOverviewPanel({
   if (!kindGroups.length) {
     return (
       <div className="workload-overview-panel">
-        {catalogLoading && !hasOverview ? (
+        {loading && !hasOverview ? (
           <LoadingState message="Loading workload types…" />
         ) : (
           <p className="muted">No workload types discovered in this scope.</p>

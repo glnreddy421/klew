@@ -118,9 +118,10 @@ export function ScopePanel({
   )
   const searchPlaceholder = entitySearchPlaceholder(nav.selectedKind, effectiveKindGroup?.label)
   const catalogPending = catalogLoading || catalogEnriching
-  const entitiesLoading = lazy.loading && canLazyLoad
+  const entitiesLoading = lazy.loading && canLazyLoad && displayEntities.length === 0
   const entityFetchProps = {
     catalogPending,
+    refreshing: lazy.refreshing,
     onRetry: () => lazy.refresh?.(),
     onReconnect,
     onOpenProxySettings,
@@ -178,7 +179,7 @@ export function ScopePanel({
           {!clusterMonitoringEnabled && (
             <span className="scope-toolbar-hint scope-toolbar-warn">Monitoring paused</span>
           )}
-          {catalogLoading && !catalog && clusterMonitoringEnabled && (
+          {catalogLoading && !catalog && clusterMonitoringEnabled && !isOverview && (
             <InlineLoading message="Loading catalog…" className="scope-toolbar-hint" />
           )}
           {(catalogEnriching || (catalogLoading && catalog)) && (
@@ -239,7 +240,7 @@ export function ScopePanel({
       </div>
 
       <div className={`scope-browse-split ${entityView === 'table' ? 'scope-browse-table' : 'scope-browse-list'} ${navInExplorer ? 'scope-browse-no-nav' : ''}`}>
-        {catalogLoading && !catalog && (
+        {catalogLoading && !catalog && !isOverview && (
           <ClusterFetchPanel
             className="scope-catalog-loading"
             message="Discovering cluster APIs…"
@@ -249,7 +250,7 @@ export function ScopePanel({
             reconnectBusy={reconnectBusy}
           />
         )}
-        {!catalogLoading || catalog ? (
+        {!catalogLoading || catalog || isOverview ? (
         <>
         {!navInExplorer && (
           <ResourceNav
@@ -269,7 +270,6 @@ export function ScopePanel({
             cluster={cluster}
             browseScope={browseScope}
             kindGroups={workloadKindGroups}
-            catalogLoading={catalogLoading}
             clusterStatus={clusterStatus}
             clusterMonitoringEnabled={clusterMonitoringEnabled}
             onSelectKind={(card) => nav.selectKind(card.groupId, card.kind, card.resourceId)}

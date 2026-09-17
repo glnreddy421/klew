@@ -1,3 +1,13 @@
+/** Active kube context for this window (never loads multiple contexts). */
+export function activeClusterContext(cluster) {
+  if (!cluster) return ''
+  return cluster.selectedContext || cluster.currentContext || ''
+}
+
+export function hasActiveClusterContext(cluster) {
+  return Boolean(activeClusterContext(cluster))
+}
+
 /** Whether kubeconfig contexts are available for pickers (connection optional). */
 export function hasClusterContexts(cluster) {
   if (!cluster) return false

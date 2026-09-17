@@ -79,6 +79,7 @@ export function EntityList({
   onReconnect,
   onOpenProxySettings,
   reconnectBusy = false,
+  refreshing = false,
   inspectKey,
   focusKey,
   showFocusButton = true,
@@ -105,7 +106,9 @@ export function EntityList({
             {kind ? <KindIcon kind={kind} size={16} /> : null}
             <h4 className="entity-list-title">{label}</h4>
             {!accessBlocked && (
-              <span className="entity-list-count">{entitiesLoading ? '…' : entities.length}</span>
+              <span className="entity-list-count">
+                {entitiesLoading && entities.length === 0 ? '…' : entities.length}
+              </span>
             )}
           </div>
         </header>
@@ -122,7 +125,7 @@ export function EntityList({
           />
         ) : (
           <>
-            {entitiesLoading && (
+            {entitiesLoading && list.length === 0 && (
               <ClusterFetchPanel
                 message="Loading resources…"
                 compact
@@ -132,7 +135,10 @@ export function EntityList({
                 reconnectBusy={reconnectBusy}
               />
             )}
-            {!entitiesLoading && list.length > 0 && (
+            {refreshing && list.length > 0 && (
+              <p className="entity-list-refresh-hint muted" role="status">Refreshing…</p>
+            )}
+            {list.length > 0 && (
               <ul className="entity-list-rows">
                 {list.map((row) => (
                   <EntityListItem

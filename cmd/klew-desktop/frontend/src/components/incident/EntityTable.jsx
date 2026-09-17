@@ -598,6 +598,7 @@ export function EntityTable({
   onReconnect,
   onOpenProxySettings,
   reconnectBusy = false,
+  refreshing = false,
   pods = [],
   inspectKey,
   focusKey,
@@ -664,7 +665,9 @@ export function EntityTable({
                 )}
               </h4>
               {!accessBlocked && (
-                <span className="entity-table-count">{entitiesLoading ? '…' : entities.length}</span>
+                <span className="entity-table-count">
+                  {entitiesLoading && entities.length === 0 ? '…' : entities.length}
+                </span>
               )}
             </div>
             {kindGroup && (
@@ -715,7 +718,7 @@ export function EntityTable({
                 </tr>
               </thead>
               <tbody>
-                {entitiesLoading && (
+                {entitiesLoading && sortedRows.length === 0 && (
                   <tr className="entity-table-placeholder-row">
                     <td colSpan={Math.max(columns.length, 1)} className="entity-table-placeholder-cell">
                       <ClusterFetchPanel
@@ -728,7 +731,14 @@ export function EntityTable({
                     </td>
                   </tr>
                 )}
-                {!entitiesLoading && sortedRows.map((row) => (
+                {refreshing && sortedRows.length > 0 && (
+                  <tr className="entity-table-refresh-row">
+                    <td colSpan={Math.max(columns.length, 1)} className="entity-table-refresh-cell muted">
+                      Refreshing…
+                    </td>
+                  </tr>
+                )}
+                {sortedRows.map((row) => (
                   <TableRow
                     key={row.key}
                     row={row}

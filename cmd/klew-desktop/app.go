@@ -428,13 +428,14 @@ func (a *App) DiscoverMatches(opts DiscoverOptions) ([]model.MatchedObject, erro
 
 // CatalogOptions configures dynamic resource catalog discovery.
 type CatalogOptions struct {
-	Namespace      string   `json:"namespace"`
-	AllNamespaces  bool     `json:"allNamespaces"`
-	Namespaces     []string `json:"namespaces"`
-	Kubeconfig     string   `json:"kubeconfig"`
-	Context        string   `json:"context"`
-	IncludeCounts  bool     `json:"includeCounts"`
-	Refresh        bool     `json:"refresh"`
+	Namespace          string   `json:"namespace"`
+	AllNamespaces      bool     `json:"allNamespaces"`
+	Namespaces         []string `json:"namespaces"`
+	Kubeconfig         string   `json:"kubeconfig"`
+	Context            string   `json:"context"`
+	IncludeCounts      bool     `json:"includeCounts"`
+	CountResourceIds   []string `json:"countResourceIds"`
+	Refresh            bool     `json:"refresh"`
 }
 
 func (a *App) resolveCatalogClient(opts CatalogOptions) (*kube.Client, string, error) {
@@ -490,10 +491,11 @@ func (a *App) GetResourceCatalog(opts CatalogOptions) (model.ResourceCatalog, er
 	} else if len(opts.Namespaces) > 1 {
 		catalogNS = ""
 	}
+	countIDs := opts.CountResourceIds
 	if opts.Refresh {
-		return kube.RefreshResourceCatalog(ctx, client, catalogNS, opts.IncludeCounts, opts.AllNamespaces, opts.Namespaces)
+		return kube.RefreshResourceCatalog(ctx, client, catalogNS, opts.IncludeCounts, opts.AllNamespaces, opts.Namespaces, countIDs)
 	}
-	return kube.BuildResourceCatalog(ctx, client, catalogNS, opts.IncludeCounts, opts.AllNamespaces, opts.Namespaces)
+	return kube.BuildResourceCatalog(ctx, client, catalogNS, opts.IncludeCounts, opts.AllNamespaces, opts.Namespaces, countIDs)
 }
 
 // RefreshResourceCatalog invalidates cached discovery/auth and rebuilds the catalog.

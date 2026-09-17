@@ -9,6 +9,7 @@ import {
   entitiesListCacheKey,
   loadCatalogCached,
   peekCatalogCache,
+  peekCatalogCacheEntry,
   writeCatalogCache,
 } from '../lib/catalogCache.js'
 
@@ -123,10 +124,16 @@ export function useCatalogEntities({ cluster, kindGroup, browseScope, enabled = 
       return
     }
 
-    const hasCached = Boolean(peekCatalogCache(cacheKey))
+    const cachedEntry = peekCatalogCacheEntry(cacheKey)
+    const hasCached = Boolean(cachedEntry?.data)
     const id = ++reqRef.current
-    if (!hasCached) setLoading(true)
-    else setRefreshing(true)
+    if (hasCached) {
+      applyPayload(cachedEntry.data, { at: cachedEntry.at || Date.now(), streaming: false })
+      setLoading(false)
+      setRefreshing(true)
+    } else {
+      setLoading(true)
+    }
 
     try {
       const result = await loadCatalogCached(
@@ -144,8 +151,10 @@ export function useCatalogEntities({ cluster, kindGroup, browseScope, enabled = 
       if (reqRef.current !== id) return
       const errMsg = String(e)
       setError(errMsg)
-      setEntities([])
-      setAccessState(normalizeCatalogAccessState('error', errMsg))
+      if (!hasCached) {
+        setEntities([])
+        setAccessState(normalizeCatalogAccessState('error', errMsg))
+      }
       setLive(false)
     } finally {
       if (reqRef.current === id) {
@@ -176,13 +185,14 @@ export function useCatalogEntities({ cluster, kindGroup, browseScope, enabled = 
       return undefined
     }
 
-    const cached = peekCatalogCache(cacheKey)
-    if (cached) {
-      applyPayload(cached, { at: cached.updatedAt || 0, streaming: false })
+    const cachedEntry = peekCatalogCacheEntry(cacheKey)
+    if (cachedEntry?.data) {
+      applyPayload(cachedEntry.data, { at: cachedEntry.at || 0, streaming: false })
+      setLoading(false)
     } else {
       applyPayload(emptyEntityPayload(), { at: 0, streaming: false })
+      setLoading(true)
     }
-    setLoading(!cached)
     reload({ force: false })
 
     return () => {

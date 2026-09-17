@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -271,9 +272,18 @@ func shouldAttemptCatalogCount(d model.KubernetesResourceDescriptor) bool {
 	return true
 }
 
-func attachCounts(ctx context.Context, client *Client, namespace string, descriptors []model.KubernetesResourceDescriptor, allNamespaces bool, namespaces []string) []model.KubernetesResourceDescriptor {
+func attachCounts(ctx context.Context, client *Client, namespace string, descriptors []model.KubernetesResourceDescriptor, allNamespaces bool, namespaces []string, countResourceIDs []string) []model.KubernetesResourceDescriptor {
 	if client == nil {
 		return descriptors
+	}
+	var idFilter map[string]struct{}
+	if len(countResourceIDs) > 0 {
+		idFilter = make(map[string]struct{}, len(countResourceIDs))
+		for _, id := range countResourceIDs {
+			if id = strings.TrimSpace(id); id != "" {
+				idFilter[id] = struct{}{}
+			}
+		}
 	}
 	type job struct {
 		idx int
@@ -304,6 +314,11 @@ func attachCounts(ctx context.Context, client *Client, namespace string, descrip
 	}
 
 	for i, d := range descriptors {
+		if idFilter != nil {
+			if _, ok := idFilter[d.ID]; !ok {
+				continue
+			}
+		}
 		if shouldAttemptCatalogCount(d) {
 			jobs <- job{idx: i}
 		}
@@ -314,7 +329,8 @@ func attachCounts(ctx context.Context, client *Client, namespace string, descrip
 }
 
 // BuildResourceCatalog discovers API resources and evaluates RBAC for the namespace scope.
-func BuildResourceCatalog(ctx context.Context, client *Client, namespace string, includeCounts bool, allNamespaces bool, namespaces []string) (model.ResourceCatalog, error) {
+// When countResourceIDs is non-empty, includeCounts only lists those descriptor IDs (fast path for workloads).
+func BuildResourceCatalog(ctx context.Context, client *Client, namespace string, includeCounts bool, allNamespaces bool, namespaces []string, countResourceIDs []string) (model.ResourceCatalog, error) {
 	if client == nil || client.Clientset == nil {
 		return model.ResourceCatalog{}, fmt.Errorf("kubernetes client is required")
 	}
@@ -353,7 +369,7 @@ func BuildResourceCatalog(ctx context.Context, client *Client, namespace string,
 	}
 
 	if includeCounts && authErr == nil {
-		descriptors = attachCounts(ctx, client, namespace, descriptors, allNamespaces, namespaces)
+		descriptors = attachCounts(ctx, client, namespace, descriptors, allNamespaces, namespaces, countResourceIDs)
 	}
 
 	namespaced, extensions, cluster := partitionCatalog(descriptors)
@@ -382,8 +398,8 @@ func BuildResourceCatalog(ctx context.Context, client *Client, namespace string,
 }
 
 // RefreshResourceCatalog invalidates caches and rebuilds the catalog.
-func RefreshResourceCatalog(ctx context.Context, client *Client, namespace string, includeCounts bool, allNamespaces bool, namespaces []string) (model.ResourceCatalog, error) {
+func RefreshResourceCatalog(ctx context.Context, client *Client, namespace string, includeCounts bool, allNamespaces bool, namespaces []string, countResourceIDs []string) (model.ResourceCatalog, error) {
 	InvalidateCatalogDiscovery(client)
 	InvalidateCatalogAuth(client)
-	return BuildResourceCatalog(ctx, client, namespace, includeCounts, allNamespaces, namespaces)
+	return BuildResourceCatalog(ctx, client, namespace, includeCounts, allNamespaces, namespaces, countResourceIDs)
 }
