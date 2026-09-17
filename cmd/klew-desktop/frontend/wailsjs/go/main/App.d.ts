@@ -23,6 +23,8 @@ export function GetClusterStatus():Promise<kube.ClusterStatus>;
 
 export function GetKubectlInfo():Promise<kube.KubectlInfo>;
 
+export function GetNetworkProxy():Promise<kube.NetworkProxyOptions>;
+
 export function GetObjectDetails(arg1:string,arg2:string,arg3:string):Promise<details.ObjectDetail>;
 
 export function GetResourceCatalog(arg1:main.CatalogOptions):Promise<model.ResourceCatalog>;
@@ -60,6 +62,8 @@ export function SetAutoRefresh(arg1:boolean):Promise<void>;
 export function SetKubeconfigPath(arg1:string):Promise<kube.ClusterState>;
 
 export function SetKubectlOptions(arg1:boolean,arg2:string,arg3:boolean):Promise<kube.KubectlInfo>;
+
+export function SetNetworkProxy(arg1:string,arg2:string,arg3:string):Promise<kube.NetworkProxyOptions>;
 
 export function SetPollEverySec(arg1:number):Promise<void>;
 

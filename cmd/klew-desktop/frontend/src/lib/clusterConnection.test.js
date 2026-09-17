@@ -155,6 +155,16 @@ test('deriveConnectionState connecting on first status check', () => {
   assert.equal(state.showBanner, true)
 })
 
+test('deriveConnectionState paused when monitoring is off', () => {
+  const state = deriveConnectionState({
+    cluster,
+    monitoringPaused: true,
+  })
+  assert.equal(state.phase, 'paused')
+  assert.equal(state.showRetry, true)
+  assert.equal(state.retryLabel, 'Reconnect')
+})
+
 test('connectionErrorMessage prefers sync error', () => {
   assert.equal(
     connectionErrorMessage(

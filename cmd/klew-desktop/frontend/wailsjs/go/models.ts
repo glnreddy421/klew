@@ -739,6 +739,22 @@ export namespace kube {
 	        this.available = source["available"];
 	    }
 	}
+	export class NetworkProxyOptions {
+	    httpProxy: string;
+	    httpsProxy: string;
+	    noProxy: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new NetworkProxyOptions(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.httpProxy = source["httpProxy"];
+	        this.httpsProxy = source["httpsProxy"];
+	        this.noProxy = source["noProxy"];
+	    }
+	}
 	export class ResourceManifest {
 	    command: string;
 	    yaml: string;

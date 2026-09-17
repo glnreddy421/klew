@@ -3,6 +3,7 @@ export function ClusterConnectionBanner({
   onReconnect,
   onDismiss,
   onOpenSettings,
+  onOpenProxySettings,
   reconnectBusy = false,
 }) {
   if (!connection?.showBanner) return null
@@ -55,6 +56,16 @@ export function ClusterConnectionBanner({
             disabled={reconnectBusy}
           >
             {reconnectBusy ? 'Connecting…' : (connection.retryLabel || 'Reconnect')}
+          </button>
+        )}
+        {onOpenProxySettings && (
+          <button
+            type="button"
+            className="text-link-btn cluster-connection-proxy-btn"
+            onClick={onOpenProxySettings}
+            disabled={reconnectBusy}
+          >
+            Proxy settings
           </button>
         )}
       </div>

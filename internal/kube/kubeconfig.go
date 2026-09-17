@@ -47,16 +47,16 @@ func LoadKubeConfigSnapshot(kubeconfigPath string) (ClusterState, error) {
 	if err != nil {
 		return ClusterState{}, fmt.Errorf("read kubeconfig: %w", err)
 	}
-	if raw.CurrentContext == "" {
-		return ClusterState{}, fmt.Errorf("kubeconfig has no current context")
-	}
-
 	names := make([]string, 0, len(raw.Contexts))
 	for name := range raw.Contexts {
 		names = append(names, name)
 	}
 	sort.Strings(names)
+	if len(names) == 0 {
+		return ClusterState{}, fmt.Errorf("kubeconfig has no contexts")
+	}
 
+	current := raw.CurrentContext
 	contexts := make([]ContextOption, 0, len(names))
 	for _, name := range names {
 		c := raw.Contexts[name]
@@ -65,12 +65,18 @@ func LoadKubeConfigSnapshot(kubeconfigPath string) (ClusterState, error) {
 			Cluster:   c.Cluster,
 			User:      c.AuthInfo,
 			Namespace: c.Namespace,
-			IsCurrent: name == raw.CurrentContext,
+			IsCurrent: current != "" && name == current,
 		})
 	}
 
-	selected := raw.CurrentContext
-	ctxCfg := raw.Contexts[selected]
+	selected := current
+	if selected == "" {
+		selected = names[0]
+	}
+	ctxCfg, ok := raw.Contexts[selected]
+	if !ok {
+		return ClusterState{}, fmt.Errorf("context %q not found in kubeconfig", selected)
+	}
 	ns := ctxCfg.Namespace
 	if ns == "" {
 		ns = "default"
@@ -78,7 +84,7 @@ func LoadKubeConfigSnapshot(kubeconfigPath string) (ClusterState, error) {
 
 	return ClusterState{
 		KubeconfigPath:    path,
-		CurrentContext:    raw.CurrentContext,
+		CurrentContext:    current,
 		SelectedContext:   selected,
 		SelectedNamespace: ns,
 		Cluster:           ctxCfg.Cluster,

@@ -125,6 +125,8 @@ export function deriveConnectionState({
   autoRetryExhausted = false,
   maxRetries = 5,
   dismissed = false,
+  monitoringPaused = false,
+  autoMonitor = true,
 }) {
   const context = cluster?.selectedContext || cluster?.currentContext || ''
   const label = activeContextLabel(cluster, { connecting, connectingTarget })
@@ -134,6 +136,26 @@ export function deriveConnectionState({
 
   if (!context) {
     return { phase: 'idle', showBanner: false }
+  }
+
+  if (monitoringPaused) {
+    const paused = {
+      phase: 'paused',
+      showBanner: !dismissed,
+      title: `${label} — monitoring paused`,
+      message: 'Klew is not polling this cluster.',
+      detail: 'Click Reconnect to sync kubeconfig and resume live updates.',
+      tone: 'info',
+      showRetry: true,
+      retryLabel: 'Reconnect',
+      showSettings: true,
+      showDismiss: true,
+      showDisconnect: false,
+    }
+    if (dismissed) {
+      return { ...paused, showBanner: false }
+    }
+    return paused
   }
 
   if (syncing || connecting || (statusLoading && !clusterStatus && !String(cluster?.syncError || '').trim())) {
@@ -184,7 +206,7 @@ export function deriveConnectionState({
       }
     }
 
-    if (retryInSec > 0 && !autoRetryExhausted) {
+    if (retryInSec > 0 && !autoRetryExhausted && autoMonitor) {
       return {
         phase: 'retrying',
         showBanner: true,
@@ -212,9 +234,11 @@ export function deriveConnectionState({
       message,
       detail: autoRetryExhausted
         ? guidance
-        : (classified.kind === 'auth'
-          ? 'Klew will retry automatically. Refresh AWS or EKS login if retries keep failing.'
-          : 'Klew will retry automatically.'),
+        : (autoMonitor
+          ? (classified.kind === 'auth'
+            ? 'Klew will retry automatically. Refresh AWS or EKS login if retries keep failing.'
+            : 'Klew will retry automatically.')
+          : 'Automatic reconnect is off. Click Reconnect when ready.'),
       tone: 'error',
       showRetry: true,
       retryLabel: autoRetryExhausted ? 'Try again' : 'Reconnect now',

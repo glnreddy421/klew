@@ -12,7 +12,7 @@ import { normalizeTopbarScale, TOPBAR_SCALE_DEFAULT } from './topbarScale'
 export const PREFS_STORAGE_KEY = 'klew.desktop.preferences'
 
 /** Bump when defaults change so existing localStorage picks up migrations once. */
-export const PREFS_VERSION = 10
+export const PREFS_VERSION = 13
 
 /** Investigation window lengths supported by the engine (minutes). */
 export const WINDOW_MIN_OPTIONS = [5, 15, 30, 60]
@@ -65,6 +65,11 @@ export function defaultPreferences() {
     matchClusterKubectl: true, // download kubectl when cluster skew exceeds bundled
     useMetricsServer: true,
     metricsApiGroup: 'metrics.k8s.io', // informational / future override
+    httpProxy: '',
+    httpsProxy: '',
+    noProxy: '',
+    autoMonitorCluster: true,
+    defaultContext: '', // pinned context on Home; launch always opens Home
 
     // In-app terminal
     terminalShell: '', // empty/system = follow $SHELL
@@ -125,6 +130,20 @@ function migratePreferences(parsed) {
   // v10: top bar zoom / scale.
   if (version < 10) {
     next.topbarScale = TOPBAR_SCALE_DEFAULT
+  }
+  // v11: optional HTTP(S) proxy for Kubernetes API traffic.
+  if (version < 11) {
+    next.httpProxy = ''
+    next.httpsProxy = ''
+    next.noProxy = ''
+  }
+  // v12: automatic cluster reconnect / background polling.
+  if (version < 12) {
+    next.autoMonitorCluster = true
+  }
+  // v13: optional default kube context on launch.
+  if (version < 13) {
+    next.defaultContext = ''
   }
   return next
 }
@@ -190,6 +209,11 @@ export function normalizePreferences(p) {
     matchClusterKubectl: bool(src.matchClusterKubectl, d.matchClusterKubectl),
     useMetricsServer: bool(src.useMetricsServer, d.useMetricsServer),
     metricsApiGroup: String(src.metricsApiGroup || d.metricsApiGroup).trim() || d.metricsApiGroup,
+    httpProxy: String(src.httpProxy ?? d.httpProxy ?? '').trim(),
+    httpsProxy: String(src.httpsProxy ?? d.httpsProxy ?? '').trim(),
+    noProxy: String(src.noProxy ?? d.noProxy ?? '').trim(),
+    autoMonitorCluster: bool(src.autoMonitorCluster, d.autoMonitorCluster),
+    defaultContext: String(src.defaultContext ?? d.defaultContext ?? '').trim(),
 
     terminalShell: String(src.terminalShell ?? d.terminalShell ?? '').trim(),
     terminalShellPrompted: bool(src.terminalShellPrompted, d.terminalShellPrompted),

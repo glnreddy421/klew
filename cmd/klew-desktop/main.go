@@ -23,6 +23,7 @@ func main() {
 	flag.Parse()
 
 	kube.BootstrapLoginShellEnv()
+	kube.InitNetworkProxyFromEnv()
 
 	app := NewApp(bootOptions{
 		Context:    *contextName,

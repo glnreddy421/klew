@@ -56,6 +56,48 @@ users:
 	}
 }
 
+func TestLoadKubeConfigSnapshotWithoutCurrentContext(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config")
+	content := `apiVersion: v1
+kind: Config
+contexts:
+- name: alpha
+  context:
+    cluster: c1
+    user: u1
+    namespace: team-a
+- name: beta
+  context:
+    cluster: c2
+    user: u2
+clusters:
+- name: c1
+  cluster:
+    server: https://127.0.0.1:6443
+- name: c2
+  cluster:
+    server: https://127.0.0.1:6444
+users:
+- name: u1
+- name: u2
+`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	st, err := LoadKubeConfigSnapshot(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(st.Contexts) != 2 {
+		t.Fatalf("contexts = %d", len(st.Contexts))
+	}
+	if st.SelectedContext != "alpha" {
+		t.Fatalf("selected context = %q", st.SelectedContext)
+	}
+}
+
 func TestPickNamespace(t *testing.T) {
 	if got := pickNamespace([]string{"kube-system", "default", "klew-lab"}, "klew-lab"); got != "klew-lab" {
 		t.Fatalf("preferred present: %q", got)

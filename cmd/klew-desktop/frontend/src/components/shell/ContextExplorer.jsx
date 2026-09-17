@@ -97,7 +97,7 @@ export function ContextExplorer({
     graphRelations, onGraphRelationsChange, focusLabel, timeWindowLabel, live, activeQuery, investigationActive,
   ])
 
-  if (tab === 'settings') return null
+  if (tab === 'settings' || tab === 'home') return null
 
   if (collapsed) {
     if (tab === 'resources') {

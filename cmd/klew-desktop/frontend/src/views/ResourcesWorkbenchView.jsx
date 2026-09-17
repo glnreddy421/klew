@@ -19,6 +19,7 @@ import { buildComponentInspect } from '../lib/componentInspect'
 import { mergeInspect, normalizeObjectDetail } from '../lib/objectDetails'
 import { GetObjectDetails } from '../../wailsjs/go/main/App'
 import { useScopeBrowse } from '../context/ScopeBrowseContext.jsx'
+import { hasClusterContexts } from '../lib/clusterIdentity.js'
 import { useShellInspector } from '../context/ShellInspectorContext.jsx'
 import {
   inspectPanelMode,
@@ -59,6 +60,11 @@ export function ResourcesWorkbenchRoot({
   investigationSession = null,
   resourcesBrowseLens = 'matches',
   onResourcesBrowseLensChange,
+  onReconnect,
+  onDisconnect,
+  onOpenProxySettings,
+  reconnectBusy = false,
+  clusterMonitoringEnabled = true,
   children,
 }) {
   const value = useResourcesWorkbenchState({
@@ -87,6 +93,11 @@ export function ResourcesWorkbenchRoot({
     investigationSession,
     resourcesBrowseLens,
     onResourcesBrowseLensChange,
+    onReconnect,
+    onDisconnect,
+    onOpenProxySettings,
+    reconnectBusy,
+    clusterMonitoringEnabled,
   })
   return (
     <ResourcesWorkbenchContext.Provider value={value}>
@@ -130,6 +141,11 @@ export function ResourcesWorkbenchView({ shellMode = false }) {
     investigationSession,
     resourcesBrowseLens,
     onResourcesBrowseLensChange,
+    onReconnect,
+    onDisconnect,
+    onOpenProxySettings,
+    reconnectBusy,
+    clusterMonitoringEnabled,
     handleInspect,
     handleFocus,
     handleNavKindChange,
@@ -147,14 +163,15 @@ export function ResourcesWorkbenchView({ shellMode = false }) {
     handleNavKindChange(payload)
   }, [handleNavKindChange])
 
-  const clusterReady = Boolean(cluster?.selectedContext || cluster?.currentContext)
-
-  if (!clusterReady) {
+  if (!hasClusterContexts(cluster)) {
     return (
       <div className="workbench-surface resources-workbench">
         <div className="workbench-empty">
-          <h3>Connect a cluster</h3>
-          <p className="muted">Select a context and namespace to browse Kubernetes resources.</p>
+          <h3>No kubeconfig contexts</h3>
+          <p className="muted">
+            Add a cluster context to your kubeconfig, or set the kubeconfig path in Settings.
+            You can reconnect once the API is reachable.
+          </p>
         </div>
       </div>
     )
@@ -208,6 +225,11 @@ export function ResourcesWorkbenchView({ shellMode = false }) {
           browseLens={resourcesBrowseLens}
           onBrowseLensChange={onResourcesBrowseLensChange}
           showBrowseLens={Boolean(investigationSession?.active)}
+          onReconnect={onReconnect}
+          onDisconnect={onDisconnect}
+          onOpenProxySettings={onOpenProxySettings}
+          reconnectBusy={reconnectBusy}
+          clusterMonitoringEnabled={clusterMonitoringEnabled}
         />
       </section>
     </div>
@@ -311,6 +333,11 @@ function useResourcesWorkbenchState({
   investigationSession = null,
   resourcesBrowseLens = 'matches',
   onResourcesBrowseLensChange,
+  onReconnect,
+  onDisconnect,
+  onOpenProxySettings,
+  reconnectBusy = false,
+  clusterMonitoringEnabled = true,
 }) {
   const allMatches = getMatchedObjects(view)
   const allRows = useMemo(() => deriveMatchRows(view, allMatches), [view, allMatches])
@@ -568,5 +595,10 @@ function useResourcesWorkbenchState({
     investigationSession,
     resourcesBrowseLens,
     onResourcesBrowseLensChange,
+    onReconnect,
+    onDisconnect,
+    onOpenProxySettings,
+    reconnectBusy,
+    clusterMonitoringEnabled,
   }
 }

@@ -1,7 +1,7 @@
 import { KindIcon } from '../KindIcon'
 import { formatReady, rowKeysMatch } from '../../lib/matches'
-import { isAccessDenied, isUnavailable, kindDisplayLabel } from '../../lib/resourceCatalog.js'
-import { LoadingState } from '../LoadingSpinner.jsx'
+import { isAccessDenied, isAccessError, isUnavailable, kindDisplayLabel } from '../../lib/resourceCatalog.js'
+import { ClusterFetchPanel } from '../ClusterFetchPanel.jsx'
 import { ResourceAccessPanel } from './ResourceAccessPanel.jsx'
 
 function EmptyEntityState({ label, hasSearch }) {
@@ -74,6 +74,11 @@ export function EntityList({
   entities = [],
   filteredEntities = [],
   entitiesLoading = false,
+  catalogPending = false,
+  onRetry,
+  onReconnect,
+  onOpenProxySettings,
+  reconnectBusy = false,
   inspectKey,
   focusKey,
   showFocusButton = true,
@@ -89,7 +94,8 @@ export function EntityList({
   const accessBlocked = !chainMode
     && entities.length === 0
     && !entitiesLoading
-    && (isAccessDenied(kindGroup) || isUnavailable(kindGroup))
+    && !catalogPending
+    && (isAccessDenied(kindGroup) || isUnavailable(kindGroup) || isAccessError(kindGroup))
 
   return (
     <section className="entity-list" aria-label={`${label} entities`}>
@@ -107,11 +113,24 @@ export function EntityList({
 
       <div className="entity-list-body">
         {accessBlocked ? (
-          <ResourceAccessPanel kindGroup={kindGroup} />
+          <ResourceAccessPanel
+            kindGroup={kindGroup}
+            onRetry={onRetry}
+            onReconnect={onReconnect}
+            onOpenProxySettings={onOpenProxySettings}
+            reconnectBusy={reconnectBusy}
+          />
         ) : (
           <>
             {entitiesLoading && (
-              <LoadingState message="Loading resources…" compact className="entity-list-loading" />
+              <ClusterFetchPanel
+                message="Loading resources…"
+                compact
+                className="entity-list-loading"
+                onReconnect={onReconnect}
+                onOpenProxySettings={onOpenProxySettings}
+                reconnectBusy={reconnectBusy}
+              />
             )}
             {!entitiesLoading && list.length > 0 && (
               <ul className="entity-list-rows">

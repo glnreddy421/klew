@@ -13,10 +13,12 @@ import { EvidenceView } from './EvidenceView'
 import { SettingsView } from './SettingsView'
 import { WorkspaceChrome } from '../components/WorkspaceChrome'
 import { CollectingMatchesSplash } from '../components/incident/CollectingMatchesSplash'
+import { HomeView } from './HomeView.jsx'
 import { deriveMatchRows, getMatchedObjects } from '../lib/matches'
 import { inspectRowFromKey } from '../lib/investigationContext'
 import { loadLayoutMode } from '../lib/incidentLayout'
 import { normalizeBrowseScope } from '../lib/browseScope.js'
+import { hasClusterContexts } from '../lib/clusterIdentity.js'
 import { defaultRelations } from '../components/shell/explorers/ExplorerPanels.jsx'
 
 export function MainContent({
@@ -47,6 +49,18 @@ export function MainContent({
   prefs,
   onPrefsChange,
   onClusterRefresh,
+  statusLoading = false,
+  onReconnect,
+  onDisconnect,
+  reconnectBusy = false,
+  monitoringPaused = false,
+  connection = null,
+  connecting = false,
+  onContextChange,
+  onSetDefaultContext,
+  onClearDefaultContext,
+  onOpenProxySettings,
+  onOpenSettingsKubernetes,
   onTerminalShellChange,
   onOpenTerminalShellPicker,
   terminalShellRestartToken = 0,
@@ -119,7 +133,9 @@ export function MainContent({
       || cluster?.selectedNamespace
     ),
   )
-  const showWelcome = !running && !starting && !scopePickerOpen && tab !== 'settings' && !hasBrowseScope
+  const showWelcome = !running && !starting && !scopePickerOpen && tab !== 'settings' && tab !== 'home'
+    && !hasBrowseScope
+    && !hasClusterContexts(cluster)
 
   const resourcesWrap = tab === 'resources' ? {
     view,
@@ -148,11 +164,41 @@ export function MainContent({
     investigationSession,
     resourcesBrowseLens,
     onResourcesBrowseLensChange,
+    onReconnect,
+    onDisconnect,
+    onOpenProxySettings,
+    reconnectBusy,
+    monitoringPaused,
+    clusterMonitoringEnabled: !monitoringPaused,
   } : null
 
   if (showWelcome) {
     const welcome = <WelcomePanel onOpenSettings={onOpenSettings} />
     return renderShell?.({ workspace: welcome, showInspector: false, resourcesWrap }) ?? welcome
+  }
+
+  if (tab === 'home') {
+    const home = (
+      <div className="main-content main-content-home">
+        <HomeView
+          cluster={cluster}
+          clusterStatus={clusterStatus}
+          connection={connection}
+          syncing={syncing}
+          connecting={connecting}
+          statusLoading={statusLoading}
+          reconnectBusy={reconnectBusy}
+          monitoringPaused={monitoringPaused}
+          defaultContext={prefs?.defaultContext || ''}
+          onSelectCluster={onContextChange}
+          onSetDefaultContext={onSetDefaultContext}
+          onReconnect={onReconnect}
+          onOpenProxySettings={onOpenProxySettings}
+          onOpenSettings={onOpenSettingsKubernetes || onOpenSettings}
+        />
+      </div>
+    )
+    return renderShell?.({ workspace: home, showInspector: false }) ?? home
   }
 
   if (tab === 'settings') {
@@ -165,6 +211,12 @@ export function MainContent({
           prefs={prefs}
           onPrefsChange={onPrefsChange}
           onClusterRefresh={onClusterRefresh}
+          onReconnect={onReconnect}
+          onDisconnect={onDisconnect}
+          reconnectBusy={reconnectBusy}
+          monitoringPaused={monitoringPaused}
+          connection={connection}
+          onClearDefaultContext={onClearDefaultContext}
           onTerminalShellChange={onTerminalShellChange}
           section={settingsSection}
           onSectionChange={onSettingsSectionChange}
@@ -238,6 +290,10 @@ export function MainContent({
             view={view}
             clusterStatus={clusterStatus}
             focus={nodesFocus}
+            statusLoading={statusLoading}
+            onReconnect={onReconnect}
+            onOpenProxySettings={onOpenProxySettings}
+            reconnectBusy={reconnectBusy}
           />
         )}
         {tab === 'failures' && (

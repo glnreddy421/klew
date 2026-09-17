@@ -34,6 +34,10 @@ export function GetKubectlInfo() {
   return window['go']['main']['App']['GetKubectlInfo']();
 }
 
+export function GetNetworkProxy() {
+  return window['go']['main']['App']['GetNetworkProxy']();
+}
+
 export function GetObjectDetails(arg1, arg2, arg3) {
   return window['go']['main']['App']['GetObjectDetails'](arg1, arg2, arg3);
 }
@@ -108,6 +112,10 @@ export function SetKubeconfigPath(arg1) {
 
 export function SetKubectlOptions(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetKubectlOptions'](arg1, arg2, arg3);
+}
+
+export function SetNetworkProxy(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SetNetworkProxy'](arg1, arg2, arg3);
 }
 
 export function SetPollEverySec(arg1) {

@@ -31,7 +31,8 @@ func BootstrapLoginShellEnv() {
 
 func mergeLoginShellVar(key string) bool {
 	switch key {
-	case "PATH", "KUBECONFIG", "HOME", "USER", "USERPROFILE", "USE_GKE_GCLOUD_AUTH_PLUGIN":
+	case "PATH", "KUBECONFIG", "HOME", "USER", "USERPROFILE", "USE_GKE_GCLOUD_AUTH_PLUGIN",
+		"HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy":
 		return true
 	}
 	if strings.HasPrefix(key, "AWS_") {

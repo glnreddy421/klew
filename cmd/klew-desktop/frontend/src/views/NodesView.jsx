@@ -8,11 +8,20 @@ import {
 } from '../lib/investigationViews'
 import { formatNodesVersionLead } from '../lib/clusterVersion'
 import { isRbacForbiddenMessage } from '../lib/rbacAccess.js'
+import { ClusterFetchPanel } from '../components/ClusterFetchPanel.jsx'
 
 /**
  * Nodes — cluster inventory and investigation-scoped node context.
  */
-export function NodesView({ view, clusterStatus, focus = 'cluster' }) {
+export function NodesView({
+  view,
+  clusterStatus,
+  focus = 'cluster',
+  statusLoading = false,
+  onReconnect,
+  onOpenProxySettings,
+  reconnectBusy = false,
+}) {
   const snap = getSnapshot(view)
   const scopedNodes = snap.nodes || []
   const pods = snap.pods || []
@@ -89,7 +98,15 @@ export function NodesView({ view, clusterStatus, focus = 'cluster' }) {
             </p>
           </header>
           <div className="card-body card-body-flush">
-            {clusterRows.length === 0 ? (
+            {statusLoading && clusterRows.length === 0 ? (
+              <ClusterFetchPanel
+                className="nodes-loading inv-pad"
+                message="Loading node inventory…"
+                onReconnect={onReconnect}
+                onOpenProxySettings={onOpenProxySettings}
+                reconnectBusy={reconnectBusy}
+              />
+            ) : clusterRows.length === 0 ? (
               <p className="muted inv-pad">
                 {clusterStatus?.error
                   ? (isRbacForbiddenMessage(clusterStatus.error)

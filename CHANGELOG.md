@@ -4,6 +4,26 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 
 ## [Unreleased]
 
+## [1.3.4] — 2026-09-17
+
+### Home
+
+- **Landing page** — Klew opens on Home with the orbital hero and local kubeconfig contexts; Resources is chosen explicitly via **Open** or the sidebar.
+- **Default context** — pin/unpin with ☆/★ on Home or in the context popover; marks the usual cluster without skipping Home on launch.
+
+### Cluster connection
+
+- **Contexts always listed** — kubeconfig contexts stay visible when unreachable; cloud icon shows online/offline/paused.
+- **Loading and reconnect** — spinners while syncing; inline reconnect and proxy settings on fetch panels and loading surfaces.
+- **Manual disconnect** — pause monitoring from the context popover or Settings; optional auto-reconnect toggle.
+- **Proxy settings** — HTTP/HTTPS/NO_PROXY for API traffic in Settings → Kubernetes; inherited from login shell on launch.
+- **Sync resilience** — preserve context picker on refresh errors; load kubeconfig without requiring `current-context`.
+
+### Resources browse
+
+- **Access states** — clearer denied, could-not-load, and not-in-discovery messaging instead of false “API not exposed” on slow clusters.
+- **Catalog refresh** — respect monitoring pause; invalidate cache on reconnect.
+
 ## [1.3.3] — 2026-09-16
 
 ### Focus chain

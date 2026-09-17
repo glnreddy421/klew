@@ -1,10 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { filterBySubstring } from '../../lib/scopeSearch.js'
+import { hasClusterContexts } from '../../lib/clusterIdentity.js'
+import { ClusterCloudIcon } from './ClusterCloudIcon.jsx'
 import {
-  browseDraftToScope,
+  allBrowseScope,
   browseScopeLabel,
-  browseScopeToDraft,
+  multiBrowseScope,
   normalizeBrowseScope,
   normalizeInvestigationScope,
   singleBrowseScope,
@@ -141,14 +143,39 @@ export function ContextPopover({
   disabled,
   contextLocked,
   onContextChange,
+  connection = null,
+  onReconnect,
+  onDisconnect,
+  reconnectBusy = false,
+  monitoringPaused = false,
+  defaultContext = '',
+  onSetDefaultContext,
 }) {
   const { open, setOpen, anchorRef, panelRef } = usePopover()
   const { filter, setFilter, inputRef } = usePopoverFilter(open)
   const contexts = cluster.contexts || []
-  const ctx = cluster.selectedContext || cluster.currentContext || '—'
+  const ctx = cluster.selectedContext || cluster.currentContext || (contexts[0]?.name || 'Select context')
+  const syncError = String(cluster?.syncError || '').trim()
+  const connecting = connection?.phase === 'connecting' || reconnectBusy
+  const disconnected = !monitoringPaused && !connecting && (
+    connection?.phase === 'disconnected'
+    || connection?.phase === 'retrying'
+    || Boolean(syncError)
+  )
+  const cloudTone = monitoringPaused
+    ? 'muted'
+    : connection?.phase === 'connected' && !syncError
+      ? 'ok'
+      : connecting || connection?.phase === 'retrying'
+        ? 'warn'
+        : (disconnected ? 'crit' : 'muted')
   const contextHint = contextLocked
     ? 'This window stays on the current cluster. Pick another context to open it in a new window.'
-    : 'Kubernetes context for this window'
+    : monitoringPaused
+      ? `${ctx} — monitoring paused. Reconnect to resume.`
+      : disconnected
+        ? `${ctx} — not connected. Open to switch context or reconnect.`
+        : 'Kubernetes context for this window'
 
   const filtered = filterBySubstring(contexts, filter, (c) =>
     [c.name, c.cluster, c.user, c.namespace].filter(Boolean).join(' '),
@@ -158,14 +185,20 @@ export function ContextPopover({
     <div className="shell-popover-anchor shell-scope-anchor" ref={anchorRef}>
       <button
         type="button"
-        className="shell-scope-btn shell-scope-btn-context"
+        className={[
+          'shell-scope-btn',
+          'shell-scope-btn-context',
+          disconnected ? 'is-disconnected' : '',
+          monitoringPaused ? 'is-paused' : '',
+        ].filter(Boolean).join(' ')}
         onClick={() => setOpen((v) => !v)}
         disabled={disabled}
         aria-expanded={open}
         aria-haspopup="listbox"
-        aria-label={`Context: ${ctx}`}
+        aria-label={`Context: ${ctx}${disconnected ? ' (disconnected)' : ''}`}
         title={contextHint}
       >
+        <ClusterCloudIcon tone={cloudTone} className="shell-scope-cloud" />
         <span className="shell-scope-value mono">{ctx}</span>
         <ChevronDown />
       </button>
@@ -189,37 +222,122 @@ export function ContextPopover({
             {filtered.length} of {contexts.length}
           </p>
         )}
-        <ul className="shell-popover-list shell-popover-list-scroll shell-popover-list-tall">
-          {filtered.map((c) => {
-            const active = c.name === ctx
-            return (
-              <li key={c.name}>
+        {!hasClusterContexts(cluster) ? (
+          <div className="shell-popover-empty-state">
+            <p className="shell-popover-empty-title">No contexts found</p>
+            <p className="shell-popover-empty muted">
+              Check your kubeconfig path in Settings, or reconnect once the cluster API is reachable.
+            </p>
+          </div>
+        ) : (
+          <ul className="shell-popover-list shell-popover-list-scroll shell-popover-list-tall">
+            {filtered.map((c) => {
+              const active = c.name === ctx
+              const isDefault = c.name === defaultContext
+              const itemTone = active ? cloudTone : 'muted'
+              return (
+                <li key={c.name}>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={active}
+                    className={`shell-popover-item ${active ? 'active' : ''}`}
+                    title={[c.cluster, c.user, c.namespace && `ns: ${c.namespace}`].filter(Boolean).join(' · ')}
+                    onClick={() => {
+                      onContextChange?.(c.name)
+                      if (!contextLocked) setOpen(false)
+                    }}
+                  >
+                    {active && <span className="shell-popover-check" aria-hidden="true">✓</span>}
+                    <ClusterCloudIcon tone={itemTone} className="shell-popover-item-cloud" size={13} />
+                    <span className="shell-popover-item-stack">
+                      <span className="mono">
+                        {c.name}
+                        {isDefault && (
+                          <span className="shell-popover-default-tag">default</span>
+                        )}
+                      </span>
+                      {c.cluster && c.cluster !== c.name && (
+                        <span className="shell-popover-item-sub muted">{c.cluster}</span>
+                      )}
+                    </span>
+                  </button>
+                  {onSetDefaultContext && (
+                    <button
+                      type="button"
+                      className={['shell-popover-pin-btn', isDefault ? 'is-default' : ''].filter(Boolean).join(' ')}
+                      title={isDefault ? 'Clear default on launch' : 'Set as default context'}
+                      aria-label={isDefault ? `Clear ${c.name} as default context` : `Set ${c.name} as default context`}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onSetDefaultContext(c.name)
+                      }}
+                    >
+                      {isDefault ? '★' : '☆'}
+                    </button>
+                  )}
+                </li>
+              )
+            })}
+            {filtered.length === 0 && (
+              <li className="shell-popover-empty muted">No contexts match &quot;{filter}&quot;</li>
+            )}
+          </ul>
+        )}
+        {(monitoringPaused || disconnected) && onReconnect && (
+          <div className="shell-popover-footer">
+            {syncError && !monitoringPaused && (
+              <p className="shell-popover-footer-note muted" title={syncError}>
+                {syncError}
+              </p>
+            )}
+            {monitoringPaused && (
+              <p className="shell-popover-footer-note muted">
+                Monitoring is paused — no live polls or watches until you reconnect.
+              </p>
+            )}
+            <div className="shell-popover-footer-actions">
+              <button
+                type="button"
+                className="btn btn-outline btn-sm shell-popover-reconnect-btn"
+                onClick={() => {
+                  onReconnect()
+                  setOpen(false)
+                }}
+                disabled={reconnectBusy}
+              >
+                {reconnectBusy ? 'Connecting…' : 'Reconnect'}
+              </button>
+              {!monitoringPaused && onDisconnect && (
                 <button
                   type="button"
-                  role="option"
-                  aria-selected={active}
-                  className={`shell-popover-item ${active ? 'active' : ''}`}
-                  title={[c.cluster, c.user, c.namespace && `ns: ${c.namespace}`].filter(Boolean).join(' · ')}
+                  className="text-link-btn shell-popover-disconnect-btn"
                   onClick={() => {
-                    onContextChange?.(c.name)
-                    if (!contextLocked) setOpen(false)
+                    onDisconnect()
+                    setOpen(false)
                   }}
+                  disabled={reconnectBusy}
                 >
-                  {active && <span className="shell-popover-check" aria-hidden="true">✓</span>}
-                  <span className="shell-popover-item-stack">
-                    <span className="mono">{c.name}</span>
-                    {c.cluster && c.cluster !== c.name && (
-                      <span className="shell-popover-item-sub muted">{c.cluster}</span>
-                    )}
-                  </span>
+                  Disconnect
                 </button>
-              </li>
-            )
-          })}
-          {filtered.length === 0 && (
-            <li className="shell-popover-empty muted">No contexts match &quot;{filter}&quot;</li>
-          )}
-        </ul>
+              )}
+            </div>
+          </div>
+        )}
+        {!monitoringPaused && !disconnected && onDisconnect && hasClusterContexts(cluster) && (
+          <div className="shell-popover-footer shell-popover-footer-compact">
+            <button
+              type="button"
+              className="text-link-btn shell-popover-disconnect-btn"
+              onClick={() => {
+                onDisconnect()
+                setOpen(false)
+              }}
+            >
+              Disconnect — stop monitoring
+            </button>
+          </div>
+        )}
       </PopoverPortal>
     </div>
   )
@@ -228,20 +346,19 @@ export function ContextPopover({
 const NS_NAME_RE = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/
 const MAX_BROWSE_NAMESPACES = 50
 
-function useBrowseDraft(open, scope, namespaces) {
-  const [draft, setDraft] = useState(() => browseScopeToDraft(scope, namespaces))
-  const committedRef = useRef(scope)
-  const wasOpenRef = useRef(false)
+function selectedBrowseNamespaces(scope, allNamespaces) {
+  const normalized = normalizeBrowseScope(scope)
+  if (normalized.mode === 'all') return new Set(allNamespaces)
+  if (normalized.mode === 'multi') return new Set(normalized.namespaces)
+  if (normalized.namespace) return new Set([normalized.namespace])
+  return new Set()
+}
 
-  useEffect(() => {
-    if (open && !wasOpenRef.current) {
-      committedRef.current = scope
-      setDraft(browseScopeToDraft(scope, namespaces))
-    }
-    wasOpenRef.current = open
-  }, [open, scope, namespaces])
-
-  return { draft, setDraft, committedRef }
+function scopeFromBrowseSelection(selected, allNamespaces) {
+  const list = [...selected]
+  if (list.length === 0) return allBrowseScope()
+  if (list.length === 1) return singleBrowseScope(list[0])
+  return multiBrowseScope(list)
 }
 
 export function NamespacePopover({
@@ -283,10 +400,9 @@ export function NamespacePopover({
     ? 'Pick one namespace to investigate'
     : 'Browse resources by namespace'
 
-  const { draft, setDraft, committedRef } = useBrowseDraft(open && !isInvestigate, scope, namespaces)
-  const browseAllChecked = !isInvestigate && draft.mode === 'all'
-  const browseSelectedCount = browseAllChecked ? namespaces.length : draft.selected.size
-  const browseApplyReady = browseAllChecked || browseSelectedCount > 0
+  const browseSelected = selectedBrowseNamespaces(normalized, namespaces)
+  const browseAllChecked = !isInvestigate && normalized.mode === 'all'
+  const browseSelectedCount = browseAllChecked ? namespaces.length : browseSelected.size
 
   function applyScope(next, { close = true } = {}) {
     onScopeChange?.(next)
@@ -297,53 +413,31 @@ export function NamespacePopover({
     applyScope(singleBrowseScope(name))
   }
 
-  function isBrowseNamespaceChecked(name) {
-    return draft.mode === 'all' || draft.selected.has(name)
+  function applyBrowseSelection(nextSelected) {
+    applyScope(scopeFromBrowseSelection(nextSelected, namespaces), { close: false })
   }
 
   function toggleBrowseAll(checked) {
     if (checked) {
-      setDraft({ mode: 'all', selected: new Set(namespaces) })
+      applyScope(allBrowseScope(), { close: false })
       return
     }
-    setDraft(browseScopeToDraft(committedRef.current, namespaces))
+    const fallback = cluster.selectedNamespace || namespaces[0] || ''
+    applyScope(fallback ? singleBrowseScope(fallback) : allBrowseScope(), { close: false })
   }
 
   function toggleBrowseNamespace(name) {
-    setDraft((prev) => {
-      if (prev.mode === 'all') {
-        const next = new Set(namespaces)
-        next.delete(name)
-        if (next.size === 0) return prev
-        if (next.size === 1) return { mode: 'single', selected: next }
-        return { mode: 'multi', selected: next }
-      }
-      const next = new Set(prev.selected)
-      if (next.has(name)) {
-        next.delete(name)
-      } else if (next.size >= MAX_BROWSE_NAMESPACES) {
-        return prev
-      } else {
-        next.add(name)
-      }
-      if (next.size === 0) return prev
-      if (next.size === 1) return { mode: 'single', selected: next }
-      return { mode: 'multi', selected: next }
-    })
-  }
-
-  function applyBrowseDraft() {
-    const next = browseDraftToScope(draft)
-    if (!next) return
-    applyScope(next)
-  }
-
-  function clearBrowseDraft() {
-    setDraft({ mode: 'multi', selected: new Set() })
-  }
-
-  function selectAllBrowseDraft() {
-    setDraft({ mode: 'all', selected: new Set(namespaces) })
+    const next = new Set(browseSelected)
+    if (browseAllChecked) {
+      next.delete(name)
+    } else if (next.has(name)) {
+      next.delete(name)
+    } else if (next.size >= MAX_BROWSE_NAMESPACES) {
+      return
+    } else {
+      next.add(name)
+    }
+    applyBrowseSelection(next)
   }
 
   function onSearchKeyDown(e) {
@@ -451,7 +545,7 @@ export function NamespacePopover({
             )}
             {filtered.map((name) => {
               const activeSingle = isInvestigate && normalized.namespace === name
-              const isChecked = isInvestigate ? activeSingle : isBrowseNamespaceChecked(name)
+              const isChecked = isInvestigate ? activeSingle : browseSelected.has(name)
               return (
                 <li key={name}>
                   {isInvestigate ? (
@@ -471,7 +565,10 @@ export function NamespacePopover({
                         type="checkbox"
                         checked={isChecked}
                         disabled={!isChecked && browseSelectedCount >= MAX_BROWSE_NAMESPACES && !browseAllChecked}
-                        onChange={() => toggleBrowseNamespace(name)}
+                        onChange={(e) => {
+                          e.stopPropagation()
+                          toggleBrowseNamespace(name)
+                        }}
                       />
                       <span className="mono">{name}</span>
                     </label>
@@ -486,52 +583,6 @@ export function NamespacePopover({
             )}
           </ul>
         </div>
-        {!isInvestigate && (
-          <>
-            <div className="shell-popover-multi-bar">
-              <span className="shell-popover-multi-count muted">
-                {browseAllChecked
-                  ? `All ${namespaces.length} namespaces`
-                  : `${browseSelectedCount} selected`}
-              </span>
-              <div className="shell-popover-multi-actions">
-                <button
-                  type="button"
-                  className="shell-popover-link-btn"
-                  onClick={clearBrowseDraft}
-                  disabled={browseSelectedCount === 0 && !browseAllChecked}
-                >
-                  Clear
-                </button>
-                <button
-                  type="button"
-                  className="shell-popover-link-btn"
-                  onClick={selectAllBrowseDraft}
-                  disabled={browseAllChecked}
-                >
-                  Select all
-                </button>
-              </div>
-            </div>
-            <div className="shell-popover-footer">
-              <button
-                type="button"
-                className="shell-popover-footer-btn"
-                onClick={() => setOpen(false)}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="shell-popover-footer-btn primary"
-                onClick={applyBrowseDraft}
-                disabled={!browseApplyReady}
-              >
-                Apply
-              </button>
-            </div>
-          </>
-        )}
       </PopoverPortal>
     </div>
   )

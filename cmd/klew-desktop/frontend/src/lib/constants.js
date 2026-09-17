@@ -1,3 +1,10 @@
+export const NAV_ITEM_HOME = {
+  id: 'home',
+  label: 'Home',
+  navLabel: 'Home',
+  hint: 'Local clusters — pick where to connect',
+}
+
 export const NAV_ITEM_RESOURCES = {
   id: 'resources',
   label: 'Resources',
@@ -61,6 +68,10 @@ export const SURFACE_META = {
   nodes: {
     title: 'Nodes',
     subtitle: 'Cluster inventory and investigation-scoped node context',
+  },
+  home: {
+    title: 'Home',
+    subtitle: 'Local clusters from kubeconfig',
   },
   settings: {
     title: 'Settings',

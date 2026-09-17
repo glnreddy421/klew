@@ -1,4 +1,9 @@
-import { NAV_ITEMS_INVESTIGATION, NAV_ITEM_RESOURCES, NAV_ITEMS_SECONDARY } from '../../lib/constants.js'
+import {
+  NAV_ITEMS_INVESTIGATION,
+  NAV_ITEM_HOME,
+  NAV_ITEM_RESOURCES,
+  NAV_ITEMS_SECONDARY,
+} from '../../lib/constants.js'
 import { StreamLiveBadge } from '../StreamLiveBadge.jsx'
 
 export function ActivityRail({
@@ -16,7 +21,13 @@ export function ActivityRail({
       aria-label="Main navigation"
     >
       <div className="activity-rail-inner">
-        <nav className="activity-rail-nav activity-rail-nav-primary" aria-label="Resources">
+        <nav className="activity-rail-nav activity-rail-nav-primary" aria-label="Home and resources">
+          <ActivityRailItem
+            item={NAV_ITEM_HOME}
+            active={active === NAV_ITEM_HOME.id}
+            collapsed={collapsed}
+            onClick={() => onSelect?.(NAV_ITEM_HOME.id)}
+          />
           <ActivityRailItem
             item={NAV_ITEM_RESOURCES}
             active={active === NAV_ITEM_RESOURCES.id}
@@ -144,6 +155,12 @@ function ActivityIcon({ id, active = false }) {
     failures: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
         <path d="M12 8.5v4.5m0 3.5h.01M10.5 4.2L3.2 17.8a1.8 1.8 0 001.56 2.7h14.48a1.8 1.8 0 001.56-2.7L13.5 4.2a1.8 1.8 0 00-3 0z" />
+      </svg>
+    ),
+    home: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 10.5L12 4l8 6.5V19a1.5 1.5 0 01-1.5 1.5H5.5A1.5 1.5 0 014 19v-8.5z" />
+        <path d="M9.5 20.5V14a2.25 2.25 0 014.5 0v6.5" />
       </svg>
     ),
     resources: (

@@ -214,10 +214,10 @@ func countResource(ctx context.Context, dyn dynamic.Interface, d DiscoveredResou
 			return &model.ResourceCount{State: "unavailable"}
 		}
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) || reqCtx.Err() != nil {
-			return &model.ResourceCount{State: "unavailable"}
+			return &model.ResourceCount{State: "error", Error: "count timed out (API throttling or slow cluster)"}
 		}
 		if ctx.Err() != nil {
-			return &model.ResourceCount{State: "unavailable"}
+			return &model.ResourceCount{State: "error", Error: "count canceled"}
 		}
 		return &model.ResourceCount{State: "error", Error: err.Error()}
 	}

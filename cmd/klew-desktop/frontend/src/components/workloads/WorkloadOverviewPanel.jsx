@@ -101,6 +101,7 @@ export function WorkloadOverviewPanel({
   kindGroups = [],
   catalogLoading = false,
   clusterStatus = null,
+  clusterMonitoringEnabled = true,
   onSelectKind,
 }) {
   const {
@@ -118,7 +119,7 @@ export function WorkloadOverviewPanel({
     cluster,
     browseScope,
     kindGroups,
-    enabled: kindGroups.length > 0,
+    enabled: kindGroups.length > 0 && clusterMonitoringEnabled,
   })
 
   const hasOverview = hasData || cards.some((c) => c.total > 0)

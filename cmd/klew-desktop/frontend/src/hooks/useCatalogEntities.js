@@ -188,7 +188,7 @@ export function useCatalogEntities({ cluster, kindGroup, browseScope, enabled = 
     return () => {
       reqRef.current += 1
     }
-  }, [enabled, cacheKey, applyPayload, reload])
+  }, [enabled, cacheKey, applyPayload, reload, cluster?.syncedAt])
 
   useEffect(() => {
     if (!enabled || !cacheKey || !scopeReady(apiParams, kindGroup?.namespaced === false)) {

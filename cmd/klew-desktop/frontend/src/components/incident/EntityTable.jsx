@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { KindIcon } from '../KindIcon'
-import { isAccessDenied, isUnavailable, kindDisplayLabel, resourceMetadataTitle } from '../../lib/resourceCatalog.js'
+import { isAccessDenied, isAccessError, isUnavailable, kindDisplayLabel, resourceMetadataTitle } from '../../lib/resourceCatalog.js'
 import { resourceCategoryToneClass } from '../../lib/resourceCategoryIcons.js'
 import { singleBrowseScope, normalizeBrowseScope } from '../../lib/browseScope.js'
 import {
@@ -19,7 +19,7 @@ import { buildPodCpuMetric, buildPodMemMetric } from '../../lib/metricDisplay.js
 import { SchedulingTableCell } from './SchedulingTableCells.jsx'
 import { ContainerStatusIndicators } from './ContainerStatusIndicators.jsx'
 import { DeploymentConditionIndicators } from './DeploymentConditionIndicators.jsx'
-import { LoadingState } from '../LoadingSpinner.jsx'
+import { ClusterFetchPanel } from '../ClusterFetchPanel.jsx'
 import { ResourceAccessPanel } from './ResourceAccessPanel.jsx'
 import { rowKeysMatch } from '../../lib/matches.js'
 
@@ -593,6 +593,11 @@ export function EntityTable({
   entities = [],
   filteredEntities = [],
   entitiesLoading = false,
+  catalogPending = false,
+  onRetry,
+  onReconnect,
+  onOpenProxySettings,
+  reconnectBusy = false,
   pods = [],
   inspectKey,
   focusKey,
@@ -636,7 +641,8 @@ export function EntityTable({
 
   const accessBlocked = entities.length === 0
     && !entitiesLoading
-    && (isAccessDenied(kindGroup) || isUnavailable(kindGroup))
+    && !catalogPending
+    && (isAccessDenied(kindGroup) || isUnavailable(kindGroup) || isAccessError(kindGroup))
 
   const toneClass = resourceCategoryToneClass(categoryId)
 
@@ -683,7 +689,13 @@ export function EntityTable({
 
       <div className="entity-table-body">
         {accessBlocked ? (
-          <ResourceAccessPanel kindGroup={kindGroup} />
+          <ResourceAccessPanel
+            kindGroup={kindGroup}
+            onRetry={onRetry}
+            onReconnect={onReconnect}
+            onOpenProxySettings={onOpenProxySettings}
+            reconnectBusy={reconnectBusy}
+          />
         ) : (
           <div className="entity-table-scroll">
             <table className="entity-table-grid">
@@ -706,7 +718,13 @@ export function EntityTable({
                 {entitiesLoading && (
                   <tr className="entity-table-placeholder-row">
                     <td colSpan={Math.max(columns.length, 1)} className="entity-table-placeholder-cell">
-                      <LoadingState message="Loading resources…" compact />
+                      <ClusterFetchPanel
+                        message="Loading resources…"
+                        compact
+                        onReconnect={onReconnect}
+                        onOpenProxySettings={onOpenProxySettings}
+                        reconnectBusy={reconnectBusy}
+                      />
                     </td>
                   </tr>
                 )}

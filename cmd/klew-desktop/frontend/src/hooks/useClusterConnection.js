@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { StopCatalogEntityWatch } from '../../wailsjs/go/main/App'
 import { deriveConnectionState, isClusterDisconnected } from '../lib/clusterConnection.js'
+import { invalidateCatalogCache } from '../lib/catalogCache.js'
 
 const MAX_AUTO_RETRIES = 5
 const RETRY_DELAY_SEC = 10
@@ -15,12 +17,19 @@ export function useClusterConnection({
   statusLoading,
   syncNow,
   refreshClusterStatus,
+  autoMonitor = true,
+  monitoringPaused = false,
+  onMonitoringPausedChange,
 }) {
   const [retryAttempt, setRetryAttempt] = useState(0)
   const [retryInSec, setRetryInSec] = useState(0)
   const [autoRetryExhausted, setAutoRetryExhausted] = useState(false)
   const [reconnectBusy, setReconnectBusy] = useState(false)
   const [dismissed, setDismissed] = useState(false)
+
+  const setMonitoringPaused = useCallback((next) => {
+    onMonitoringPausedChange?.(next)
+  }, [onMonitoringPausedChange])
 
   const retryTimerRef = useRef(null)
   const countdownRef = useRef(null)
@@ -29,11 +38,12 @@ export function useClusterConnection({
   const contextKey = cluster?.selectedContext || cluster?.currentContext || ''
 
   const disconnected = useMemo(() => {
+    if (monitoringPaused) return false
     if (syncing || connecting) return false
     if (String(cluster?.syncError || '').trim()) return true
     if (statusLoading) return false
     return isClusterDisconnected(cluster, clusterStatus)
-  }, [cluster, clusterStatus, syncing, connecting, statusLoading])
+  }, [cluster, clusterStatus, syncing, connecting, statusLoading, monitoringPaused])
 
   const clearRetryTimers = useCallback(() => {
     if (retryTimerRef.current != null) {
@@ -46,6 +56,12 @@ export function useClusterConnection({
     }
   }, [])
 
+  const stopLiveWatchers = useCallback(() => {
+    if (typeof StopCatalogEntityWatch === 'function') {
+      StopCatalogEntityWatch().catch(() => {})
+    }
+  }, [])
+
   const reconnect = useCallback(async () => {
     if (reconnectingRef.current) return
     reconnectingRef.current = true
@@ -53,13 +69,24 @@ export function useClusterConnection({
     setReconnectBusy(true)
     setRetryInSec(0)
     try {
+      invalidateCatalogCache()
       await syncNow()
-      await refreshClusterStatus?.()
+      await refreshClusterStatus?.({ force: true })
     } finally {
       reconnectingRef.current = false
       setReconnectBusy(false)
     }
   }, [clearRetryTimers, syncNow, refreshClusterStatus])
+
+  const disconnect = useCallback(() => {
+    clearRetryTimers()
+    stopLiveWatchers()
+    setMonitoringPaused(true)
+    setDismissed(false)
+    setRetryAttempt(0)
+    setAutoRetryExhausted(false)
+    setRetryInSec(0)
+  }, [clearRetryTimers, stopLiveWatchers])
 
   const dismiss = useCallback(() => {
     clearRetryTimers()
@@ -68,6 +95,7 @@ export function useClusterConnection({
   }, [clearRetryTimers])
 
   const handleReconnect = useCallback(async () => {
+    setMonitoringPaused(false)
     setDismissed(false)
     setRetryAttempt(0)
     setAutoRetryExhausted(false)
@@ -75,6 +103,7 @@ export function useClusterConnection({
   }, [reconnect])
 
   useEffect(() => {
+    setMonitoringPaused(false)
     setRetryAttempt(0)
     setRetryInSec(0)
     setAutoRetryExhausted(false)
@@ -87,16 +116,20 @@ export function useClusterConnection({
       setRetryAttempt(0)
       setRetryInSec(0)
       setAutoRetryExhausted(false)
-      setDismissed(false)
+      if (!monitoringPaused) {
+        setDismissed(false)
+      }
       clearRetryTimers()
     }
-  }, [disconnected, clearRetryTimers])
+  }, [disconnected, clearRetryTimers, monitoringPaused])
 
   useEffect(() => {
     clearRetryTimers()
 
     if (
-      dismissed
+      monitoringPaused
+      || !autoMonitor
+      || dismissed
       || !disconnected
       || reconnectBusy
       || syncing
@@ -126,6 +159,8 @@ export function useClusterConnection({
 
     return clearRetryTimers
   }, [
+    monitoringPaused,
+    autoMonitor,
     disconnected,
     retryAttempt,
     reconnectBusy,
@@ -151,12 +186,16 @@ export function useClusterConnection({
     autoRetryExhausted,
     maxRetries: MAX_AUTO_RETRIES,
     dismissed,
+    monitoringPaused,
+    autoMonitor,
   })
 
   return {
     connection,
     reconnect: handleReconnect,
+    disconnect,
     dismiss,
     reconnectBusy: reconnectBusy || syncing,
+    monitoringPaused,
   }
 }

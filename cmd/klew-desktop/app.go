@@ -67,7 +67,10 @@ func (a *App) startup(ctx context.Context) {
 	if a.boot.Kubeconfig != "" {
 		a.cluster.KubeconfigPath = a.boot.Kubeconfig
 	}
-	a.cluster = a.refreshCluster(a.boot.Context, a.boot.Namespace)
+	if snapshot, err := kube.LoadKubeConfigSnapshot(a.cluster.KubeconfigPath); err == nil {
+		a.cluster = snapshot
+	}
+	a.cluster = kube.PreserveClusterPickerOnSyncError(a.cluster, a.refreshCluster(a.boot.Context, a.boot.Namespace))
 	a.updateWindowTitle()
 	a.emitCluster()
 }
@@ -260,7 +263,11 @@ func (a *App) SelectContext(contextName string) kube.ClusterState {
 	}
 	a.mu.Unlock()
 
-	st := a.refreshCluster(contextName, defaultNS)
+	a.mu.Lock()
+	prev := a.cluster
+	a.mu.Unlock()
+
+	st := kube.PreserveClusterPickerOnSyncError(prev, a.refreshCluster(contextName, defaultNS))
 	a.mu.Lock()
 	a.cluster = st
 	a.mu.Unlock()
@@ -1107,6 +1114,18 @@ func (a *App) GetAppInfo() version.Info {
 // GetKubectlInfo returns the active kubectl binary and bundled/system paths.
 func (a *App) GetKubectlInfo() kube.KubectlInfo {
 	return kube.GetKubectlInfo(a.activeClusterVersion())
+}
+
+// GetNetworkProxy returns active HTTP(S) proxy settings for Kubernetes API traffic.
+func (a *App) GetNetworkProxy() kube.NetworkProxyOptions {
+	return kube.GetNetworkProxy()
+}
+
+// SetNetworkProxy applies HTTP(S) proxy settings and refreshes cluster reachability caches.
+func (a *App) SetNetworkProxy(httpProxy, httpsProxy, noProxy string) kube.NetworkProxyOptions {
+	opts := kube.SetNetworkProxy(httpProxy, httpsProxy, noProxy)
+	a.invalidateClusterStatusCache()
+	return opts
 }
 
 // SetKubectlOptions configures bundled vs custom kubectl for subprocesses and the terminal.

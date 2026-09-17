@@ -13,6 +13,7 @@ import {
   SetAutoRefresh,
   SetPollEverySec,
   SetKubectlOptions,
+  SetNetworkProxy,
   RefreshInvestigation,
 } from '../wailsjs/go/main/App'
 import { EventsOn } from '../wailsjs/runtime/runtime'
@@ -76,7 +77,7 @@ import {
 
 export default function App() {
   const [view, setView] = useState(emptyView())
-  const [tab, setTab] = useState('resources')
+  const [tab, setTab] = useState(HOME_NAV.tab)
   const [nodesFocus, setNodesFocus] = useState('cluster')
   const [settingsSection, setSettingsSection] = useState('general')
   const navigation = useNavigationHistory(HOME_NAV)
@@ -137,6 +138,8 @@ export default function App() {
     setContext,
     setNamespace,
   } = useCluster()
+  const { themeId, setTheme } = useTheme()
+  const { prefs, setPreferences, reloadPreferences } = usePreferences()
   const [investigationScope, setInvestigationScope] = useState(() => singleBrowseScope(''))
   const [browseScope, setBrowseScope] = useState(() => allBrowseScope())
   const savedBrowseScopeRef = useRef(null)
@@ -145,6 +148,7 @@ export default function App() {
   const [savedBrowseScopeLabel, setSavedBrowseScopeLabel] = useState('')
   const [resourcesBrowseLens, setResourcesBrowseLens] = useState(RESOURCES_BROWSE_LENS.MATCHES)
   const prevContextRef = useRef('')
+  const defaultContextAppliedRef = useRef('')
 
   useEffect(() => {
     const ctx = cluster.selectedContext || cluster.currentContext || ''
@@ -218,9 +222,21 @@ export default function App() {
     }),
     [cluster, effectiveBrowseScope],
   )
-  const resourceCatalog = useResourceCatalog(cluster, effectiveBrowseScope)
-  const { clusterStatus, statusLoading, refreshClusterStatus } = useClusterStatus(cluster)
-  const { connection, reconnect, dismiss, reconnectBusy } = useClusterConnection({
+  const [monitoringPaused, setMonitoringPaused] = useState(false)
+  const clusterMonitoringEnabled = !monitoringPaused
+  const resourceCatalog = useResourceCatalog(cluster, effectiveBrowseScope, {
+    enabled: clusterMonitoringEnabled,
+  })
+  const { clusterStatus, statusLoading, refreshClusterStatus } = useClusterStatus(cluster, {
+    enabled: clusterMonitoringEnabled,
+  })
+  const {
+    connection,
+    reconnect,
+    disconnect,
+    dismiss,
+    reconnectBusy,
+  } = useClusterConnection({
     cluster,
     syncing,
     connecting,
@@ -229,6 +245,9 @@ export default function App() {
     statusLoading,
     syncNow,
     refreshClusterStatus,
+    autoMonitor: prefs.autoMonitorCluster !== false,
+    monitoringPaused,
+    onMonitoringPausedChange: setMonitoringPaused,
   })
   const stream = useStreamPanel()
   const terminal = useTerminalPanel()
@@ -238,8 +257,6 @@ export default function App() {
   const [terminalShellRestartToken, setTerminalShellRestartToken] = useState(0)
   const [terminalLaunchRequest, setTerminalLaunchRequest] = useState(null)
   const pendingPodLogsLaunchRef = useRef(null)
-  const { themeId, setTheme } = useTheme()
-  const { prefs, setPreferences, reloadPreferences } = usePreferences()
   const activeQueryRef = useRef('')
 
   useEffect(() => {
@@ -280,6 +297,19 @@ export default function App() {
       prefs.matchClusterKubectl !== false,
     ).catch(() => {})
   }, [prefs.useBundledKubectl, prefs.kubectlPath, prefs.matchClusterKubectl])
+
+  useEffect(() => {
+    if (typeof SetNetworkProxy !== 'function') return
+    SetNetworkProxy(
+      prefs.httpProxy || '',
+      prefs.httpsProxy || '',
+      prefs.noProxy || '',
+    ).catch(() => {})
+  }, [prefs.httpProxy, prefs.httpsProxy, prefs.noProxy])
+
+  const openProxySettings = useCallback(() => {
+    navigateTo({ tab: 'settings', settingsSection: 'kubernetes' })
+  }, [navigateTo])
 
   useEffect(() => {
     activeQueryRef.current = activeQuery
@@ -825,6 +855,54 @@ export default function App() {
     }
   }
 
+  async function onConnectContext(name) {
+    await onContextChange(name)
+    navigateTo('resources')
+  }
+
+  const onSetDefaultContext = useCallback((name) => {
+    if (!name) return
+    const current = String(prefs.defaultContext || '').trim()
+    setPreferences({ defaultContext: current === name ? '' : name })
+  }, [prefs.defaultContext, setPreferences])
+
+  const onClearDefaultContext = useCallback(() => {
+    setPreferences({ defaultContext: '' })
+  }, [setPreferences])
+
+  useEffect(() => {
+    const wanted = String(prefs.defaultContext || '').trim()
+    if (!wanted) {
+      defaultContextAppliedRef.current = ''
+      return
+    }
+    // Pinning on Home only saves the preference — Open switches context explicitly.
+    if (tab === 'home') return
+
+    const contexts = cluster.contexts || []
+    if (!contexts.some((c) => c.name === wanted)) return
+    if (syncing || connecting) return
+
+    const current = cluster.selectedContext || cluster.currentContext || ''
+    const applyKey = `${wanted}|${cluster.kubeconfigPath}|${contexts.length}`
+    if (current === wanted && defaultContextAppliedRef.current === applyKey) return
+
+    defaultContextAppliedRef.current = applyKey
+    if (current !== wanted) {
+      setContext(wanted).catch((err) => setError(String(err)))
+    }
+  }, [
+    tab,
+    prefs.defaultContext,
+    cluster.contexts,
+    cluster.selectedContext,
+    cluster.currentContext,
+    cluster.kubeconfigPath,
+    syncing,
+    connecting,
+    setContext,
+  ])
+
   function onInvestigationScopeChange(nextScope) {
     if (investigationScopeLocked) return
     const next = normalizeInvestigationScope(nextScope, { fallbackNamespace: cluster.selectedNamespace })
@@ -909,9 +987,13 @@ export default function App() {
           canNavForward: navigation.canGoForward,
           connection,
           onReconnect: reconnect,
+          onDisconnect: disconnect,
           reconnectBusy,
+          monitoringPaused,
           connecting,
           connectingTarget,
+          defaultContext: prefs.defaultContext,
+          onSetDefaultContext,
         }}
         showExplorer={running || starting || scopePicker.open || tab === 'resources' || ['incident', 'patterns', 'failures', 'evidence', 'graph'].includes(tab)}
         investigationActive={running || starting}
@@ -1003,6 +1085,7 @@ export default function App() {
         onReconnect={reconnect}
         onDismiss={dismiss}
         onOpenSettings={() => navigateTo({ tab: 'settings', settingsSection: 'kubernetes' })}
+        onOpenProxySettings={openProxySettings}
         reconnectBusy={reconnectBusy}
       />
       <MainContent
@@ -1038,6 +1121,18 @@ export default function App() {
         prefs={prefs}
         onPrefsChange={setPreferences}
         onClusterRefresh={syncNow}
+        statusLoading={statusLoading}
+        onReconnect={reconnect}
+        onDisconnect={disconnect}
+        reconnectBusy={reconnectBusy}
+        monitoringPaused={monitoringPaused}
+        connection={connection}
+        connecting={connecting}
+        onContextChange={onConnectContext}
+        onSetDefaultContext={onSetDefaultContext}
+        onClearDefaultContext={onClearDefaultContext}
+        onOpenProxySettings={openProxySettings}
+        onOpenSettingsKubernetes={() => navigateTo({ tab: 'settings', settingsSection: 'kubernetes' })}
         onTerminalShellChange={handleTerminalShellChange}
         onOpenTerminalShellPicker={handleOpenTerminalShellPicker}
         terminalShellRestartToken={terminalShellRestartToken}

@@ -12,6 +12,7 @@ import { useCatalogEntities } from '../../hooks/useCatalogEntities.js'
 import { clusterScopeKey, useLazyResourceCounts } from '../../hooks/useLazyResourceCounts.js'
 import { useScopeBrowse } from '../../context/ScopeBrowseContext.jsx'
 import { InlineLoading } from '../LoadingSpinner.jsx'
+import { ClusterFetchPanel } from '../ClusterFetchPanel.jsx'
 import { DataAgeLabel } from '../DataAgeLabel.jsx'
 import { RefreshButton } from '../RefreshButton.jsx'
 import { ResourceNav } from './ResourceNav.jsx'
@@ -53,6 +54,11 @@ export function ScopePanel({
   browseLens = RESOURCES_BROWSE_LENS.MATCHES,
   onBrowseLensChange,
   showBrowseLens = false,
+  onReconnect,
+  onDisconnect,
+  onOpenProxySettings,
+  reconnectBusy = false,
+  clusterMonitoringEnabled = true,
 }) {
   const browseCtx = useScopeBrowse()
   const pods = view?.state?.snapshot?.pods || []
@@ -64,8 +70,9 @@ export function ScopePanel({
     cluster,
     rows,
     chain,
-    enabled: !browseCtx && !chain,
+    enabled: !browseCtx && !chain && clusterMonitoringEnabled,
     browseLens,
+    clusterMonitoringEnabled,
   })
 
   const nav = browseCtx?.nav || internal.nav
@@ -110,6 +117,15 @@ export function ScopePanel({
     [tree],
   )
   const searchPlaceholder = entitySearchPlaceholder(nav.selectedKind, effectiveKindGroup?.label)
+  const catalogPending = catalogLoading || catalogEnriching
+  const entitiesLoading = lazy.loading && canLazyLoad
+  const entityFetchProps = {
+    catalogPending,
+    onRetry: () => lazy.refresh?.(),
+    onReconnect,
+    onOpenProxySettings,
+    reconnectBusy,
+  }
 
   if (chain) {
     return (
@@ -159,7 +175,10 @@ export function ScopePanel({
           </div>
         </div>
         <div className="scope-toolbar-meta">
-          {catalogLoading && !catalog && (
+          {!clusterMonitoringEnabled && (
+            <span className="scope-toolbar-hint scope-toolbar-warn">Monitoring paused</span>
+          )}
+          {catalogLoading && !catalog && clusterMonitoringEnabled && (
             <InlineLoading message="Loading catalog…" className="scope-toolbar-hint" />
           )}
           {(catalogEnriching || (catalogLoading && catalog)) && (
@@ -220,6 +239,18 @@ export function ScopePanel({
       </div>
 
       <div className={`scope-browse-split ${entityView === 'table' ? 'scope-browse-table' : 'scope-browse-list'} ${navInExplorer ? 'scope-browse-no-nav' : ''}`}>
+        {catalogLoading && !catalog && (
+          <ClusterFetchPanel
+            className="scope-catalog-loading"
+            message="Discovering cluster APIs…"
+            detail="Large clusters can take a minute on first load."
+            onReconnect={onReconnect}
+            onOpenProxySettings={onOpenProxySettings}
+            reconnectBusy={reconnectBusy}
+          />
+        )}
+        {!catalogLoading || catalog ? (
+        <>
         {!navInExplorer && (
           <ResourceNav
             categories={nav.categories}
@@ -240,6 +271,7 @@ export function ScopePanel({
             kindGroups={workloadKindGroups}
             catalogLoading={catalogLoading}
             clusterStatus={clusterStatus}
+            clusterMonitoringEnabled={clusterMonitoringEnabled}
             onSelectKind={(card) => nav.selectKind(card.groupId, card.kind, card.resourceId)}
           />
         ) : entityView === 'table' ? (
@@ -249,7 +281,8 @@ export function ScopePanel({
             categoryId={nav.selectedGroupId}
             entities={displayEntities}
             filteredEntities={filteredEntities}
-            entitiesLoading={lazy.loading && canLazyLoad && !displayEntities.length}
+            entitiesLoading={entitiesLoading}
+            {...entityFetchProps}
             pods={pods}
             browseScope={browseScope}
             onBrowseScopeChange={onBrowseScopeChange}
@@ -266,7 +299,8 @@ export function ScopePanel({
             kindGroup={effectiveKindGroup}
             entities={displayEntities}
             filteredEntities={filteredEntities}
-            entitiesLoading={lazy.loading && canLazyLoad && !displayEntities.length}
+            entitiesLoading={entitiesLoading}
+            {...entityFetchProps}
             hasSearchQuery={nav.entitySearchQuery.trim()}
             inspectKey={inspectKey}
             focusKey={focusKey}
@@ -275,12 +309,23 @@ export function ScopePanel({
             onFocus={onFocus}
           />
         )}
+        </>
+        ) : null}
       </div>
     </div>
   )
 }
 
-function useScopePanelState({ view, catalog, cluster, rows, chain, enabled, browseLens = RESOURCES_BROWSE_LENS.MATCHES }) {
+function useScopePanelState({
+  view,
+  catalog,
+  cluster,
+  rows,
+  chain,
+  enabled,
+  browseLens = RESOURCES_BROWSE_LENS.MATCHES,
+  clusterMonitoringEnabled = true,
+}) {
   const pods = view?.state?.snapshot?.pods || []
   const catalogAll = isResourcesBrowseAll(browseLens)
   const treeRows = useMemo(
@@ -315,7 +360,7 @@ function useScopePanelState({ view, catalog, cluster, rows, chain, enabled, brow
     cluster,
     kindGroup,
     browseScope: cluster?.browseScope,
-    enabled: enabled && canLazyLoad,
+    enabled: enabled && canLazyLoad && clusterMonitoringEnabled,
   })
   const tree = useLazyResourceCounts(baseTree, {
     clusterKey: clusterScopeKey(cluster),

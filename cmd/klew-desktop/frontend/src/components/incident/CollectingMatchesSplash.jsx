@@ -16,9 +16,11 @@ const PHASES = [
  * Full-panel orbit splash.
  * - collecting: while investigation is still gathering matches
  * - idle: welcome / open state (same orbit, calmer copy)
+ * - home: Klew home — cluster picker hero
  */
 export function CollectingMatchesSplash({ variant = 'collecting' }) {
-  const idle = variant === 'idle'
+  const idle = variant === 'idle' || variant === 'home'
+  const home = variant === 'home'
   const [phase, setPhase] = useState(0)
 
   useEffect(() => {
@@ -39,7 +41,14 @@ export function CollectingMatchesSplash({ variant = 'collecting' }) {
       <OrbitStage idle={idle} />
 
       <div className="collect-splash-copy">
-        {idle ? (
+        {home ? (
+          <>
+            <p className="collect-splash-title">Klew</p>
+            <p className="collect-splash-phase">
+              Choose a local cluster to browse resources
+            </p>
+          </>
+        ) : idle ? (
           <>
             <p className="collect-splash-title">Ready to investigate</p>
             <p className="collect-splash-phase">

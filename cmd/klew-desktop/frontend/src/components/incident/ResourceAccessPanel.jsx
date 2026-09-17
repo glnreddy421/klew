@@ -1,5 +1,5 @@
 /**
- * Access-denied / unavailable state for a resource kind.
+ * Access-denied / unavailable / load-error state for a resource kind.
  */
 
 /** @typedef {'list' | 'get'} RbacAction */
@@ -12,21 +12,41 @@ function accessMeta(kindGroup) {
   return { api, resource, scope }
 }
 
-export function ResourceAccessPanel({ kindGroup, action = 'list' }) {
+function loadErrorMessage(kindGroup) {
+  const fromCount = String(kindGroup?.countState?.error || '').trim()
+  if (fromCount) return fromCount
+  const fromAccess = String(kindGroup?.accessError || kindGroup?.error || '').trim()
+  if (fromAccess) return fromAccess
+  return 'The cluster API did not respond in time. Large clusters may need a retry or a longer network path (VPN / proxy).'
+}
+
+export function ResourceAccessPanel({
+  kindGroup,
+  action = 'list',
+  onRetry,
+  onReconnect,
+  onOpenProxySettings,
+  reconnectBusy = false,
+}) {
   if (!kindGroup) return null
 
   const forbidden = kindGroup.accessState === 'forbidden'
     || kindGroup.countState?.state === 'forbidden'
-  const unavailable = (!kindGroup.discovered && kindGroup.builtin && !kindGroup.discoveredOnly)
+  const loadError = kindGroup.accessState === 'error'
+    || kindGroup.countState?.state === 'error'
+  const unavailable = !forbidden && !loadError && (
+    (!kindGroup.discovered && kindGroup.builtin && !kindGroup.discoveredOnly)
     || kindGroup.accessState === 'unavailable'
     || kindGroup.countState?.state === 'unavailable'
+  )
 
-  if (!forbidden && !unavailable) return null
+  if (!forbidden && !unavailable && !loadError) return null
 
   const label = kindGroup.label || kindGroup.kind
   const meta = accessMeta(kindGroup)
   const capability = action === 'get' ? 'get' : 'list'
   const capabilityTarget = meta.resource || label.toLowerCase()
+  const showActions = onRetry || onReconnect || onOpenProxySettings
 
   if (forbidden) {
     return (
@@ -50,12 +70,51 @@ export function ResourceAccessPanel({ kindGroup, action = 'list' }) {
     )
   }
 
+  if (loadError) {
+    return (
+      <div className="resource-access-panel">
+        <p className="resource-access-kicker">Could not load</p>
+        <h4 className="resource-access-title">{label}</h4>
+        <p className="resource-access-body">{loadErrorMessage(kindGroup)}</p>
+        <dl className="resource-access-meta">
+          <dt>API</dt><dd className="mono">{meta.api || '—'}</dd>
+          <dt>Resource</dt><dd className="mono">{meta.resource || '—'}</dd>
+          <dt>Scope</dt><dd>{meta.scope}</dd>
+        </dl>
+        {showActions && (
+          <div className="resource-access-actions">
+            {onRetry && (
+              <button type="button" className="btn btn-outline btn-sm" onClick={onRetry}>
+                Retry
+              </button>
+            )}
+            {onReconnect && (
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={onReconnect}
+                disabled={reconnectBusy}
+              >
+                {reconnectBusy ? 'Connecting…' : 'Reconnect'}
+              </button>
+            )}
+            {onOpenProxySettings && (
+              <button type="button" className="text-link-btn" onClick={onOpenProxySettings}>
+                Proxy settings
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="resource-access-panel">
       <p className="resource-access-kicker">Not available</p>
       <h4 className="resource-access-title">{label}</h4>
       <p className="resource-access-body">
-        This API is not exposed by the connected cluster.
+        This API group is not registered on the connected cluster (not found in API discovery).
       </p>
       <dl className="resource-access-meta">
         <dt>API</dt><dd className="mono">{meta.api || '—'}</dd>

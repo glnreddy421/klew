@@ -13,7 +13,14 @@ import { WorkspaceLayoutPicker } from '../components/incident/WorkspaceLayoutPic
 import { TerminalShellSelect } from '../components/TerminalShellSelect'
 import { TerminalAppearancePicker } from '../components/TerminalAppearancePicker'
 import { SETTINGS_SECTIONS } from '../lib/preferences'
-import { OpenKubeconfigDir, SetKubeconfigPath, GetKubectlInfo, SetKubectlOptions } from '../../wailsjs/go/main/App'
+import {
+  OpenKubeconfigDir,
+  SetKubeconfigPath,
+  GetKubectlInfo,
+  SetKubectlOptions,
+  GetNetworkProxy,
+  SetNetworkProxy,
+} from '../../wailsjs/go/main/App'
 import { BrowserOpenURL } from '../../wailsjs/runtime/runtime'
 import { useAppInfo } from '../hooks/useAppInfo'
 
@@ -40,6 +47,12 @@ export function SettingsView({
   prefs,
   onPrefsChange,
   onClusterRefresh,
+  onReconnect,
+  onDisconnect,
+  reconnectBusy = false,
+  monitoringPaused = false,
+  connection = null,
+  onClearDefaultContext,
   section = 'general',
   onSectionChange,
   onTerminalShellChange,
@@ -51,6 +64,14 @@ export function SettingsView({
   const [kubectlBusy, setKubectlBusy] = useState(false)
   const [kubectlMsg, setKubectlMsg] = useState('')
   const [kubectlInfo, setKubectlInfo] = useState(null)
+  const [proxyDraft, setProxyDraft] = useState({
+    httpProxy: prefs.httpProxy || '',
+    httpsProxy: prefs.httpsProxy || '',
+    noProxy: prefs.noProxy || '',
+  })
+  const [proxyBusy, setProxyBusy] = useState(false)
+  const [proxyMsg, setProxyMsg] = useState('')
+  const [activeProxy, setActiveProxy] = useState(null)
   const appInfo = useAppInfo()
 
   useEffect(() => {
@@ -64,11 +85,41 @@ export function SettingsView({
   useEffect(() => {
     if (section !== 'kubernetes') return
     GetKubectlInfo?.().then(setKubectlInfo).catch(() => {})
-  }, [section, cluster?.syncedAt, prefs.useBundledKubectl, prefs.kubectlPath, prefs.matchClusterKubectl])
+    GetNetworkProxy?.().then(setActiveProxy).catch(() => {})
+  }, [section, cluster?.syncedAt, prefs.useBundledKubectl, prefs.kubectlPath, prefs.matchClusterKubectl, prefs.httpProxy, prefs.httpsProxy, prefs.noProxy])
+
+  useEffect(() => {
+    setProxyDraft({
+      httpProxy: prefs.httpProxy || '',
+      httpsProxy: prefs.httpsProxy || '',
+      noProxy: prefs.noProxy || '',
+    })
+  }, [prefs.httpProxy, prefs.httpsProxy, prefs.noProxy])
 
   const setSection = (id) => onSectionChange?.(id)
 
   const set = (patch) => onPrefsChange?.(patch)
+
+  const applyProxy = async () => {
+    setProxyBusy(true)
+    setProxyMsg('')
+    try {
+      const httpProxy = proxyDraft.httpProxy.trim()
+      const httpsProxy = proxyDraft.httpsProxy.trim()
+      const noProxy = proxyDraft.noProxy.trim()
+      set({ httpProxy, httpsProxy, noProxy })
+      if (typeof SetNetworkProxy === 'function') {
+        const active = await SetNetworkProxy(httpProxy, httpsProxy, noProxy)
+        setActiveProxy(active)
+      }
+      setProxyMsg('Proxy settings applied.')
+      onClusterRefresh?.()
+    } catch (err) {
+      setProxyMsg(err?.message || String(err) || 'Failed to apply proxy settings')
+    } finally {
+      setProxyBusy(false)
+    }
+  }
 
   const applyKubeconfig = async () => {
     setKubeBusy(true)
@@ -360,6 +411,112 @@ export function SettingsView({
               <ReadOnly k="Cluster" v={cluster?.cluster || '—'} />
               <ReadOnly k="User" v={cluster?.user || '—'} />
               <ReadOnly k="Namespace" v={cluster?.selectedNamespace || '—'} />
+            </div>
+
+            <h4 className="settings-subhead">Default context</h4>
+            <p className="settings-note muted">
+              Shown as pinned on Home. Klew always opens on Home; open Resources when you are ready to browse.
+            </p>
+            <div className="settings-readonly">
+              <ReadOnly k="Default context" v={prefs.defaultContext || 'None'} />
+            </div>
+            {prefs.defaultContext && (
+              <div className="settings-field-row">
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  onClick={() => onClearDefaultContext?.()}
+                >
+                  Clear default
+                </button>
+              </div>
+            )}
+
+            <h4 className="settings-subhead">Cluster connection</h4>
+            <Toggle
+              label="Automatically reconnect when disconnected"
+              checked={prefs.autoMonitorCluster !== false}
+              onChange={(v) => set({ autoMonitorCluster: v })}
+            />
+            <p className="settings-note muted">
+              When off, Klew will not retry or poll in the background after a connection loss.
+              Use Reconnect manually, or disconnect below to pause all cluster monitoring.
+            </p>
+            <div className="settings-readonly">
+              <ReadOnly
+                k="Monitoring"
+                v={monitoringPaused
+                  ? 'Paused'
+                  : (connection?.phase === 'connected' ? 'Active' : (connection?.phase || '—'))}
+              />
+            </div>
+            <div className="settings-field-row">
+              {!monitoringPaused ? (
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  disabled={reconnectBusy || !(cluster?.selectedContext || cluster?.currentContext)}
+                  onClick={() => onDisconnect?.()}
+                >
+                  Disconnect
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  disabled={reconnectBusy}
+                  onClick={() => onReconnect?.()}
+                >
+                  {reconnectBusy ? 'Connecting…' : 'Reconnect'}
+                </button>
+              )}
+            </div>
+
+            <h4 className="settings-subhead">Network proxy</h4>
+            <p className="settings-note muted">
+              Route Kubernetes API traffic through an HTTP(S) proxy (for example corporate VPN gateways).
+              Applies to in-app cluster reads — same variables as kubectl (<span className="mono">HTTP_PROXY</span>, <span className="mono">HTTPS_PROXY</span>, <span className="mono">NO_PROXY</span>).
+            </p>
+            <label className="settings-field">
+              <span className="settings-field-label">HTTP proxy</span>
+              <input
+                type="text"
+                className="settings-input"
+                value={proxyDraft.httpProxy}
+                placeholder="http://127.0.0.1:8888"
+                onChange={(e) => setProxyDraft((d) => ({ ...d, httpProxy: e.target.value }))}
+              />
+            </label>
+            <label className="settings-field">
+              <span className="settings-field-label">HTTPS proxy</span>
+              <input
+                type="text"
+                className="settings-input"
+                value={proxyDraft.httpsProxy}
+                placeholder="http://127.0.0.1:8888"
+                onChange={(e) => setProxyDraft((d) => ({ ...d, httpsProxy: e.target.value }))}
+              />
+            </label>
+            <label className="settings-field">
+              <span className="settings-field-label">No proxy</span>
+              <input
+                type="text"
+                className="settings-input"
+                value={proxyDraft.noProxy}
+                placeholder="localhost,127.0.0.1,.cluster.local"
+                onChange={(e) => setProxyDraft((d) => ({ ...d, noProxy: e.target.value }))}
+              />
+            </label>
+            <div className="settings-field-row">
+              <button type="button" className="btn btn-outline btn-sm" disabled={proxyBusy} onClick={applyProxy}>
+                Apply proxy
+              </button>
+            </div>
+            {proxyMsg && <span className="settings-field-hint">{proxyMsg}</span>}
+            <div className="settings-readonly">
+              <ReadOnly k="Active HTTP proxy" v={activeProxy?.httpProxy || '—'} />
+              <ReadOnly k="Active HTTPS proxy" v={activeProxy?.httpsProxy || '—'} />
+              <ReadOnly k="Active NO_PROXY" v={activeProxy?.noProxy || '—'} />
             </div>
 
             <h4 className="settings-subhead">kubectl binary</h4>

@@ -9,7 +9,7 @@ import {
 
 const STATUS_POLL_MS = 45000
 
-export function useClusterStatus(cluster) {
+export function useClusterStatus(cluster, { enabled = true } = {}) {
   const contextName = cluster?.selectedContext || cluster?.currentContext || ''
   const cacheKey = contextName ? clusterStatusCacheKey(contextName) : ''
 
@@ -21,7 +21,7 @@ export function useClusterStatus(cluster) {
   const reqRef = useRef(0)
 
   const refresh = useCallback(async ({ background = false, force = false } = {}) => {
-    if (!contextName || !cacheKey) {
+    if (!enabled || !contextName || !cacheKey) {
       setClusterStatus(null)
       setStatusLoading(false)
       setRefreshing(false)
@@ -39,13 +39,7 @@ export function useClusterStatus(cluster) {
       const result = await loadCatalogCached(
         cacheKey,
         CACHE_TTL.clusterStatus,
-        async () => {
-          const status = await GetClusterStatus()
-          if (status?.apiReachable === false) {
-            throw new Error(status.error || 'Could not reach cluster API')
-          }
-          return status
-        },
+        () => GetClusterStatus(),
         { force },
       )
       if (reqRef.current !== id) return
@@ -56,13 +50,18 @@ export function useClusterStatus(cluster) {
         setRefreshing(false)
       }
     }
-  }, [contextName, cacheKey])
+  }, [contextName, cacheKey, enabled])
 
   useEffect(() => {
-    if (!cacheKey) {
-      setClusterStatus(null)
-      setStatusLoading(false)
-      setRefreshing(false)
+    if (!enabled || !cacheKey) {
+      if (!enabled) {
+        setStatusLoading(false)
+        setRefreshing(false)
+      } else {
+        setClusterStatus(null)
+        setStatusLoading(false)
+        setRefreshing(false)
+      }
       return undefined
     }
 
@@ -74,13 +73,13 @@ export function useClusterStatus(cluster) {
     return () => {
       reqRef.current += 1
     }
-  }, [cacheKey, refresh, cluster?.syncedAt])
+  }, [cacheKey, refresh, cluster?.syncedAt, enabled])
 
   useEffect(() => {
-    if (!contextName) return undefined
+    if (!enabled || !contextName) return undefined
     const id = window.setInterval(() => refresh({ background: true }), STATUS_POLL_MS)
     return () => window.clearInterval(id)
-  }, [contextName, refresh])
+  }, [contextName, refresh, enabled])
 
   return { clusterStatus, statusLoading, refreshing, refreshClusterStatus: refresh }
 }

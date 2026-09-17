@@ -13,7 +13,7 @@ import {
  * Loads a fast index first (no per-kind counts), then enriches counts in the background.
  * Cached ~2 minutes with stale-while-revalidate.
  */
-export function useResourceCatalog(cluster, browseScope) {
+export function useResourceCatalog(cluster, browseScope, { enabled = true } = {}) {
   const ctx = cluster?.selectedContext || cluster?.currentContext || ''
   const kubeconfig = cluster?.kubeconfigPath || ''
   const scope = useMemo(() => normalizeBrowseScope(browseScope), [browseScope])
@@ -35,7 +35,7 @@ export function useResourceCatalog(cluster, browseScope) {
   const reqRef = useRef(0)
 
   const reload = useCallback(async ({ force = false } = {}) => {
-    if (!cacheKey) {
+    if (!enabled || !cacheKey) {
       setCatalog(null)
       setLoading(false)
       setEnriching(false)
@@ -88,14 +88,19 @@ export function useResourceCatalog(cluster, browseScope) {
         setEnriching(false)
       }
     }
-  }, [cacheKey, ctx, kubeconfig, apiParams.namespace, apiParams.allNamespaces, apiParams.namespaces])
+  }, [cacheKey, ctx, kubeconfig, apiParams.namespace, apiParams.allNamespaces, apiParams.namespaces, enabled])
 
   useEffect(() => {
-    if (!cacheKey) {
-      setCatalog(null)
-      setLoading(false)
-      setEnriching(false)
-      setError('')
+    if (!enabled || !cacheKey) {
+      if (!enabled) {
+        setLoading(false)
+        setEnriching(false)
+      } else {
+        setCatalog(null)
+        setLoading(false)
+        setEnriching(false)
+        setError('')
+      }
       return undefined
     }
 
@@ -107,7 +112,7 @@ export function useResourceCatalog(cluster, browseScope) {
     return () => {
       reqRef.current += 1
     }
-  }, [cacheKey, reload])
+  }, [cacheKey, reload, cluster?.syncedAt, enabled])
 
   return { catalog, loading, enriching, error, refresh: () => reload({ force: true }) }
 }

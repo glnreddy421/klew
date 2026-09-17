@@ -52,7 +52,11 @@ export function TopBar({
   live,
   connection = null,
   onReconnect,
+  onDisconnect,
   reconnectBusy = false,
+  monitoringPaused = false,
+  defaultContext = '',
+  onSetDefaultContext,
   connecting = false,
   connectingTarget = null,
 }) {
@@ -154,6 +158,13 @@ export function TopBar({
             disabled={starting}
             contextLocked={contextLocked}
             onContextChange={onContextChange}
+            connection={connection}
+            onReconnect={onReconnect}
+            onDisconnect={onDisconnect}
+            reconnectBusy={reconnectBusy}
+            monitoringPaused={monitoringPaused}
+            defaultContext={defaultContext}
+            onSetDefaultContext={onSetDefaultContext}
           />
           <ClusterConnectionDot
             connection={connection}

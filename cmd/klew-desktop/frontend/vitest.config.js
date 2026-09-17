@@ -8,6 +8,7 @@ export default defineConfig({
       // node:test runner files — run via `node --test`, not vitest
       'src/lib/clusterConnection.test.js',
       'src/lib/clusterContext.test.js',
+      'src/lib/clusterIdentity.test.js',
       'src/lib/clusterVersion.test.js',
       'src/lib/investigationOverview.test.js',
       'src/lib/logPatterns.test.js',

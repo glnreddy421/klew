@@ -486,7 +486,11 @@ export function getKindCountDisplay(kindGroup) {
     return { label: '', className: 'count-unavailable', title: 'Unavailable' }
   }
   if (access === 'error' || cs?.state === 'error') {
-    return { label: '', className: 'count-unavailable', title: 'Error' }
+    return {
+      label: '!',
+      className: 'count-error',
+      title: cs?.error || 'Load timed out — retry',
+    }
   }
   if (cs?.state === 'loading') {
     return { label: '…', className: 'count-unknown' }
@@ -508,8 +512,15 @@ export function isAccessDenied(kindGroup) {
     || kindGroup.countState?.state === 'forbidden'
 }
 
+export function isAccessError(kindGroup) {
+  if (!kindGroup) return false
+  return kindGroup.accessState === 'error'
+    || kindGroup.countState?.state === 'error'
+}
+
 export function isUnavailable(kindGroup) {
   if (!kindGroup) return false
+  if (isAccessError(kindGroup)) return false
   return (!kindGroup.discovered && kindGroup.builtin && !kindGroup.discoveredOnly)
     || kindGroup.accessState === 'unavailable'
     || kindGroup.countState?.state === 'unavailable'
