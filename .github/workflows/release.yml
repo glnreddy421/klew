@@ -4,6 +4,11 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to publish (e.g. v1.3.5)
+        required: true
 
 permissions:
   contents: write
@@ -13,7 +18,8 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 90
     env:
-      VERSION: ${{ github.ref_name }}
+      VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      GITHUB_REF_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
       APPLE_ID: ${{ secrets.APPLE_ID }}
       # App-specific password from appleid.apple.com (not your Apple ID login password).
       APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
@@ -21,6 +27,8 @@ jobs:
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
 
       - uses: actions/setup-go@v5
         with:
@@ -58,13 +66,13 @@ jobs:
         run: ./.github/scripts/release-macos.sh
 
       - name: Publish GitHub release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/*
-          generate_release_notes: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          chmod +x ./.github/scripts/publish-github-release.sh
+          ./.github/scripts/publish-github-release.sh
 
       - name: Update Homebrew tap
         run: ./.github/scripts/update-homebrew-tap.sh
         env:
-          GITHUB_REF_NAME: ${{ github.ref_name }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
