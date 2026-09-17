@@ -63,6 +63,9 @@ import {
   deriveMatchRows,
   getMatchedObjects,
   buildInvestigationQuery,
+  findRowByKey,
+  rowKeysMatch,
+  synthesizeFocusRow,
 } from './lib/matches'
 import { buildFocusScope, emptyFocusScope } from './lib/focusScope'
 import { isEditableTarget } from './lib/keyboard'
@@ -159,12 +162,6 @@ export default function App() {
     if (!ns) return
     setInvestigationScope((prev) => {
       const current = normalizeBrowseScope(prev)
-      if (current.namespace) return prev
-      return singleBrowseScope(ns)
-    })
-    setBrowseScope((prev) => {
-      const current = normalizeBrowseScope(prev)
-      if (current.mode === 'all' || current.mode === 'multi') return prev
       if (current.namespace) return prev
       return singleBrowseScope(ns)
     })
@@ -549,26 +546,16 @@ export default function App() {
   )
 
   const focusRow = useMemo(() => {
-    const found = matchRows.find((r) => r.key === focusKey)
+    const found = matchRows.find((r) => rowKeysMatch(r.key, focusKey))
     if (found) return found
-    // Chain rows (ConfigMap/Secret/Pod) may not be in original matches — synthesize a focus ref.
     if (focusPinned && focusKey) {
-      const [kind, ...rest] = focusKey.split('/')
-      const name = rest.join('/')
-      if (kind && name) {
-        return {
-          key: focusKey,
-          ref: { kind, name },
-          kind,
-          name,
-          status: 'healthy',
-          signal: null,
-          score: 0,
-        }
-      }
+      return synthesizeFocusRow(
+        focusKey,
+        cluster.selectedNamespace || investigationNs || '',
+      )
     }
     return null
-  }, [matchRows, focusKey, focusPinned])
+  }, [matchRows, focusKey, focusPinned, cluster.selectedNamespace, investigationNs])
 
   const drillDown = useMemo(
     () => (focusPinned && focusRow ? buildFocusScope(view, focusRow) : emptyFocusScope()),
@@ -602,6 +589,9 @@ export default function App() {
     // StartInvestigation stops any prior session — no separate Stop click needed.
     lockResourcesForInvestigation(normalizedInvestigationScope, ns)
     setInvestigationNs(ns)
+    if (ns !== cluster.selectedNamespace) {
+      await setNamespace(ns)
+    }
     await StartInvestigation(opts)
     setRunning(true)
     setGatherError('')
@@ -615,7 +605,7 @@ export default function App() {
     const next = await GetView()
     applyView(next)
     bumpActivity()
-  }, [cluster, normalizedInvestigationScope, lockResourcesForInvestigation, stream, consoleDock, prefs, applyView, bumpActivity])
+  }, [cluster, normalizedInvestigationScope, lockResourcesForInvestigation, setNamespace, stream, consoleDock, prefs, applyView, bumpActivity])
 
   const handleStartGather = useCallback(async ({ podNames, lineSearch }) => {
     setGatherBusy(true)
@@ -840,7 +830,6 @@ export default function App() {
     const next = normalizeInvestigationScope(nextScope, { fallbackNamespace: cluster.selectedNamespace })
     if (!next.namespace) return
     setInvestigationScope(next)
-    setNamespace(next.namespace).catch((err) => setError(String(err)))
   }
 
   function onBrowseScopeChange(nextScope) {
@@ -873,7 +862,7 @@ export default function App() {
   const inspectRowForToolbar = useMemo(() => {
     const rows = deriveMatchRows(view, getMatchedObjects(view))
     if (!inspectKey) return null
-    return rows.find((r) => r.key === inspectKey) || null
+    return findRowByKey(rows, inspectKey)
   }, [view, inspectKey])
 
   function wrapShell(payload) {

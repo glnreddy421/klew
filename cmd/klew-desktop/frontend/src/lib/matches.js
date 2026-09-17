@@ -593,6 +593,34 @@ export function buildInspectKey(kind, name, namespace = '') {
   return `${k}/${n}`
 }
 
+/** True when two inspect keys refer to the same object (Kind/name or Kind/ns/name). */
+export function rowKeysMatch(a, b) {
+  if (!a || !b) return false
+  if (a === b) return true
+  const pa = parseInspectKey(a)
+  const pb = parseInspectKey(b)
+  if (!pa || !pb) return false
+  if (pa.kind !== pb.kind || pa.name !== pb.name) return false
+  const nsA = pa.namespace || ''
+  const nsB = pb.namespace || ''
+  if (!nsA || !nsB) return true
+  return nsA === nsB
+}
+
+export function findRowByKey(rows, key) {
+  if (!key) return null
+  const list = Array.isArray(rows) ? rows : []
+  return list.find((r) => rowKeysMatch(r.key, key)) || null
+}
+
+/** Normalize to Kind/ns/name when namespace is known. */
+export function canonicalInspectKey(key, fallbackNamespace = '') {
+  const parsed = parseInspectKey(key)
+  if (!parsed) return String(key || '')
+  const ns = parsed.namespace || String(fallbackNamespace || '').trim()
+  return buildInspectKey(parsed.kind, parsed.name, ns) || key
+}
+
 /**
  * Parse inspect keys:
  * - `Kind/name` — cluster-scoped or single-namespace investigation scope
@@ -631,8 +659,7 @@ export function parseInspectKey(key) {
 
 export function isInspectableKey(key, view, rows) {
   if (!key) return false
-  const list = Array.isArray(rows) ? rows : []
-  if (list.some((r) => r.key === key)) return true
+  if (findRowByKey(rows, key)) return true
   return !!inspectRowForKey(key, view, rows)
 }
 
@@ -709,8 +736,9 @@ export function synthesizeFocusRow(key, namespace = '') {
   const parsed = parseInspectKey(key)
   if (parsed) {
     const ns = parsed.namespace || namespace
+    const canonical = buildInspectKey(parsed.kind, parsed.name, ns) || key
     return {
-      key,
+      key: canonical,
       ref: { kind: parsed.kind, name: parsed.name, namespace: ns },
       kind: parsed.kind,
       name: parsed.name,
@@ -737,8 +765,7 @@ export function synthesizeFocusRow(key, namespace = '') {
 
 /** Resolve an inspect row by key, including on-demand cluster/namespace objects. */
 export function inspectRowForKey(key, view, rows) {
-  const list = Array.isArray(rows) ? rows : []
-  const hit = list.find((r) => r.key === key)
+  const hit = findRowByKey(rows, key)
   if (hit) return hit
 
   const parsed = parseInspectKey(key)
@@ -762,12 +789,13 @@ export function podSummaryToInspectRow(p) {
   const health = podHealthLabel(p)
   const status = health === 'critical' ? 'critical' : health === 'healthy' ? 'healthy' : 'degraded'
   const terminalOk = isTerminalPodSuccess(p)
+  const ns = p.namespace || ''
   return {
-    key: `Pod/${p.name}`,
+    key: buildInspectKey('Pod', p.name, ns),
     kind: 'Pod',
     name: p.name,
-    ref: { kind: 'Pod', name: p.name, namespace: p.namespace },
-    namespace: p.namespace,
+    ref: { kind: 'Pod', name: p.name, namespace: ns },
+    namespace: ns,
     ready: (p.ready || terminalOk) ? 1 : 0,
     total: 1,
     restarts: p.restartCount || 0,

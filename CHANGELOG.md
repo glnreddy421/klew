@@ -4,6 +4,23 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 
 ## [Unreleased]
 
+## [1.3.3] — 2026-09-16
+
+### Focus chain
+
+- **Pin-to-pin navigation** — investigation `Kind/name` and catalog `Kind/namespace/name` keys match consistently; chain selection, root highlight, and inspector links stay in sync.
+- **Chain build** — canonical keys, catalog merged into snapshot for browse-mode chains, ingress→service matching fixed.
+
+### Namespace scope
+
+- **Resources picker** — draft multi-select with Apply/Cancel; no flip to “All namespaces” when every box is checked manually.
+- **Investigate scope** — decoupled from kubeconfig namespace until an investigation starts; browse scope no longer resets on namespace sync.
+
+### Tooling
+
+- Bump **Wails** to v2.14.0 (CLI, module, release CI).
+- Frontend **vitest** suite with pin-to-pin focus chain tests (`npm test`).
+
 ## [1.3.2] — 2026-09-16
 
 ### Investigation health

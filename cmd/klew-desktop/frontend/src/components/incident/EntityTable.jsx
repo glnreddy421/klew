@@ -21,6 +21,7 @@ import { ContainerStatusIndicators } from './ContainerStatusIndicators.jsx'
 import { DeploymentConditionIndicators } from './DeploymentConditionIndicators.jsx'
 import { LoadingState } from '../LoadingSpinner.jsx'
 import { ResourceAccessPanel } from './ResourceAccessPanel.jsx'
+import { rowKeysMatch } from '../../lib/matches.js'
 
 function StatusCell({ row }) {
   const tone = row.status || 'unknown'
@@ -294,7 +295,7 @@ function TableRow({
   browseScope,
   onBrowseScopeChange,
 }) {
-  const isRoot = focusKey === row.key
+  const isRoot = rowKeysMatch(focusKey, row.key)
   const canFocus = showFocusButton && onFocus && FOCUSABLE_KINDS.has(row.kind)
   return (
     <tr
@@ -714,7 +715,7 @@ export function EntityTable({
                     key={row.key}
                     row={row}
                     columns={columns}
-                    selected={inspectKey === row.key}
+                    selected={rowKeysMatch(inspectKey, row.key)}
                     focusKey={focusKey}
                     onSelect={onSelect}
                     onInspect={onSelect}

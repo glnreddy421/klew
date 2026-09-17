@@ -27,7 +27,7 @@ case "$GOARCH" in
 esac
 
 if ! command -v wails >/dev/null; then
-  echo "wails not found; run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0" >&2
+  echo "wails not found; run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.14.0" >&2
   exit 1
 fi
 

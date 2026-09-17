@@ -113,3 +113,27 @@ export function browseScopesEqual(a, b) {
   }
   return left.namespace === right.namespace
 }
+
+/** Draft browse picker → committed scope. Explicit `all` only via mode, not by checkbox count. */
+export function browseDraftToScope(draft) {
+  if (!draft || draft.mode === 'all') return allBrowseScope()
+  const list = [...(draft.selected || [])].map((n) => String(n).trim()).filter(Boolean)
+  if (list.length === 0) return null
+  if (list.length === 1) return singleBrowseScope(list[0])
+  return multiBrowseScope(list)
+}
+
+export function browseScopeToDraft(scope, allNamespaces = []) {
+  const normalized = normalizeBrowseScope(scope)
+  const list = Array.isArray(allNamespaces) ? allNamespaces : []
+  if (normalized.mode === 'all') {
+    return { mode: 'all', selected: new Set(list) }
+  }
+  if (normalized.mode === 'multi') {
+    return { mode: 'multi', selected: new Set(normalized.namespaces) }
+  }
+  return {
+    mode: normalized.namespace ? 'single' : 'multi',
+    selected: normalized.namespace ? new Set([normalized.namespace]) : new Set(),
+  }
+}

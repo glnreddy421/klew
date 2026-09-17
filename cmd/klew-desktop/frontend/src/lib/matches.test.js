@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildInspectKey,
+  rowKeysMatch,
+  findRowByKey,
   deriveMatchRows,
   inspectRowForKey,
   parseInspectKey,
@@ -130,6 +132,19 @@ describe('catalog succeeded pods', () => {
     const podCard = cards[0]
     expect(podCard.segments.find((s) => s.label === 'Pending')).toBeUndefined()
     expect(podCard.segments.find((s) => s.label === 'Running')?.count).toBe(2)
+  })
+})
+
+describe('rowKeysMatch', () => {
+  it('matches investigation and catalog keys for the same object', () => {
+    expect(rowKeysMatch('Deployment/payment-api', 'Deployment/prod/payment-api')).toBe(true)
+    expect(rowKeysMatch('Deployment/prod/payment-api', 'Deployment/prod/payment-api')).toBe(true)
+    expect(rowKeysMatch('Deployment/prod/payment-api', 'Deployment/staging/payment-api')).toBe(false)
+  })
+
+  it('finds rows across key formats', () => {
+    const rows = [{ key: 'Service/prod/api', kind: 'Service', name: 'api' }]
+    expect(findRowByKey(rows, 'Service/api')?.name).toBe('api')
   })
 })
 

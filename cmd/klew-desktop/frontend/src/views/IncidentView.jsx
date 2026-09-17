@@ -5,6 +5,7 @@ import { ComponentInspectPanel } from '../components/incident/ComponentInspectPa
 import { CollectingMatchesSplash } from '../components/incident/CollectingMatchesSplash'
 import {
   deriveMatchRows,
+  findRowByKey,
   getMatchedObjects,
   inspectRowForKey,
   isInspectableKey,
@@ -115,7 +116,7 @@ export function IncidentView({
       return
     }
     if (inspectKey && isAdhocInspectable(inspectKey, allRows)) return
-    const preferred = focusKey && allRows.some((r) => r.key === focusKey)
+    const preferred = focusKey && findRowByKey(allRows, focusKey)
       ? focusKey
       : pickDefaultFocus(allRows)
     setInspectKey(preferred)
@@ -126,7 +127,7 @@ export function IncidentView({
     if (focusPinned && focusKey) setInspectKey(focusKey)
   }, [focusPinned, focusKey])
 
-  const focusRow = allRows.find((r) => r.key === focusKey) || allRows[0] || null
+  const focusRow = findRowByKey(allRows, focusKey) || allRows[0] || null
   const drillDown = useMemo(
     () => (focusPinned && focusRow ? buildFocusScope(view, focusRow) : null),
     [focusPinned, focusRow, view],
@@ -145,13 +146,13 @@ export function IncidentView({
 
   const inspectRow = useMemo(() => {
     if (inspectKey) {
-      const fromRows = rows.find((r) => r.key === inspectKey)
+      const fromRows = findRowByKey(rows, inspectKey)
       if (fromRows) return fromRows
       const fromSnap = inspectRowForKey(inspectKey, view, allRows)
       if (fromSnap) return fromSnap
       return null
     }
-    return rows.find((r) => r.key === focusKey) || rows[0] || null
+    return findRowByKey(rows, focusKey) || rows[0] || null
   }, [rows, allRows, inspectKey, focusKey, view])
 
   const snapshotInspect = useMemo(
@@ -212,7 +213,7 @@ export function IncidentView({
 
   const handleInspect = (key) => {
     setInspectKey(key)
-    if (!focusPinned && allRows.some((r) => r.key === key)) {
+    if (!focusPinned && findRowByKey(allRows, key)) {
       onFocusChange?.(key, { pinned: false })
     }
   }

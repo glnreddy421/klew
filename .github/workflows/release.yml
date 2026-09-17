@@ -34,7 +34,7 @@ jobs:
           cache-dependency-path: cmd/klew-desktop/frontend/package-lock.json
 
       - name: Install Wails
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.14.0
 
       - name: Import signing certificate
         uses: apple-actions/import-codesign-certs@v3

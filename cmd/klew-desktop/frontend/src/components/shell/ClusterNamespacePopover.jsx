@@ -2,9 +2,9 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { filterBySubstring } from '../../lib/scopeSearch.js'
 import {
-  allBrowseScope,
+  browseDraftToScope,
   browseScopeLabel,
-  multiBrowseScope,
+  browseScopeToDraft,
   normalizeBrowseScope,
   normalizeInvestigationScope,
   singleBrowseScope,
@@ -228,20 +228,20 @@ export function ContextPopover({
 const NS_NAME_RE = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/
 const MAX_BROWSE_NAMESPACES = 50
 
-function selectedBrowseNamespaces(scope, allNamespaces) {
-  const normalized = normalizeBrowseScope(scope)
-  if (normalized.mode === 'all') return new Set(allNamespaces)
-  if (normalized.mode === 'multi') return new Set(normalized.namespaces)
-  if (normalized.namespace) return new Set([normalized.namespace])
-  return new Set()
-}
+function useBrowseDraft(open, scope, namespaces) {
+  const [draft, setDraft] = useState(() => browseScopeToDraft(scope, namespaces))
+  const committedRef = useRef(scope)
+  const wasOpenRef = useRef(false)
 
-function scopeFromNamespaceSelection(selected, allNamespaces) {
-  const list = [...selected]
-  if (list.length === 0) return singleBrowseScope('')
-  if (allNamespaces.length > 0 && list.length === allNamespaces.length) return allBrowseScope()
-  if (list.length === 1) return singleBrowseScope(list[0])
-  return multiBrowseScope(list)
+  useEffect(() => {
+    if (open && !wasOpenRef.current) {
+      committedRef.current = scope
+      setDraft(browseScopeToDraft(scope, namespaces))
+    }
+    wasOpenRef.current = open
+  }, [open, scope, namespaces])
+
+  return { draft, setDraft, committedRef }
 }
 
 export function NamespacePopover({
@@ -283,8 +283,10 @@ export function NamespacePopover({
     ? 'Pick one namespace to investigate'
     : 'Browse resources by namespace'
 
-  const selected = selectedBrowseNamespaces(normalized, namespaces)
-  const allChecked = normalized.mode === 'all'
+  const { draft, setDraft, committedRef } = useBrowseDraft(open && !isInvestigate, scope, namespaces)
+  const browseAllChecked = !isInvestigate && draft.mode === 'all'
+  const browseSelectedCount = browseAllChecked ? namespaces.length : draft.selected.size
+  const browseApplyReady = browseAllChecked || browseSelectedCount > 0
 
   function applyScope(next, { close = true } = {}) {
     onScopeChange?.(next)
@@ -295,28 +297,53 @@ export function NamespacePopover({
     applyScope(singleBrowseScope(name))
   }
 
-  function applyBrowseSelection(nextSelected, { close = false } = {}) {
-    applyScope(scopeFromNamespaceSelection(nextSelected, namespaces), { close })
+  function isBrowseNamespaceChecked(name) {
+    return draft.mode === 'all' || draft.selected.has(name)
   }
 
   function toggleBrowseAll(checked) {
     if (checked) {
-      applyBrowseSelection(new Set(namespaces))
+      setDraft({ mode: 'all', selected: new Set(namespaces) })
       return
     }
-    const fallback = cluster.selectedNamespace || namespaces[0] || ''
-    applyBrowseSelection(fallback ? new Set([fallback]) : new Set())
+    setDraft(browseScopeToDraft(committedRef.current, namespaces))
   }
 
   function toggleBrowseNamespace(name) {
-    const next = new Set(selected)
-    if (next.has(name)) {
-      next.delete(name)
-    } else {
-      if (next.size >= MAX_BROWSE_NAMESPACES) return
-      next.add(name)
-    }
-    applyBrowseSelection(next)
+    setDraft((prev) => {
+      if (prev.mode === 'all') {
+        const next = new Set(namespaces)
+        next.delete(name)
+        if (next.size === 0) return prev
+        if (next.size === 1) return { mode: 'single', selected: next }
+        return { mode: 'multi', selected: next }
+      }
+      const next = new Set(prev.selected)
+      if (next.has(name)) {
+        next.delete(name)
+      } else if (next.size >= MAX_BROWSE_NAMESPACES) {
+        return prev
+      } else {
+        next.add(name)
+      }
+      if (next.size === 0) return prev
+      if (next.size === 1) return { mode: 'single', selected: next }
+      return { mode: 'multi', selected: next }
+    })
+  }
+
+  function applyBrowseDraft() {
+    const next = browseDraftToScope(draft)
+    if (!next) return
+    applyScope(next)
+  }
+
+  function clearBrowseDraft() {
+    setDraft({ mode: 'multi', selected: new Set() })
+  }
+
+  function selectAllBrowseDraft() {
+    setDraft({ mode: 'all', selected: new Set(namespaces) })
   }
 
   function onSearchKeyDown(e) {
@@ -401,10 +428,10 @@ export function NamespacePopover({
           <ul className="shell-popover-list shell-popover-list-scroll shell-popover-list-tall">
             {!isInvestigate && (
               <li>
-                <label className={`shell-popover-item shell-popover-item-check ${allChecked ? 'active' : ''}`}>
+                <label className={`shell-popover-item shell-popover-item-check ${browseAllChecked ? 'active' : ''}`}>
                   <input
                     type="checkbox"
-                    checked={allChecked}
+                    checked={browseAllChecked}
                     onChange={(e) => toggleBrowseAll(e.target.checked)}
                   />
                   <span>All namespaces</span>
@@ -424,7 +451,7 @@ export function NamespacePopover({
             )}
             {filtered.map((name) => {
               const activeSingle = isInvestigate && normalized.namespace === name
-              const isChecked = isInvestigate ? activeSingle : selected.has(name)
+              const isChecked = isInvestigate ? activeSingle : isBrowseNamespaceChecked(name)
               return (
                 <li key={name}>
                   {isInvestigate ? (
@@ -443,7 +470,7 @@ export function NamespacePopover({
                       <input
                         type="checkbox"
                         checked={isChecked}
-                        disabled={!isChecked && selected.size >= MAX_BROWSE_NAMESPACES && !allChecked}
+                        disabled={!isChecked && browseSelectedCount >= MAX_BROWSE_NAMESPACES && !browseAllChecked}
                         onChange={() => toggleBrowseNamespace(name)}
                       />
                       <span className="mono">{name}</span>
@@ -459,6 +486,52 @@ export function NamespacePopover({
             )}
           </ul>
         </div>
+        {!isInvestigate && (
+          <>
+            <div className="shell-popover-multi-bar">
+              <span className="shell-popover-multi-count muted">
+                {browseAllChecked
+                  ? `All ${namespaces.length} namespaces`
+                  : `${browseSelectedCount} selected`}
+              </span>
+              <div className="shell-popover-multi-actions">
+                <button
+                  type="button"
+                  className="shell-popover-link-btn"
+                  onClick={clearBrowseDraft}
+                  disabled={browseSelectedCount === 0 && !browseAllChecked}
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  className="shell-popover-link-btn"
+                  onClick={selectAllBrowseDraft}
+                  disabled={browseAllChecked}
+                >
+                  Select all
+                </button>
+              </div>
+            </div>
+            <div className="shell-popover-footer">
+              <button
+                type="button"
+                className="shell-popover-footer-btn"
+                onClick={() => setOpen(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="shell-popover-footer-btn primary"
+                onClick={applyBrowseDraft}
+                disabled={!browseApplyReady}
+              >
+                Apply
+              </button>
+            </div>
+          </>
+        )}
       </PopoverPortal>
     </div>
   )

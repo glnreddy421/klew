@@ -5,6 +5,7 @@ import { InvestigationLoadingBanner } from '../components/incident/Investigation
 import { InvestigationSessionBanner } from '../components/incident/InvestigationSessionBanner'
 import {
   deriveMatchRows,
+  findRowByKey,
   getMatchedObjects,
   inspectRowForKey,
   isInspectableKey,
@@ -372,8 +373,8 @@ function useResourcesWorkbenchState({
   const focusRow = useMemo(() => {
     if (!focusKey) return allRows[0] || null
     return (
-      allRows.find((r) => r.key === focusKey)
-      || catalogEntities.find((r) => r.key === focusKey)
+      findRowByKey(allRows, focusKey)
+      || findRowByKey(catalogEntities, focusKey)
       || synthesizeFocusRow(focusKey, investigationNs || catalogEntities[0]?.namespace || '')
       || allRows[0]
       || null
@@ -383,11 +384,7 @@ function useResourcesWorkbenchState({
   const traceFocusRow = useMemo(() => {
     if (focusPinned && focusRow) return focusRow
     if (inspectKey) {
-      return (
-        catalogEntities.find((r) => r.key === inspectKey)
-        || allRows.find((r) => r.key === inspectKey)
-        || null
-      )
+      return findRowByKey(catalogEntities, inspectKey) || findRowByKey(allRows, inspectKey)
     }
     return null
   }, [focusPinned, focusRow, inspectKey, catalogEntities, allRows])
@@ -434,16 +431,16 @@ function useResourcesWorkbenchState({
 
   const inspectRow = useMemo(() => {
     if (inspectKey) {
-      const fromRows = rows.find((r) => r.key === inspectKey)
+      const fromRows = findRowByKey(rows, inspectKey)
       if (fromRows) return fromRows
-      const fromCatalog = catalogEntities.find((r) => r.key === inspectKey)
+      const fromCatalog = findRowByKey(catalogEntities, inspectKey)
       if (fromCatalog) return fromCatalog
       const fromSnap = inspectRowForKey(inspectKey, view, allRows)
       if (fromSnap) return fromSnap
       return null
     }
     if (catalogBrowseActive) return null
-    return rows.find((r) => r.key === focusKey) || rows[0] || null
+    return findRowByKey(rows, focusKey) || rows[0] || null
   }, [rows, allRows, inspectKey, focusKey, view, catalogBrowseActive, catalogEntities])
 
   const snapshotInspect = useMemo(
@@ -507,7 +504,7 @@ function useResourcesWorkbenchState({
 
   const handleInspect = (key) => {
     onInspectKeyChange?.(key)
-    if (!focusPinned && allRows.some((r) => r.key === key)) {
+    if (!focusPinned && findRowByKey(allRows, key)) {
       onFocusChange?.(key, { pinned: false })
     }
   }

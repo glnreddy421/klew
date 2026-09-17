@@ -3,8 +3,8 @@ import {
   buildFocusScope,
   buildChainRows,
   catalogRowsToSnapshotShape,
-  emptyFocusScope,
 } from './focusScope.js'
+import { rowKeysMatch } from './matches.js'
 
 describe('buildFocusScope with catalog rows', () => {
   const catalogRows = [
@@ -60,8 +60,8 @@ describe('buildFocusScope with catalog rows', () => {
     const scope = buildFocusScope(emptyView(), focusRow, { catalogRows })
     const chainRows = buildChainRows(emptyView(), scope, catalogRows)
 
-    expect(chainRows.some((r) => r.key === 'Pod/payment-api-58f46b4685-abc12')).toBe(true)
-    expect(chainRows.some((r) => r.key === 'Service/payment-api')).toBe(true)
+    expect(chainRows.some((r) => rowKeysMatch(r.key, 'Pod/prod/payment-api-58f46b4685-abc12'))).toBe(true)
+    expect(chainRows.some((r) => rowKeysMatch(r.key, 'Service/prod/payment-api'))).toBe(true)
   })
 
   it('uses namespaced keys for catalog browse focus chains', () => {

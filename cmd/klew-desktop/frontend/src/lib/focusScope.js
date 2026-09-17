@@ -1,4 +1,12 @@
-import { kindBadge, buildInspectKey, matchKey, parseInspectKey, podsForMatch } from './matches'
+import {
+  kindBadge,
+  buildInspectKey,
+  findRowByKey,
+  matchKey,
+  parseInspectKey,
+  podsForMatch,
+  rowKeysMatch,
+} from './matches'
 import { BUILTIN_PRESENTATION, defaultCatalogResourceId, defaultNamespaced } from './resourcePresentation.js'
 
 const WORKLOAD_KINDS = new Set([
@@ -54,7 +62,7 @@ function minimalFocusScope(focusRow) {
   const key = focusEntityKey(focusRef.kind, focusRef.name, focusRef.namespace)
   return {
     active: true,
-    focusKey: focusRow.key || key,
+    focusKey: key,
     focusRef,
     rootRef: focusRef,
     relatedKeys: new Set([key]),
@@ -301,7 +309,9 @@ function buildFocusScopeFromSnapshot(snap, focusRow) {
     const backends = ing.backends || []
     const hit = backends.some((b) => {
       const name = typeof b === 'string' ? b : b?.name || b?.service || ''
-      return [...relatedKeys].some((k) => k === `Service/${name}` || k.endsWith(`/${name}`))
+      if (!name) return false
+      const svcKey = focusEntityKey('Service', name, focusRef.namespace)
+      return [...relatedKeys].some((k) => rowKeysMatch(k, svcKey) || k.endsWith(`/${name}`))
         || namesRelated(name, focusRef.name)
     })
     if (hit || namesRelated(ing.name, focusRef.name)) {
@@ -328,9 +338,11 @@ function buildFocusScopeFromSnapshot(snap, focusRow) {
   const relatedKeysArr = [...relatedKeys]
   const relatedPodNamesArr = [...relatedPodNames].sort()
 
+  const focusKey = focusEntityKey(focusRef.kind, focusRef.name, focusRef.namespace)
+
   return {
     active: true,
-    focusKey: focusRow.key,
+    focusKey,
     focusRef,
     rootRef,
     relatedKeys,
@@ -364,8 +376,10 @@ export function buildChainRows(view, focusScope, existingRows = []) {
   const baseRows = asArray(existingRows)
   if (!focusScope?.active) return baseRows
 
-  const byKey = new Map(baseRows.map((r) => [r.key, r]))
-  const snap = view?.state?.snapshot || {}
+  const snap = mergeSnapshotSources(
+    view?.state?.snapshot || {},
+    catalogRowsToSnapshotShape(baseRows),
+  )
   const keys = focusScope.relatedKeysArr?.length
     ? focusScope.relatedKeysArr
     : asArray(focusScope.relatedKeys)
@@ -375,9 +389,9 @@ export function buildChainRows(view, focusScope, existingRows = []) {
 
   const rows = []
   for (const key of ordered) {
-    const existing = lookupChainRow(key, byKey)
+    const existing = findRowByKey(baseRows, key)
     if (existing) {
-      rows.push({ ...existing, inFocusChain: true })
+      rows.push(chainRowFromExisting(existing, key))
       continue
     }
     const synthesized = synthesizeRow(key, snap, focusScope)
@@ -386,8 +400,8 @@ export function buildChainRows(view, focusScope, existingRows = []) {
 
   // Always include focus row even if missing from snapshot enrichment
   if (focusScope.focusKey && !rows.some((r) => rowKeysMatch(r.key, focusScope.focusKey))) {
-    const focusExisting = lookupChainRow(focusScope.focusKey, byKey)
-    if (focusExisting) rows.unshift({ ...focusExisting, inFocusChain: true })
+    const focusExisting = findRowByKey(baseRows, focusScope.focusKey)
+    if (focusExisting) rows.unshift(chainRowFromExisting(focusExisting, focusScope.focusKey))
     else {
       const synthesized = synthesizeRow(focusScope.focusKey, snap, focusScope)
       if (synthesized) rows.unshift(synthesized)
@@ -397,31 +411,12 @@ export function buildChainRows(view, focusScope, existingRows = []) {
   return rows
 }
 
-function rowKeysMatch(a, b) {
-  if (!a || !b) return false
-  if (a === b) return true
-  const pa = parseInspectKey(a)
-  const pb = parseInspectKey(b)
-  return Boolean(pa && pb && pa.kind === pb.kind && pa.name === pb.name
-    && (pa.namespace || '') === (pb.namespace || ''))
-}
-
-function lookupChainRow(key, byKey) {
-  if (byKey.has(key)) return byKey.get(key)
+function chainRowFromExisting(row, key) {
   const parsed = parseInspectKey(key)
-  if (!parsed) return null
-  const candidates = [
-    buildInspectKey(parsed.kind, parsed.name, parsed.namespace),
-    buildInspectKey(parsed.kind, parsed.name, ''),
-    `${parsed.kind}/${parsed.name}`,
-  ].filter(Boolean)
-  for (const candidate of candidates) {
-    if (byKey.has(candidate)) return byKey.get(candidate)
-  }
-  for (const row of byKey.values()) {
-    if (row.kind === parsed.kind && row.name === parsed.name) return row
-  }
-  return null
+  const canonical = parsed?.key
+    || buildInspectKey(row.kind, row.name, row.namespace || row.ref?.namespace)
+    || row.key
+  return { ...row, key: canonical, inFocusChain: true }
 }
 
 function synthesizeRow(key, snap, focusScope) {
@@ -498,8 +493,8 @@ function synthesizeRow(key, snap, focusScope) {
 
 function sortChainKeys(keys, focusKey) {
   const rank = (key) => {
-    if (key === focusKey) return 0
-    const kind = key.split('/')[0]
+    if (rowKeysMatch(key, focusKey)) return 0
+    const kind = parseInspectKey(key)?.kind || key.split('/')[0]
     if (WORKLOAD_KINDS.has(kind)) return 1
     if (kind === 'Service' || kind === 'Ingress') return 2
     if (kind === 'Pod') return 3
@@ -662,7 +657,9 @@ export function focusMetrics(view, focusScope) {
   let endpointsReady = null
   let endpointsTotal = null
   for (const svc of services) {
-    if (!keys.has(`Service/${svc.name}`)) continue
+    const svcKey = focusEntityKey('Service', svc.name, svc.namespace)
+    const inScope = [...keys].some((k) => rowKeysMatch(k, svcKey))
+    if (!inScope) continue
     endpointsReady = (endpointsReady ?? 0) + (svc.readyEndpoints ?? 0)
     endpointsTotal = (endpointsTotal ?? 0) + (svc.totalEndpoints ?? 0)
   }

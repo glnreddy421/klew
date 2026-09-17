@@ -1,5 +1,5 @@
 import { KindIcon } from '../KindIcon'
-import { formatReady } from '../../lib/matches'
+import { formatReady, rowKeysMatch } from '../../lib/matches'
 import { isAccessDenied, isUnavailable, kindDisplayLabel } from '../../lib/resourceCatalog.js'
 import { LoadingState } from '../LoadingSpinner.jsx'
 import { ResourceAccessPanel } from './ResourceAccessPanel.jsx'
@@ -21,7 +21,7 @@ function EntityListItem({
   onSelect,
   onFocus,
 }) {
-  const isRoot = focusKey === row.key
+  const isRoot = rowKeysMatch(focusKey, row.key)
   const tone = row.status || 'unknown'
   const isPod = row.kind === 'Pod'
   const showReady = isPod && (row.ready != null || row.total != null)
@@ -119,7 +119,7 @@ export function EntityList({
                   <EntityListItem
                     key={row.key}
                     row={row}
-                    selected={inspectKey === row.key}
+                    selected={rowKeysMatch(inspectKey, row.key)}
                     focusKey={focusKey}
                     showFocusButton={showFocusButton && !chainMode}
                     onSelect={onSelect}
