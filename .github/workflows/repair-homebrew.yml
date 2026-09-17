@@ -1,0 +1,25 @@
+name: Repair Homebrew cask
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Cask version to restore (e.g. 1.3.4)
+        required: true
+        default: "1.3.4"
+
+permissions:
+  contents: read
+
+jobs:
+  revert:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Revert Homebrew cask
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          chmod +x ./.github/scripts/revert-homebrew-cask.sh
+          ./.github/scripts/revert-homebrew-cask.sh "${{ inputs.version }}"

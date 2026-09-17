@@ -72,6 +72,25 @@ jobs:
           chmod +x ./.github/scripts/publish-github-release.sh
           ./.github/scripts/publish-github-release.sh
 
+      - name: Verify GitHub release assets
+        run: |
+          TAG="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
+          for name in \
+            "Klew-${VERSION}-macos-arm64.zip" \
+            "Klew-${VERSION}-macos-amd64.zip" \
+            "Klew-${VERSION}-macos-arm64.dmg" \
+            "Klew-${VERSION}-macos-amd64.dmg"
+          do
+            url="https://github.com/${{ github.repository }}/releases/download/${TAG}/${name}"
+            code="$(curl -sL -o /dev/null -w '%{http_code}' "$url")"
+            if [[ "$code" != "200" && "$code" != "302" ]]; then
+              echo "::error::Missing public asset ${url} (HTTP ${code})"
+              exit 1
+            fi
+            echo "OK ${name} (HTTP ${code})"
+          done
+
       - name: Update Homebrew tap
         run: ./.github/scripts/update-homebrew-tap.sh
         env:
