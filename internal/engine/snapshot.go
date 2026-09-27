@@ -11,16 +11,22 @@ import (
 
 // SnapshotOptions configures initial collection.
 type SnapshotOptions struct {
-	Namespace string
-	Query     string
-	Tail      int
+	Namespace               string
+	Query                   string
+	Tail                    int
+	CheckAdmissionPerimeter bool
 }
 
 // CollectSnapshot performs initial read-only snapshot via kube collector.
 func CollectSnapshot(ctx context.Context, client *kube.Client, opts SnapshotOptions) (model.EvidenceBundle, []model.MatchedObject, error) {
 	ns := opts.Namespace
 	collector := &kube.Collector{Client: client}
-	bundle, err := collector.Collect(ctx, kube.CollectOptions{Namespace: ns, Query: opts.Query, LogLines: opts.Tail})
+	bundle, err := collector.Collect(ctx, kube.CollectOptions{
+		Namespace:               ns,
+		Query:                   opts.Query,
+		LogLines:                opts.Tail,
+		CheckAdmissionPerimeter: opts.CheckAdmissionPerimeter,
+	})
 	if err != nil {
 		return model.EvidenceBundle{}, nil, err
 	}
@@ -42,14 +48,21 @@ func BootstrapState(bundle model.EvidenceBundle, scope model.NamespaceScope, que
 	st.ExpectedWatches = 8
 	st.WorkloadGraph = BuildGraph(bundle)
 	st.Timeline = BuildTimeline(bundle)
+	st.AdmissionPerimeter = bundle.AdmissionPerimeter
 	signals := ScoreSignals(bundle)
 	st.Verdict = GenerateVerdict(bundle, st.Timeline, signals)
 	return &st
 }
 
 // RefreshSnapshot re-collects and merges into reducer (periodic poll fallback).
-func RefreshSnapshot(ctx context.Context, client *kube.Client, reducer *Reducer, ns, query string) error {
-	bundle, _, err := CollectSnapshot(ctx, client, SnapshotOptions{Namespace: ns, Query: query})
+func RefreshSnapshot(ctx context.Context, client *kube.Client, reducer *Reducer, ns, query string, snap SnapshotOptions) error {
+	if snap.Namespace == "" {
+		snap.Namespace = ns
+	}
+	if snap.Query == "" {
+		snap.Query = query
+	}
+	bundle, _, err := CollectSnapshot(ctx, client, snap)
 	if err != nil {
 		return err
 	}

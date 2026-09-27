@@ -11,6 +11,12 @@ export function getSnapshot(view) {
   return getState(view).snapshot || {}
 }
 
+/** Opt-in admission webhook perimeter summary (state or snapshot). */
+export function getAdmissionPerimeter(view) {
+  const st = getState(view)
+  return st.admissionPerimeter || getSnapshot(view).admissionPerimeter || null
+}
+
 /** Snapshot collect time in ms (Overview workload health source). */
 export function snapshotCollectedAtMs(view) {
   const ts = getSnapshot(view).collectedAt

@@ -25,6 +25,8 @@ type CollectOptions struct {
 	Namespace string
 	Query     string
 	LogLines  int
+	// CheckAdmissionPerimeter lists webhook configs when workloads expect pods but none exist (opt-in).
+	CheckAdmissionPerimeter bool
 }
 
 // Collector gathers read-only evidence from a cluster.
@@ -199,6 +201,13 @@ func (col *Collector) Collect(ctx context.Context, opts CollectOptions) (model.E
 
 	if allowed(perms, "pods", "list") && len(bundle.Nodes) > 0 {
 		bundle.NodePods = col.collectPodsOnNodes(ctx, bundle.Nodes, bundle.Pods)
+	}
+
+	if opts.CheckAdmissionPerimeter {
+		bundle.AdmissionPerimeter = col.CollectAdmissionPerimeter(ctx, &bundle)
+		if bundle.AdmissionPerimeter != nil && bundle.AdmissionPerimeter.Status == "denied" {
+			bundle.Warnings = append(bundle.Warnings, bundle.AdmissionPerimeter.PermissionNote)
+		}
 	}
 
 	return bundle, nil

@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect } from 'react'
-import { getState } from '../lib/investigationViews'
+import { AdmissionPerimeterPanel } from '../components/incident/AdmissionPerimeterPanel.jsx'
+import { getAdmissionPerimeter, getState } from '../lib/investigationViews'
 import { StreamPatternsPanel } from '../components/StreamPatternsPanel'
 import { EvidenceBoardTeaser } from '../components/evidence/EvidenceBoardPanel'
 import { TimelineView } from './TimelineView'
@@ -78,8 +79,11 @@ export function PatternsView({
     )
   }
 
+  const admissionPerimeter = getAdmissionPerimeter(view)
+
   return (
     <div className="inv-page patterns-page">
+      <AdmissionPerimeterPanel summary={admissionPerimeter} className="patterns-admission-perimeter" />
       <div className="patterns-kind-tabs" role="tablist" aria-label="Pattern kind">
         {KINDS.map((k) => (
           <button

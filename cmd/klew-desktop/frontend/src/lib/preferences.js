@@ -8,11 +8,12 @@ import { DEFAULT_WORKSPACE_LAYOUT, normalizeLayoutMode, saveLayoutMode } from '.
 import { DEFAULT_TERMINAL_APPEARANCE, normalizeTerminalAppearance } from './terminalAppearance'
 import { DEFAULT_UI_FONT, normalizeUiFont } from './fonts'
 import { normalizeTopbarScale, TOPBAR_SCALE_DEFAULT } from './topbarScale'
+import { normalizeFavoriteContexts } from './clusterContexts.js'
 
 export const PREFS_STORAGE_KEY = 'klew.desktop.preferences'
 
 /** Bump when defaults change so existing localStorage picks up migrations once. */
-export const PREFS_VERSION = 13
+export const PREFS_VERSION = 15
 
 /** Investigation window lengths supported by the engine (minutes). */
 export const WINDOW_MIN_OPTIONS = [5, 15, 30, 60]
@@ -64,12 +65,14 @@ export function defaultPreferences() {
     kubectlPath: '', // custom path when bundled is off; empty = system PATH
     matchClusterKubectl: true, // download kubectl when cluster skew exceeds bundled
     useMetricsServer: true,
+    checkAdmissionPerimeter: true,
     metricsApiGroup: 'metrics.k8s.io', // informational / future override
     httpProxy: '',
     httpsProxy: '',
     noProxy: '',
     autoMonitorCluster: true,
-    defaultContext: '', // pinned context on Home; launch always opens Home
+    defaultContext: '', // optional context highlighted on Home (launch opens Home)
+    favoriteContexts: [], // starred contexts — quick access; many allowed
 
     // In-app terminal
     terminalShell: '', // empty/system = follow $SHELL
@@ -145,6 +148,18 @@ function migratePreferences(parsed) {
   if (version < 13) {
     next.defaultContext = ''
   }
+  // v14: favorite contexts (star); default-on-launch stays separate.
+  if (version < 14) {
+    next.favoriteContexts = normalizeFavoriteContexts(next.favoriteContexts)
+    const d = String(next.defaultContext || '').trim()
+    if (d && !next.favoriteContexts.includes(d)) {
+      next.favoriteContexts = [d, ...next.favoriteContexts]
+    }
+  }
+  // v15: admission webhook perimeter check during investigation (on by default).
+  if (version < 15) {
+    next.checkAdmissionPerimeter = true
+  }
   return next
 }
 
@@ -208,12 +223,14 @@ export function normalizePreferences(p) {
     kubectlPath: String(src.kubectlPath ?? d.kubectlPath ?? '').trim(),
     matchClusterKubectl: bool(src.matchClusterKubectl, d.matchClusterKubectl),
     useMetricsServer: bool(src.useMetricsServer, d.useMetricsServer),
+    checkAdmissionPerimeter: bool(src.checkAdmissionPerimeter, d.checkAdmissionPerimeter),
     metricsApiGroup: String(src.metricsApiGroup || d.metricsApiGroup).trim() || d.metricsApiGroup,
     httpProxy: String(src.httpProxy ?? d.httpProxy ?? '').trim(),
     httpsProxy: String(src.httpsProxy ?? d.httpsProxy ?? '').trim(),
     noProxy: String(src.noProxy ?? d.noProxy ?? '').trim(),
     autoMonitorCluster: bool(src.autoMonitorCluster, d.autoMonitorCluster),
     defaultContext: String(src.defaultContext ?? d.defaultContext ?? '').trim(),
+    favoriteContexts: normalizeFavoriteContexts(src.favoriteContexts ?? d.favoriteContexts),
 
     terminalShell: String(src.terminalShell ?? d.terminalShell ?? '').trim(),
     terminalShellPrompted: bool(src.terminalShellPrompted, d.terminalShellPrompted),
@@ -237,6 +254,7 @@ export function startOptionsFromPreferences(prefs, base = {}) {
     maxLogRequests: p.maxLogRequests,
     autoRefresh: p.autoRefresh,
     useMetricsServer: p.useMetricsServer,
+    checkAdmissionPerimeter: p.checkAdmissionPerimeter,
   }
 }
 

@@ -10,6 +10,7 @@ import (
 // ScoreSignals produces deterministic signals from bundle evidence.
 func ScoreSignals(b model.EvidenceBundle) []model.Signal {
 	var signals []model.Signal
+	signals = append(signals, scoreAdmissionSignals(b)...)
 
 	for _, p := range b.Pods {
 		for _, c := range p.Containers {

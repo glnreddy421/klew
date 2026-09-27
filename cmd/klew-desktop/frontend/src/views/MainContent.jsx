@@ -58,6 +58,7 @@ export function MainContent({
   connecting = false,
   onContextChange,
   onSetDefaultContext,
+  onToggleFavoriteContext,
   onClearDefaultContext,
   onOpenProxySettings,
   onOpenSettingsKubernetes,
@@ -190,8 +191,10 @@ export function MainContent({
           reconnectBusy={reconnectBusy}
           monitoringPaused={monitoringPaused}
           defaultContext={prefs?.defaultContext || ''}
+          favoriteContexts={prefs?.favoriteContexts || []}
           onSelectCluster={onContextChange}
           onSetDefaultContext={onSetDefaultContext}
+          onToggleFavoriteContext={onToggleFavoriteContext}
           onReconnect={onReconnect}
           onOpenProxySettings={onOpenProxySettings}
           onOpenSettings={onOpenSettingsKubernetes || onOpenSettings}

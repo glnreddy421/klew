@@ -58,6 +58,11 @@ func chainLabel(e model.TimelineEvent) string {
 		return "Rollout"
 	case "rs":
 		return "New ReplicaSet"
+	case "admission":
+		if e.Reason != "" {
+			return e.Reason
+		}
+		return "Admission perimeter"
 	case "verdict":
 		return ""
 	}
@@ -140,7 +145,20 @@ func BuildGraph(b model.EvidenceBundle) model.WorkloadGraph {
 
 	for _, w := range b.Workloads {
 		h := workloadHealth(w)
-		addNode(w.Kind, w.Name, h)
+		depID := addNode(w.Kind, w.Name, h)
+		if ap := b.AdmissionPerimeter; ap != nil && ap.MissingWorkload {
+			for _, c := range ap.Candidates {
+				whHealth := "warning"
+				if len(c.RecentSignals) > 0 {
+					whHealth = "critical"
+				}
+				whID := addNode(c.ConfigKind, c.ConfigName, whHealth)
+				addEdge(whID, depID, "mayBlock", c.WebhookName)
+			}
+			if ap.Status == "denied" {
+				addNode("AdmissionPerimeter", "RBAC", "warning")
+			}
+		}
 	}
 	for _, rs := range b.ReplicaSets {
 		h := "healthy"

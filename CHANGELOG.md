@@ -4,6 +4,29 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 
 ## [Unreleased]
 
+## [1.3.6] — 2026-09-27
+
+### Admission
+
+- **Resources → Admission** — mutating and validating webhook configurations (cluster-scoped) with namespace scope on list rows; moved out of Config.
+- **Investigation perimeter** — when a workload expects pods but none exist, optionally list matching admission webhooks and correlate recent events (no metrics-server dependency). Surfaces in Evidence, Failures, Patterns, and Graph; explicit label when RBAC blocks the check. **On by default** in Settings → Investigation.
+
+### Context and Home
+
+- **Favorite contexts** — star multiple kube contexts for quick access; separate **launch default** (home icon) without forcing context switches when leaving Home.
+
+### Terminal
+
+- **Per-context sessions** — terminal tabs restore per kube context (in-memory + session storage).
+
+### Resources browse
+
+- **Namespace picker** — checkbox multi-select with Apply/Cancel; fixes treating manual “all namespaces” selection as the global All checkbox and order-dependent scope compares.
+
+### Focus chain
+
+- **Pin-to-pin stability** — canonical inspect keys, catalog merge without snapping selection back to the pin root on refresh, and consistent row highlighting across key formats.
+
 ## [1.3.5] — 2026-09-17
 
 ### Home

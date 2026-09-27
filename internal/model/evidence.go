@@ -242,7 +242,8 @@ type EvidenceBundle struct {
 	Permissions      []PermissionCheck   `json:"permissions"`
 	Warnings         []string            `json:"warnings"`
 	DetectedCRDKinds []string            `json:"detectedCRDKinds,omitempty"`
-	Metrics          MetricsSummary      `json:"metrics"`
+	Metrics            MetricsSummary             `json:"metrics"`
+	AdmissionPerimeter *AdmissionPerimeterSummary `json:"admissionPerimeter,omitempty"`
 }
 
 // TimelineEvent is a correlated incident timeline entry.

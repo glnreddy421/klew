@@ -9,6 +9,7 @@ const MIN_K = 0.15
 const MAX_K = 3
 
 const KIND_ORDER = [
+  'MutatingWebhookConfiguration', 'ValidatingWebhookConfiguration', 'AdmissionPerimeter',
   'Ingress', 'Service', 'HPA', 'HorizontalPodAutoscaler',
   'Deployment', 'StatefulSet', 'DaemonSet', 'Job', 'CronJob',
   'ReplicaSet', 'Pod', 'Container', 'ConfigMap', 'Secret', 'PVC', 'Node',

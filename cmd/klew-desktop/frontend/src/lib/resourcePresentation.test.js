@@ -59,10 +59,11 @@ describe('resourcePresentation', () => {
     expect(defaultNamespaced({ resource: 'nodes' })).toBe(false)
   })
 
-  it('groups HPA and webhooks under Config', () => {
+  it('groups HPA under Config and webhooks under Admission', () => {
     expect(builtinCategoryForKey('autoscaling/horizontalpodautoscalers')).toBe('config')
     expect(builtinCategoryForKey('policy/poddisruptionbudgets')).toBe('config')
-    expect(builtinCategoryForKey('admissionregistration.k8s.io/mutatingwebhookconfigurations')).toBe('config')
+    expect(builtinCategoryForKey('admissionregistration.k8s.io/mutatingwebhookconfigurations')).toBe('admission')
+    expect(builtinCategoryForKey('admissionregistration.k8s.io/validatingwebhookconfigurations')).toBe('admission')
     expect(builtinCategoryForKey('scheduling.k8s.io/priorityclasses')).toBe('config')
   })
 

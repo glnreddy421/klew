@@ -52,6 +52,7 @@ const COL = {
   service: { id: 'service', label: 'Service', className: 'col-service' },
   available: { id: 'available', label: 'Available', className: 'col-status' },
   webhooks: { id: 'webhooks', label: 'Webhooks', className: 'col-num' },
+  namespaceScope: { id: 'namespaceScope', label: 'Namespace scope', className: 'col-ns-scope' },
   failurePolicy: { id: 'failurePolicy', label: 'Failure Policy', className: 'col-policy-types' },
   matchConstraints: { id: 'matchConstraints', label: 'Match Constraints', className: 'col-targets' },
   policy: { id: 'policy', label: 'Policy', className: 'col-policy' },
@@ -336,14 +337,14 @@ export const BUILTIN_KIND_TABLE_SCHEMAS = {
     },
   },
   MutatingWebhookConfiguration: {
-    columnOrder: ['name', 'webhooks', 'age'],
-    defaultVisible: ['name', 'webhooks', 'age'],
-    columns: { name: COL.name, webhooks: COL.webhooks, age: COL.age },
+    columnOrder: ['name', 'webhooks', 'namespaceScope', 'age'],
+    defaultVisible: ['name', 'webhooks', 'namespaceScope', 'age'],
+    columns: { name: COL.name, webhooks: COL.webhooks, namespaceScope: COL.namespaceScope, age: COL.age },
   },
   ValidatingWebhookConfiguration: {
-    columnOrder: ['name', 'webhooks', 'age'],
-    defaultVisible: ['name', 'webhooks', 'age'],
-    columns: { name: COL.name, webhooks: COL.webhooks, age: COL.age },
+    columnOrder: ['name', 'webhooks', 'namespaceScope', 'age'],
+    defaultVisible: ['name', 'webhooks', 'namespaceScope', 'age'],
+    columns: { name: COL.name, webhooks: COL.webhooks, namespaceScope: COL.namespaceScope, age: COL.age },
   },
   ValidatingAdmissionPolicy: {
     columnOrder: ['name', 'failurePolicy', 'matchConstraints', 'age'],

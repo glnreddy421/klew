@@ -101,6 +101,7 @@ func (r *StateStore) ApplySnapshot(bundle model.EvidenceBundle, graph model.Work
 	defer r.mu.Unlock()
 	wasActive := IncidentActive(r.state.Snapshot)
 	r.state.Snapshot = bundle
+	r.state.AdmissionPerimeter = bundle.AdmissionPerimeter
 	if len(graph.Nodes) > 0 {
 		r.state.WorkloadGraph = graph
 	}
@@ -211,7 +212,8 @@ func (r *StateStore) recompute() {
 	r.state.HypothesisAlts = corr.Alternatives
 	r.state.NextChecks = corr.NextChecks
 	r.state.FixActions = corr.FixActions
-	r.state.CausalChain = buildCausalChain(r.state.Timeline)
+	r.state.AdmissionPerimeter = r.state.Snapshot.AdmissionPerimeter
+	r.state.CausalChain = prependAdmissionCausalChain(r.state.Snapshot.AdmissionPerimeter, buildCausalChain(r.state.Timeline))
 	r.state.HypothesisStatus = hypothesisStatus(corr.LeadingSignal, corr.Confidence, v.Status)
 	r.state.ConfidenceTrend = confidenceTrend(corr.Confidence, r.prevConfidence, r.hasPrev)
 

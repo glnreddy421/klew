@@ -1,8 +1,10 @@
 import { useMemo } from 'react'
 import { EvidenceBoardPanel } from '../components/evidence/EvidenceBoardPanel'
 import { InvestigationSurfaceGuide } from '../components/incident/InvestigationSurfaceGuide.jsx'
+import { AdmissionPerimeterPanel } from '../components/incident/AdmissionPerimeterPanel.jsx'
 import {
   formatClock,
+  getAdmissionPerimeter,
   getState,
   groupEvidence,
   rankedVerdictSignals,
@@ -38,6 +40,7 @@ export function EvidenceView({ view, onFilterLogs, explorerFilter, investigation
   const gaps = state.verdict?.missingDataWarnings || state.warnings || []
   const alts = view?.hypothesisAlternatives || state.hypothesisAlternatives || []
   const evidenceBoard = (view?.logPatterns || state.logPatterns)?.evidenceBoard || null
+  const admissionPerimeter = getAdmissionPerimeter(view)
 
   const supportItems = useMemo(() => {
     const out = []
@@ -55,7 +58,7 @@ export function EvidenceView({ view, onFilterLogs, explorerFilter, investigation
     )
   }
 
-  const hasEvidence = evidence.length > 0 || signals.length > 0 || evidenceBoard
+  const hasEvidence = evidence.length > 0 || signals.length > 0 || evidenceBoard || admissionPerimeter?.missingWorkload
 
   if (!hasEvidence) {
     return (
@@ -74,6 +77,7 @@ export function EvidenceView({ view, onFilterLogs, explorerFilter, investigation
 
   return (
     <div className="inv-page evidence-page ev-revamp">
+      <AdmissionPerimeterPanel summary={admissionPerimeter} />
       <EvidenceBoardPanel board={evidenceBoard} onFilterLogs={onFilterLogs} />
 
       <div className="ev-support">

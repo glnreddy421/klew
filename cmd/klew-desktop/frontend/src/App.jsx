@@ -46,6 +46,7 @@ import { applyUiFont, scheduleFontCacheRefresh } from './lib/fonts'
 import { applyTopbarScale } from './lib/topbarScale'
 import { invalidateCatalogCache } from './lib/catalogCache.js'
 import { hasActiveClusterContext } from './lib/clusterIdentity.js'
+import { toggleFavoriteContext } from './lib/clusterContexts.js'
 import { registerSettingsRefreshHandler, scheduleSettingsCacheRefresh } from './lib/settingsCache'
 import { applyTheme } from './lib/themes'
 import { resolveTerminalShellPref } from './lib/terminalShell'
@@ -68,6 +69,7 @@ import {
   findRowByKey,
   rowKeysMatch,
   synthesizeFocusRow,
+  canonicalInspectKey,
 } from './lib/matches'
 import { buildFocusScope, emptyFocusScope } from './lib/focusScope'
 import { isEditableTarget } from './lib/keyboard'
@@ -149,7 +151,6 @@ export default function App() {
   const [savedBrowseScopeLabel, setSavedBrowseScopeLabel] = useState('')
   const [resourcesBrowseLens, setResourcesBrowseLens] = useState(RESOURCES_BROWSE_LENS.MATCHES)
   const prevContextRef = useRef('')
-  const defaultContextAppliedRef = useRef('')
 
   useEffect(() => {
     const ctx = cluster.selectedContext || cluster.currentContext || ''
@@ -597,9 +598,11 @@ export default function App() {
   )
 
   const handleFocusChange = useCallback((key, opts = {}) => {
-    setFocusKey(key)
+    const ns = investigationNs || cluster.selectedNamespace || ''
+    const canonical = key ? (canonicalInspectKey(key, ns) || key) : null
+    setFocusKey(canonical)
     setFocusPinned(Boolean(opts.pinned))
-  }, [])
+  }, [investigationNs, cluster.selectedNamespace])
 
   const handleClearFocus = useCallback(() => {
     setFocusPinned(false)
@@ -870,42 +873,16 @@ export default function App() {
     setPreferences({ defaultContext: current === name ? '' : name })
   }, [prefs.defaultContext, setPreferences])
 
+  const onToggleFavoriteContext = useCallback((name) => {
+    if (!name) return
+    setPreferences({
+      favoriteContexts: toggleFavoriteContext(prefs.favoriteContexts, name),
+    })
+  }, [prefs.favoriteContexts, setPreferences])
+
   const onClearDefaultContext = useCallback(() => {
     setPreferences({ defaultContext: '' })
   }, [setPreferences])
-
-  useEffect(() => {
-    const wanted = String(prefs.defaultContext || '').trim()
-    if (!wanted) {
-      defaultContextAppliedRef.current = ''
-      return
-    }
-    // Pinning on Home only saves the preference — Open switches context explicitly.
-    if (tab === 'home') return
-
-    const contexts = cluster.contexts || []
-    if (!contexts.some((c) => c.name === wanted)) return
-    if (syncing || connecting) return
-
-    const current = cluster.selectedContext || cluster.currentContext || ''
-    const applyKey = `${wanted}|${cluster.kubeconfigPath}|${contexts.length}`
-    if (current === wanted && defaultContextAppliedRef.current === applyKey) return
-
-    defaultContextAppliedRef.current = applyKey
-    if (current !== wanted) {
-      setContext(wanted).catch((err) => setError(String(err)))
-    }
-  }, [
-    tab,
-    prefs.defaultContext,
-    cluster.contexts,
-    cluster.selectedContext,
-    cluster.currentContext,
-    cluster.kubeconfigPath,
-    syncing,
-    connecting,
-    setContext,
-  ])
 
   function onInvestigationScopeChange(nextScope) {
     if (investigationScopeLocked) return
@@ -1002,7 +979,9 @@ export default function App() {
           connecting,
           connectingTarget,
           defaultContext: prefs.defaultContext,
+          favoriteContexts: prefs.favoriteContexts,
           onSetDefaultContext,
+          onToggleFavoriteContext,
         }}
         showExplorer={running || starting || scopePicker.open || tab === 'resources' || ['incident', 'patterns', 'failures', 'evidence', 'graph'].includes(tab)}
         investigationActive={running || starting}
@@ -1139,6 +1118,7 @@ export default function App() {
         connecting={connecting}
         onContextChange={onConnectContext}
         onSetDefaultContext={onSetDefaultContext}
+        onToggleFavoriteContext={onToggleFavoriteContext}
         onClearDefaultContext={onClearDefaultContext}
         onOpenProxySettings={openProxySettings}
         onOpenSettingsKubernetes={() => navigateTo({ tab: 'settings', settingsSection: 'kubernetes' })}

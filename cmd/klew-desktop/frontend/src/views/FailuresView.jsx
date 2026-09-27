@@ -2,10 +2,12 @@ import { useMemo, useState } from 'react'
 import { StatusBadge } from '../components/incident/StatusBadge'
 import { InvestigationSurfaceGuide } from '../components/incident/InvestigationSurfaceGuide.jsx'
 import { SurfaceGuideIcon } from '../components/incident/surfaceGuideIcons.jsx'
+import { AdmissionPerimeterPanel } from '../components/incident/AdmissionPerimeterPanel.jsx'
 import {
   containerHealthLabel,
   formatClock,
   formatClockDate,
+  getAdmissionPerimeter,
   getSnapshot,
   getState,
   normalizeHealth,
@@ -70,9 +72,12 @@ export function FailuresView({ view, explorerFilter, investigationActive = false
     )
   }
 
+  const admissionPerimeter = getAdmissionPerimeter(view)
+
   if (!pods.length) {
     return (
       <div className="inv-page failures-page">
+        <AdmissionPerimeterPanel summary={admissionPerimeter} />
         <div className="surface-guide-wait-card tone-failures">
           <span className="surface-guide-icon-badge" aria-hidden="true">
             <SurfaceGuideIcon id="failures" size={18} />

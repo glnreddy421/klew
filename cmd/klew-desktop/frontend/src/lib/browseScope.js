@@ -108,8 +108,11 @@ export function browseScopesEqual(a, b) {
   if (left.mode !== right.mode) return false
   if (left.mode === 'all') return true
   if (left.mode === 'multi') {
-    return left.namespaces.length === right.namespaces.length
-      && left.namespaces.every((n, i) => n === right.namespaces[i])
+    if (right.mode !== 'multi' || left.namespaces.length !== right.namespaces.length) {
+      return false
+    }
+    const rightSet = new Set(right.namespaces)
+    return left.namespaces.every((n) => rightSet.has(n))
   }
   return left.namespace === right.namespace
 }

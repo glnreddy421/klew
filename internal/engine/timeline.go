@@ -11,6 +11,7 @@ import (
 // BuildTimeline merges events, container states, rollouts into chronological story.
 func BuildTimeline(b model.EvidenceBundle) []model.TimelineEvent {
 	var events []model.TimelineEvent
+	events = append(events, admissionTimelineEvents(b)...)
 
 	for _, e := range b.Events {
 		sev, conf := eventSeverity(e.Reason, e.Message)

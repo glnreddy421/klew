@@ -184,4 +184,13 @@ describe('pin-to-pin focus chain', () => {
     expect(row.ref.namespace).toBe('klew-lab')
     expect(row.key).toBe(buildInspectKey('Deployment', 'payment-api', 'klew-lab'))
   })
+
+  it('pin 7: chain rows stay selectable when inspect key uses legacy Kind/name form', () => {
+    const deployFocus = synthesizeFocusRow('Deployment/payment-api', NS)
+    const { chain } = pinChain(deployFocus, catalogRows)
+    const legacyPodKey = 'Pod/payment-api-75495887df-abc12'
+    const canonicalPod = buildInspectKey('Pod', 'payment-api-75495887df-abc12', NS)
+    expect(findRowByKey(chain, legacyPodKey)).toBeTruthy()
+    expect(findRowByKey(chain, canonicalPod)).toBeTruthy()
+  })
 })

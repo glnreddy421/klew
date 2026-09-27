@@ -3,13 +3,14 @@
  * @see https://fonts.google.com/icons
  */
 
-/** @typedef {'workloads'|'network'|'storage'|'config'|'security'|'helm'|'cluster'|'custom'|'other'} ResourceCategoryId */
+/** @typedef {'workloads'|'network'|'storage'|'config'|'admission'|'security'|'helm'|'cluster'|'custom'|'other'} ResourceCategoryId */
 
 export const RESOURCE_CATEGORY_ICON_NAMES = {
   workloads: 'workloads',
   network: 'device_hub',
   storage: 'storage',
   config: 'tune',
+  admission: 'policy',
   security: 'shield',
   helm: 'sailing',
   cluster: 'hub',

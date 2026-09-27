@@ -413,12 +413,19 @@ export function SettingsView({
               <ReadOnly k="Namespace" v={cluster?.selectedNamespace || '—'} />
             </div>
 
-            <h4 className="settings-subhead">Default context</h4>
+            <h4 className="settings-subhead">Contexts</h4>
             <p className="settings-note muted">
-              Shown as pinned on Home. Klew always opens on Home; open Resources when you are ready to browse.
+              Star favorites on Home or in the context picker (many allowed). The home icon sets an
+              optional launch default — it does not lock which cluster you connect to.
             </p>
             <div className="settings-readonly">
-              <ReadOnly k="Default context" v={prefs.defaultContext || 'None'} />
+              <ReadOnly
+                k="Favorites"
+                v={prefs.favoriteContexts?.length
+                  ? prefs.favoriteContexts.join(', ')
+                  : 'None'}
+              />
+              <ReadOnly k="Launch default" v={prefs.defaultContext || 'None'} />
             </div>
             {prefs.defaultContext && (
               <div className="settings-field-row">
@@ -570,6 +577,17 @@ export function SettingsView({
               <ReadOnly k="Cluster-matched path" v={kubectlInfo?.clusterMatchedPath || '—'} />
               <ReadOnly k="System path" v={kubectlInfo?.systemPath || '—'} />
             </div>
+
+            <h4 className="settings-subhead">Investigation</h4>
+            <Toggle
+              label="Check admission webhooks when pods are missing"
+              checked={prefs.checkAdmissionPerimeter}
+              onChange={(v) => set({ checkAdmissionPerimeter: v })}
+            />
+            <span className="settings-field-hint">
+              Lists cluster-scoped mutating and validating webhook configurations that apply to the
+              investigate namespace. Requires elevated RBAC; without permission KLEW labels the perimeter as unknown.
+            </span>
 
             <h4 className="settings-subhead">Metrics</h4>
             <Toggle
