@@ -483,6 +483,59 @@ func catalogAPIServiceAvailable(obj map[string]interface{}) string {
 func catalogTableWebhookConfig(fields map[string]string, obj map[string]interface{}) {
 	hooks, _, _ := unstructured.NestedSlice(obj, "webhooks")
 	setField(fields, "webhooks", fmt.Sprintf("%d", len(hooks)))
+	setField(fields, "namespaceScope", webhookConfigsNamespaceScopeSummary(hooks))
+}
+
+func webhookConfigsNamespaceScopeSummary(hooks []interface{}) string {
+	if len(hooks) == 0 {
+		return "—"
+	}
+	all := true
+	var parts []string
+	seen := map[string]bool{}
+	for _, item := range hooks {
+		h, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		sel, _, _ := unstructured.NestedMap(h, "namespaceSelector")
+		label := webhookNamespaceSelectorLabel(sel)
+		if label != "All namespaces" {
+			all = false
+		}
+		if !seen[label] {
+			seen[label] = true
+			parts = append(parts, label)
+		}
+	}
+	if all {
+		return "All namespaces"
+	}
+	if len(parts) > 2 {
+		return strings.Join(parts[:2], "; ") + fmt.Sprintf(" (+%d)", len(parts)-2)
+	}
+	return strings.Join(parts, "; ")
+}
+
+func webhookNamespaceSelectorLabel(sel map[string]interface{}) string {
+	if len(sel) == 0 {
+		return "All namespaces"
+	}
+	labels, _, _ := unstructured.NestedStringMap(sel, "matchLabels")
+	if len(labels) == 0 {
+		expr, _, _ := unstructured.NestedSlice(sel, "matchExpressions")
+		if len(expr) == 0 {
+			return "All namespaces"
+		}
+	}
+	var parts []string
+	for k, v := range labels {
+		parts = append(parts, fmt.Sprintf("%s=%s", k, v))
+	}
+	if len(parts) == 0 {
+		return "Selector"
+	}
+	return strings.Join(parts, "; ")
 }
 
 func catalogTableValidatingAdmissionPolicy(fields map[string]string, obj map[string]interface{}) {

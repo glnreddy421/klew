@@ -11,6 +11,7 @@ import {
   isInspectableKey,
   pickDefaultFocus,
   synthesizeFocusRow,
+  canonicalInspectKey,
 } from '../lib/matches'
 import { buildChainRows, buildFocusScope } from '../lib/focusScope'
 import { useFocusChainCatalog } from '../hooks/useFocusChainCatalog.js'
@@ -393,17 +394,24 @@ function useResourcesWorkbenchState({
     if (preferred) onInspectKeyChange?.(preferred)
   }, [allRows, focusPinned, inspectKey, onInspectKeyChange, inspectKeyAllowed, catalogBrowseActive, investigationLoading])
 
+  const prevFocusPinRef = useRef({ pinned: false, key: null })
   useEffect(() => {
-    if (focusPinned && focusKey) onInspectKeyChange?.(focusKey)
+    const prev = prevFocusPinRef.current
+    const becamePinned = focusPinned && !prev.pinned
+    const rootChanged = focusPinned && focusKey && focusKey !== prev.key
+    prevFocusPinRef.current = { pinned: focusPinned, key: focusKey }
+    if ((becamePinned || rootChanged) && focusKey) {
+      onInspectKeyChange?.(focusKey)
+    }
   }, [focusPinned, focusKey, onInspectKeyChange])
 
   const focusRow = useMemo(() => {
     if (!focusKey) return allRows[0] || null
+    const ns = investigationNs || catalogEntities[0]?.namespace || ''
     return (
       findRowByKey(allRows, focusKey)
       || findRowByKey(catalogEntities, focusKey)
-      || synthesizeFocusRow(focusKey, investigationNs || catalogEntities[0]?.namespace || '')
-      || allRows[0]
+      || synthesizeFocusRow(focusKey, ns)
       || null
     )
   }, [focusKey, allRows, catalogEntities, investigationNs])
@@ -428,15 +436,19 @@ function useResourcesWorkbenchState({
   })
 
   const chainSourceRows = useMemo(() => {
-    const byKey = new Map(allRows.map((r) => [r.key, r]))
-    for (const row of catalogEntities) {
-      if (row?.key) byKey.set(row.key, row)
+    const byKey = new Map()
+    const addRow = (row) => {
+      if (!row?.key) return
+      const ns = row.namespace || row.ref?.namespace || investigationNs || ''
+      const key = canonicalInspectKey(row.key, ns) || row.key
+      const prev = byKey.get(key)
+      byKey.set(key, prev ? { ...prev, ...row, key } : { ...row, key })
     }
-    for (const row of focusChainCatalog.rows || []) {
-      if (row?.key) byKey.set(row.key, row)
-    }
+    for (const row of allRows) addRow(row)
+    for (const row of catalogEntities) addRow(row)
+    for (const row of focusChainCatalog.rows || []) addRow(row)
     return [...byKey.values()]
-  }, [allRows, catalogEntities, focusChainCatalog.rows])
+  }, [allRows, catalogEntities, focusChainCatalog.rows, investigationNs])
 
   const drillDown = useMemo(
     () => (focusPinned && focusRow
@@ -452,9 +464,11 @@ function useResourcesWorkbenchState({
 
   useEffect(() => {
     if (!rows.length || catalogBrowseActive) return
-    if (inspectKey && inspectKeyAllowed(inspectKey, rows)) return
+    const pool = focusPinned ? chainSourceRows : rows
+    if (inspectKey && inspectKeyAllowed(inspectKey, pool)) return
+    if (focusPinned && inspectKey && inspectRowForKey(inspectKey, view, chainSourceRows)) return
     onInspectKeyChange?.(focusPinned ? (focusKey || rows[0]?.key) : (pickDefaultFocus(rows) || rows[0]?.key))
-  }, [rows, inspectKey, focusPinned, focusKey, inspectKeyAllowed, onInspectKeyChange, catalogBrowseActive])
+  }, [rows, chainSourceRows, inspectKey, focusPinned, focusKey, inspectKeyAllowed, onInspectKeyChange, catalogBrowseActive, view])
 
   const inspectRow = useMemo(() => {
     if (inspectKey) {
@@ -529,10 +543,19 @@ function useResourcesWorkbenchState({
     return [...rows].sort((a, b) => (rank[a.status] ?? 3) - (rank[b.status] ?? 3))
   }, [rows, layout.sortBySignal, focusPinned])
 
+  const resolveInspectNs = useCallback(() => (
+    investigationNs
+    || focusRow?.namespace
+    || focusRow?.ref?.namespace
+    || catalogEntities[0]?.namespace
+    || ''
+  ), [investigationNs, focusRow, catalogEntities])
+
   const handleInspect = (key) => {
-    onInspectKeyChange?.(key)
-    if (!focusPinned && findRowByKey(allRows, key)) {
-      onFocusChange?.(key, { pinned: false })
+    const k = canonicalInspectKey(key, resolveInspectNs()) || key
+    onInspectKeyChange?.(k)
+    if (!focusPinned && findRowByKey(allRows, k)) {
+      onFocusChange?.(k, { pinned: false })
     }
   }
 

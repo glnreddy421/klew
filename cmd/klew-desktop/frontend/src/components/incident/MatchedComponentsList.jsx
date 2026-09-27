@@ -1,6 +1,6 @@
 import { RowStatusBadge } from './StatusBadge'
 import { KindIcon } from '../KindIcon'
-import { formatReady, groupRowsByKind } from '../../lib/matches'
+import { formatReady, groupRowsByKind, rowKeysMatch } from '../../lib/matches'
 
 /**
  * @param {'match' | 'chain'} mode
@@ -105,8 +105,8 @@ function MatchedRow({
   onInspect,
   onFocus,
 }) {
-  const isRoot = focusKey === row.key
-  const active = inspectKey === row.key
+  const isRoot = rowKeysMatch(focusKey, row.key)
+  const active = rowKeysMatch(inspectKey, row.key)
   const tone = row.status || 'unknown'
 
   return (

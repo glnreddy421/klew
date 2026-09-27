@@ -56,7 +56,9 @@ export function TopBar({
   reconnectBusy = false,
   monitoringPaused = false,
   defaultContext = '',
+  favoriteContexts = [],
   onSetDefaultContext,
+  onToggleFavoriteContext,
   connecting = false,
   connectingTarget = null,
 }) {
@@ -164,7 +166,9 @@ export function TopBar({
             reconnectBusy={reconnectBusy}
             monitoringPaused={monitoringPaused}
             defaultContext={defaultContext}
+            favoriteContexts={favoriteContexts}
             onSetDefaultContext={onSetDefaultContext}
+            onToggleFavoriteContext={onToggleFavoriteContext}
           />
           <ClusterConnectionDot
             connection={connection}

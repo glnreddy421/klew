@@ -23,6 +23,8 @@ type LiveOptions struct {
 	MaxLogRequests int // concurrent pod/container log follows; 0 → kube default
 	// DisableMetrics skips the metrics-server probe (requests/limits only).
 	DisableMetrics bool
+	// CheckAdmissionPerimeter lists admission webhooks when workloads expect pods but none exist.
+	CheckAdmissionPerimeter bool
 }
 
 // LogTailOptions configures an on-demand multipod log follow.
@@ -57,6 +59,8 @@ type LiveSession struct {
 	maxLogReq     int
 	logNS         string
 
+	checkAdmissionPerimeter bool
+
 	watcher *kube.LiveWatcher
 }
 
@@ -81,7 +85,12 @@ func StartLive(ctx context.Context, client *kube.Client, opts LiveOptions) (*Liv
 	ctx, cancel := context.WithCancel(ctx)
 	bus := NewBus(1024)
 
-	bundle, _, err := CollectSnapshot(ctx, client, SnapshotOptions{Namespace: ns, Query: opts.Query, Tail: opts.Tail})
+	bundle, _, err := CollectSnapshot(ctx, client, SnapshotOptions{
+		Namespace:               ns,
+		Query:                     opts.Query,
+		Tail:                      opts.Tail,
+		CheckAdmissionPerimeter:   opts.CheckAdmissionPerimeter,
+	})
 	if err != nil {
 		cancel()
 		return nil, err
@@ -103,8 +112,9 @@ func StartLive(ctx context.Context, client *kube.Client, opts LiveOptions) (*Liv
 		refreshQuery: opts.Query,
 		tail:         opts.Tail,
 		window:       opts.Window,
-		maxLogReq:    opts.MaxLogRequests,
-		logNS:        ns,
+		maxLogReq:               opts.MaxLogRequests,
+		logNS:                   ns,
+		checkAdmissionPerimeter: opts.CheckAdmissionPerimeter,
 	}
 
 	sink := func(e model.EvidenceEvent) {
@@ -209,7 +219,7 @@ func (s *LiveSession) noteStructuralChange(e model.EvidenceEvent) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 		defer cancel()
-		if err := RefreshSnapshot(ctx, client, reducer, ns, query); err != nil {
+		if err := RefreshSnapshot(ctx, client, reducer, ns, query, s.snapshotCollectOptions()); err != nil {
 			slog.Debug("structural snapshot refresh", "err", err)
 			return
 		}
@@ -264,13 +274,24 @@ func (s *LiveSession) RefreshSnapshotNow(ctx context.Context) error {
 	if client == nil || reducer == nil {
 		return fmt.Errorf("live session not ready")
 	}
-	if err := RefreshSnapshot(ctx, client, reducer, ns, query); err != nil {
+	if err := RefreshSnapshot(ctx, client, reducer, ns, query, s.snapshotCollectOptions()); err != nil {
 		return err
 	}
 	if watcher != nil {
 		watcher.SetScopePodNames(podSummaryNames(reducer.State().Snapshot.Pods))
 	}
 	return nil
+}
+
+func (s *LiveSession) snapshotCollectOptions() SnapshotOptions {
+	s.refreshMu.Lock()
+	defer s.refreshMu.Unlock()
+	return SnapshotOptions{
+		Namespace:               s.refreshNS,
+		Query:                     s.refreshQuery,
+		Tail:                      s.tail,
+		CheckAdmissionPerimeter:   s.checkAdmissionPerimeter,
+	}
 }
 
 func (s *LiveSession) runRefreshLoop(ctx context.Context) {
@@ -295,7 +316,7 @@ func (s *LiveSession) runRefreshLoop(ctx context.Context) {
 				continue
 			}
 			lastRefresh = time.Now()
-			if err := RefreshSnapshot(ctx, client, reducer, ns, query); err != nil {
+			if err := RefreshSnapshot(ctx, client, reducer, ns, query, s.snapshotCollectOptions()); err != nil {
 				slog.Debug("snapshot refresh", "err", err)
 			} else if s.watcher != nil {
 				s.watcher.SetScopePodNames(podSummaryNames(reducer.State().Snapshot.Pods))

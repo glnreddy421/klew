@@ -957,6 +957,7 @@ export namespace main {
 	    maxLogRequests: number;
 	    autoRefresh?: boolean;
 	    useMetricsServer?: boolean;
+	    checkAdmissionPerimeter?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new StartOptions(source);
@@ -974,6 +975,7 @@ export namespace main {
 	        this.maxLogRequests = source["maxLogRequests"];
 	        this.autoRefresh = source["autoRefresh"];
 	        this.useMetricsServer = source["useMetricsServer"];
+	        this.checkAdmissionPerimeter = source["checkAdmissionPerimeter"];
 	    }
 	}
 	export class TerminalInfo {
@@ -1055,6 +1057,110 @@ export namespace model {
 	        this.startedAt = source["startedAt"];
 	    }
 	}
+	export class AdmissionWebhookSignal {
+	    timestamp: string;
+	    reason?: string;
+	    message: string;
+	    outcome?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AdmissionWebhookSignal(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.timestamp = source["timestamp"];
+	        this.reason = source["reason"];
+	        this.message = source["message"];
+	        this.outcome = source["outcome"];
+	    }
+	}
+	export class AdmissionWebhookCandidate {
+	    configKind: string;
+	    configName: string;
+	    webhookName: string;
+	    namespaceScopeLabel: string;
+	    failurePolicy?: string;
+	    timeoutSeconds?: number;
+	    serviceRef?: string;
+	    matchSummary?: string;
+	    recentSignals?: AdmissionWebhookSignal[];
+	
+	    static createFrom(source: any = {}) {
+	        return new AdmissionWebhookCandidate(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.configKind = source["configKind"];
+	        this.configName = source["configName"];
+	        this.webhookName = source["webhookName"];
+	        this.namespaceScopeLabel = source["namespaceScopeLabel"];
+	        this.failurePolicy = source["failurePolicy"];
+	        this.timeoutSeconds = source["timeoutSeconds"];
+	        this.serviceRef = source["serviceRef"];
+	        this.matchSummary = source["matchSummary"];
+	        this.recentSignals = this.convertValues(source["recentSignals"], AdmissionWebhookSignal);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class AdmissionPerimeterSummary {
+	    checkedAt: string;
+	    status: string;
+	    permissionNote?: string;
+	    missingWorkload: boolean;
+	    candidates?: AdmissionWebhookCandidate[];
+	
+	    static createFrom(source: any = {}) {
+	        return new AdmissionPerimeterSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.checkedAt = source["checkedAt"];
+	        this.status = source["status"];
+	        this.permissionNote = source["permissionNote"];
+	        this.missingWorkload = source["missingWorkload"];
+	        this.candidates = this.convertValues(source["candidates"], AdmissionWebhookCandidate);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	
 	export class CatalogAffinityRuleRow {
 	    type: string;
 	    weight?: string;
@@ -2163,6 +2269,7 @@ export namespace model {
 	    warnings: string[];
 	    detectedCRDKinds?: string[];
 	    metrics: MetricsSummary;
+	    admissionPerimeter?: AdmissionPerimeterSummary;
 	
 	    static createFrom(source: any = {}) {
 	        return new EvidenceBundle(source);
@@ -2193,6 +2300,7 @@ export namespace model {
 	        this.warnings = source["warnings"];
 	        this.detectedCRDKinds = source["detectedCRDKinds"];
 	        this.metrics = this.convertValues(source["metrics"], MetricsSummary);
+	        this.admissionPerimeter = this.convertValues(source["admissionPerimeter"], AdmissionPerimeterSummary);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -2770,6 +2878,7 @@ export namespace model {
 	    hypothesisChanges: number;
 	    paused: boolean;
 	    logPatterns?: LogPatterns;
+	    admissionPerimeter?: AdmissionPerimeterSummary;
 	    logTailPods?: string[];
 	    logTailPaused?: boolean;
 	
@@ -2816,6 +2925,7 @@ export namespace model {
 	        this.hypothesisChanges = source["hypothesisChanges"];
 	        this.paused = source["paused"];
 	        this.logPatterns = this.convertValues(source["logPatterns"], LogPatterns);
+	        this.admissionPerimeter = this.convertValues(source["admissionPerimeter"], AdmissionPerimeterSummary);
 	        this.logTailPods = source["logTailPods"];
 	        this.logTailPaused = source["logTailPaused"];
 	    }

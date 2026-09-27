@@ -23,7 +23,7 @@ func (p webhookConfigurationProvider) Build(ctx context.Context, req *Request) (
 	hooks, _, _ := unstructured.NestedSlice(obj.Object, "webhooks")
 	detail := &ObjectDetail{
 		Title:    p.kind + "/" + obj.GetName(),
-		Category: "config",
+		Category: "admission",
 		Status:   StatusBadge{Tone: "healthy", Label: fmt.Sprintf("%d webhooks", len(hooks))},
 		Summary: fields(
 			"Webhooks", fmtInt32(int32(len(hooks))),

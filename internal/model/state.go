@@ -143,7 +143,8 @@ type InvestigationState struct {
 	DroppedEvidence   int64             `json:"droppedEvidence"`
 	HypothesisChanges int               `json:"hypothesisChanges"`
 	Paused            bool              `json:"paused"`
-	LogPatterns       *LogPatterns      `json:"logPatterns,omitempty"`
+	LogPatterns         *LogPatterns               `json:"logPatterns,omitempty"`
+	AdmissionPerimeter  *AdmissionPerimeterSummary `json:"admissionPerimeter,omitempty"`
 	// LogTailPods is the active log-gather allowlist; empty = not tailing logs.
 	LogTailPods       []string          `json:"logTailPods,omitempty"`
 	// LogTailPaused is true when log follows are stopped but the gather session

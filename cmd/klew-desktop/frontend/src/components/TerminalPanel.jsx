@@ -303,7 +303,8 @@ export function TerminalPanel({
             <span className="stream-chip terminal-shell-chip">{activeTab.shell}</span>
           )}
           <span className="stream-chip mono terminal-context-chip">
-            {contextName}{namespace ? ` / ${namespace}` : ''}
+            {activeTab?.contextName || contextName}
+            {(activeTab?.namespace || namespace) ? ` / ${activeTab?.namespace || namespace}` : ''}
           </span>
         </div>
         <div className="stream-toolbar">

@@ -796,7 +796,8 @@ type StartOptions struct {
 	WindowSec        int    `json:"windowSec"`
 	MaxLogRequests   int    `json:"maxLogRequests"`
 	AutoRefresh      *bool  `json:"autoRefresh"`
-	UseMetricsServer *bool  `json:"useMetricsServer"`
+	UseMetricsServer         *bool `json:"useMetricsServer"`
+	CheckAdmissionPerimeter  *bool `json:"checkAdmissionPerimeter"`
 }
 
 // StartInvestigation begins live cluster collection.
@@ -821,6 +822,10 @@ func (a *App) StartInvestigation(opts StartOptions) error {
 	disableMetrics := false
 	if opts.UseMetricsServer != nil {
 		disableMetrics = !*opts.UseMetricsServer
+	}
+	checkAdmission := false
+	if opts.CheckAdmissionPerimeter != nil {
+		checkAdmission = *opts.CheckAdmissionPerimeter
 	}
 
 	rootCtx, rootCancel := context.WithCancel(a.ctx)
@@ -865,14 +870,15 @@ func (a *App) StartInvestigation(opts StartOptions) error {
 		}
 	}
 	svc, err := service.Start(rootCtx, client, engine.LiveOptions{
-		Query:          opts.Query,
-		Namespace:      ns,
-		Tail:           opts.Tail,
-		PollEvery:      refresh,
-		Window:         window,
-		MaxLogRequests: opts.MaxLogRequests,
-		AutoRefresh:    autoRefresh,
-		DisableMetrics: disableMetrics,
+		Query:                   opts.Query,
+		Namespace:               ns,
+		Tail:                    opts.Tail,
+		PollEvery:               refresh,
+		Window:                  window,
+		MaxLogRequests:          opts.MaxLogRequests,
+		AutoRefresh:             autoRefresh,
+		DisableMetrics:          disableMetrics,
+		CheckAdmissionPerimeter: checkAdmission,
 	})
 	if err != nil {
 		a.stopInvestigation()

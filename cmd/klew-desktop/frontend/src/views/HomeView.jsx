@@ -15,8 +15,10 @@ export function HomeView({
   reconnectBusy = false,
   monitoringPaused = false,
   defaultContext = '',
+  favoriteContexts = [],
   onSelectCluster,
   onSetDefaultContext,
+  onToggleFavoriteContext,
   onReconnect,
   onOpenProxySettings,
   onOpenSettings,
@@ -31,8 +33,8 @@ export function HomeView({
         <header className="klew-home-clusters-head">
           <h2 id="klew-home-clusters-title">Local clusters</h2>
           <p className="klew-home-clusters-lead muted">
-            Contexts from your kubeconfig on this machine. Open one to connect and browse
-            resources, or pin a default cluster for next time.
+            Contexts from your kubeconfig. Star favorites, set an optional launch default,
+            and open any cluster — switching never locks you to one context.
           </p>
         </header>
 
@@ -47,8 +49,10 @@ export function HomeView({
             reconnectBusy={reconnectBusy}
             monitoringPaused={monitoringPaused}
             defaultContext={defaultContext}
+            favoriteContexts={favoriteContexts}
             onSelectCluster={onSelectCluster}
             onSetDefaultContext={onSetDefaultContext}
+            onToggleFavoriteContext={onToggleFavoriteContext}
             onReconnect={onReconnect}
             onOpenProxySettings={onOpenProxySettings}
           />

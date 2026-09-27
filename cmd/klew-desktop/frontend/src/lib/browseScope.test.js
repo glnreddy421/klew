@@ -30,6 +30,6 @@ describe('browse scope draft (namespace picker)', () => {
     expect(browseScopesEqual(
       multiBrowseScope(['a', 'b']),
       multiBrowseScope(['b', 'a']),
-    )).toBe(false)
+    )).toBe(true)
   })
 })

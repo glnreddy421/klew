@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { StatusBadge, RowStatusBadge } from './StatusBadge'
 import { KindIcon } from '../KindIcon'
-import { formatReady } from '../../lib/matches'
+import { canonicalInspectKey, formatReady } from '../../lib/matches'
 import {
   deriveSignalStats,
   hasAnomalyIssues,
@@ -104,7 +104,7 @@ export function ComponentInspectPanel({
   }
 
   const unhealthy = hasAnomalyIssues(inspect)
-  const focusKey = inspect.key
+  const focusKey = canonicalInspectKey(inspect.key, inspect.namespace) || inspect.key
 
   const relatedPodsBlock = relatedPods.length > 0 ? (
     <RelatedPodsSection

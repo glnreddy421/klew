@@ -75,8 +75,14 @@ export const BUILTIN_PRESENTATION = [
       { group: 'scheduling.k8s.io', resource: 'priorityclasses', kind: 'PriorityClass', displayName: 'Priority Classes', sortOrder: 8 },
       { group: 'node.k8s.io', resource: 'runtimeclasses', kind: 'RuntimeClass', displayName: 'Runtime Classes', sortOrder: 9 },
       { group: 'coordination.k8s.io', resource: 'leases', kind: 'Lease', displayName: 'Leases', sortOrder: 10 },
-      { group: 'admissionregistration.k8s.io', resource: 'mutatingwebhookconfigurations', kind: 'MutatingWebhookConfiguration', displayName: 'Mutating Webhook Configs', sortOrder: 11 },
-      { group: 'admissionregistration.k8s.io', resource: 'validatingwebhookconfigurations', kind: 'ValidatingWebhookConfiguration', displayName: 'Validating Webhook Configs', sortOrder: 12 },
+    ],
+  },
+  {
+    id: 'admission',
+    label: 'Admission',
+    resources: [
+      { group: 'admissionregistration.k8s.io', resource: 'mutatingwebhookconfigurations', kind: 'MutatingWebhookConfiguration', displayName: 'Mutating Webhook Configs', sortOrder: 1 },
+      { group: 'admissionregistration.k8s.io', resource: 'validatingwebhookconfigurations', kind: 'ValidatingWebhookConfiguration', displayName: 'Validating Webhook Configs', sortOrder: 2 },
     ],
   },
   {
