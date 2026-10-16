@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -42,10 +43,11 @@ type TerminalInfo struct {
 }
 
 type terminalSession struct {
-	id   string
-	cmd  *exec.Cmd
-	pty  *os.File
-	done chan struct{}
+	id                string
+	cmd               *exec.Cmd
+	pty               *os.File
+	done              chan struct{}
+	kubeconfigCleanup func()
 }
 
 type terminalManager struct {
@@ -55,6 +57,7 @@ type terminalManager struct {
 }
 
 func newTerminalManager(app *App) *terminalManager {
+	go kube.SweepStaleTerminalKubeconfigs()
 	return &terminalManager{
 		app:      app,
 		sessions: make(map[string]*terminalSession),
@@ -140,18 +143,30 @@ func (m *terminalManager) start(opts TerminalOptions) (TerminalInfo, error) {
 	shell := resolveTerminalShell(opts.Shell)
 	kubeconfig := strings.TrimSpace(opts.Kubeconfig)
 	contextName := strings.TrimSpace(opts.Context)
+	// Empty namespace → the context's own namespace (or "default").
 	namespace := strings.TrimSpace(opts.Namespace)
-	if namespace == "" {
-		namespace = "default"
+
+	shellKube, err := kube.PrepareTerminalShellKube(kubeconfig, contextName, namespace)
+	if errors.Is(err, kube.ErrKubeconfigUnavailable) {
+		// No usable kubeconfig/context: still give the user a shell, clearly unpinned.
+		shellKube = kube.PlainTerminalShellKube(err)
+	} else if err != nil {
+		return TerminalInfo{}, fmt.Errorf("prepare terminal kubeconfig: %w", err)
 	}
 
-	cmd, err := buildClusterShellCommand(shell, kubeconfig, contextName, namespace, m.app.activeClusterVersion())
+	cmd, err := buildClusterShellCommand(shell, shellKube, m.app.activeClusterVersion())
 	if err != nil {
+		if shellKube.Cleanup != nil {
+			shellKube.Cleanup()
+		}
 		return TerminalInfo{}, err
 	}
 
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
+		if shellKube.Cleanup != nil {
+			shellKube.Cleanup()
+		}
 		return TerminalInfo{}, fmt.Errorf("start pty: %w", err)
 	}
 
@@ -166,10 +181,11 @@ func (m *terminalManager) start(opts TerminalOptions) (TerminalInfo, error) {
 
 	id := uuid.NewString()
 	sess := &terminalSession{
-		id:   id,
-		cmd:  cmd,
-		pty:  ptmx,
-		done: make(chan struct{}),
+		id:                id,
+		cmd:               cmd,
+		pty:               ptmx,
+		done:              make(chan struct{}),
+		kubeconfigCleanup: shellKube.Cleanup,
 	}
 
 	m.mu.Lock()
@@ -182,8 +198,8 @@ func (m *terminalManager) start(opts TerminalOptions) (TerminalInfo, error) {
 	return TerminalInfo{
 		ID:        id,
 		Shell:     shell,
-		Context:   contextName,
-		Namespace: namespace,
+		Context:   shellKube.Context,
+		Namespace: shellKube.Namespace,
 	}, nil
 }
 
@@ -232,6 +248,10 @@ func (m *terminalManager) closeSessionLocked(id string, sess *terminalSession) {
 	default:
 		close(sess.done)
 	}
+	if sess.kubeconfigCleanup != nil {
+		sess.kubeconfigCleanup()
+		sess.kubeconfigCleanup = nil
+	}
 	if sess.pty != nil {
 		_ = sess.pty.Close()
 	}
@@ -277,44 +297,47 @@ func (m *terminalManager) waitExit(id string, sess *terminalSession) {
 	}
 }
 
-func buildClusterShellCommand(shell, kubeconfig, contextName, namespace, clusterVersion string) (*exec.Cmd, error) {
+func buildClusterShellCommand(shell string, tk kube.TerminalShellKube, clusterVersion string) (*exec.Cmd, error) {
 	shell = strings.TrimSpace(shell)
 	if shell == "" {
 		return nil, fmt.Errorf("no shell available")
 	}
 
 	if goruntime.GOOS == "windows" {
-		return buildWindowsShellCommand(shell, kubeconfig, contextName, namespace, clusterVersion)
+		return buildWindowsShellCommand(shell, tk, clusterVersion)
 	}
 
-	script := buildUnixInitScript(shell, kubeconfig, contextName, namespace)
+	script := buildUnixInitScript(shell, tk)
 	wrapper := "/bin/bash"
 	if _, err := os.Stat(wrapper); err != nil {
 		wrapper = shell
 	}
 	cmd := exec.Command(wrapper, "-l", "-c", script)
-	cmd.Env = clusterShellEnv(kubeconfig, contextName, namespace, clusterVersion)
+	cmd.Env = clusterShellEnv(tk.KubeconfigPath, tk.Context, tk.Namespace, clusterVersion)
 	cmd.Dir = homeDir()
 	return cmd, nil
 }
 
-func buildUnixInitScript(shell, kubeconfig, contextName, namespace string) string {
+// terminalScopeLabel describes what the shell's kubectl points at.
+func terminalScopeLabel(tk kube.TerminalShellKube) string {
+	if tk.Context == "" {
+		return "no cluster context"
+	}
+	return fmt.Sprintf("context: %s · namespace: %s", tk.Context, tk.Namespace)
+}
+
+func buildUnixInitScript(shell string, tk kube.TerminalShellKube) string {
 	var b strings.Builder
-	if kubeconfig != "" {
-		b.WriteString("export KUBECONFIG=" + shellQuote(kubeconfig) + "; ")
+	if tk.KubeconfigPath != "" {
+		b.WriteString("export KUBECONFIG=" + shellQuote(tk.KubeconfigPath) + "; ")
 	}
-	if contextName != "" {
-		b.WriteString("command -v kubectl >/dev/null 2>&1 && kubectl config use-context ")
-		b.WriteString(shellQuote(contextName))
-		b.WriteString(" >/dev/null 2>&1; ")
+	// Values go through printf arguments so names containing quotes or % are inert.
+	b.WriteString(`printf '\n\033[36mKlew cluster shell\033[0m — %s · %s\n' `)
+	b.WriteString(shellQuote(filepathBase(shell)) + " " + shellQuote(terminalScopeLabel(tk)) + "; ")
+	if tk.Notice != "" {
+		b.WriteString(`printf '\033[33m%s\033[0m\n' ` + shellQuote(tk.Notice) + "; ")
 	}
-	if namespace != "" {
-		b.WriteString("command -v kubectl >/dev/null 2>&1 && kubectl config set-context --current --namespace=")
-		b.WriteString(shellQuote(namespace))
-		b.WriteString(" >/dev/null 2>&1; ")
-	}
-	shellBase := filepathBase(shell)
-	fmt.Fprintf(&b, "printf '\\n\\033[36mKlew cluster shell\\033[0m — %s · context: %s · namespace: %s\\n\\n'; ", shellBase, contextName, namespace)
+	b.WriteString("printf '\\n'; ")
 	b.WriteString("exec " + shellQuote(shell) + " -l")
 	return b.String()
 }
@@ -338,13 +361,18 @@ func filepathBase(path string) string {
 	return path
 }
 
-func buildWindowsShellCommand(shell, kubeconfig, contextName, namespace, clusterVersion string) (*exec.Cmd, error) {
-	ps := fmt.Sprintf(
-		"$env:KUBECONFIG=%q; if (Get-Command kubectl -ErrorAction SilentlyContinue) { kubectl config use-context %q 2>$null; kubectl config set-context --current --namespace=%q 2>$null }; Write-Host \"Klew cluster shell — context: %s · namespace: %s\"; %s",
-		kubeconfig, contextName, namespace, contextName, namespace, shell,
-	)
-	cmd := exec.Command("powershell.exe", "-NoLogo", "-NoExit", "-Command", ps)
-	cmd.Env = clusterShellEnv(kubeconfig, contextName, namespace, clusterVersion)
+func buildWindowsShellCommand(shell string, tk kube.TerminalShellKube, clusterVersion string) (*exec.Cmd, error) {
+	var ps strings.Builder
+	if tk.KubeconfigPath != "" {
+		ps.WriteString("$env:KUBECONFIG=" + psQuote(tk.KubeconfigPath) + "; ")
+	}
+	ps.WriteString("Write-Host " + psQuote("Klew cluster shell — "+terminalScopeLabel(tk)) + "; ")
+	if tk.Notice != "" {
+		ps.WriteString("Write-Host -ForegroundColor Yellow " + psQuote(tk.Notice) + "; ")
+	}
+	ps.WriteString("& " + psQuote(shell))
+	cmd := exec.Command("powershell.exe", "-NoLogo", "-NoExit", "-Command", ps.String())
+	cmd.Env = clusterShellEnv(tk.KubeconfigPath, tk.Context, tk.Namespace, clusterVersion)
 	cmd.Dir = homeDir()
 	return cmd, nil
 }
@@ -412,5 +440,10 @@ func shellQuote(v string) string {
 	if v == "" {
 		return "''"
 	}
-	return "'" + strings.ReplaceAll(v, "'", `'\'"'"'`) + "'"
+	return "'" + strings.ReplaceAll(v, "'", `'"'"'`) + "'"
+}
+
+// psQuote returns a PowerShell single-quoted literal.
+func psQuote(v string) string {
+	return "'" + strings.ReplaceAll(v, "'", "''") + "'"
 }

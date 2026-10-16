@@ -5,6 +5,7 @@ import {
   filterEntitiesBySearch,
   pickDefaultKindSelection,
   resolveKindSelection,
+  toggleAccordionGroup,
   visibleCategories,
 } from './resourceNavigation.js'
 
@@ -126,5 +127,19 @@ describe('resourceNavigation', () => {
       kind: 'Service',
       resourceId: 'v1/services',
     })
+  })
+})
+
+describe('toggleAccordionGroup', () => {
+  it('opens one category and closes the others', () => {
+    expect([...toggleAccordionGroup(new Set(['workloads']), 'network')]).toEqual(['network'])
+  })
+
+  it('closes the open category when toggled again', () => {
+    expect(toggleAccordionGroup(new Set(['network']), 'network').size).toBe(0)
+  })
+
+  it('opens from fully collapsed', () => {
+    expect([...toggleAccordionGroup(new Set(), 'storage')]).toEqual(['storage'])
   })
 })

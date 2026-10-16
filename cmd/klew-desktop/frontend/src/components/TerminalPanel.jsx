@@ -127,8 +127,9 @@ export function TerminalPanel({
     setFindQuery(query)
     const trimmed = query.trim()
     const api = getSearchApi()
+    if (!api) return
     if (!trimmed) {
-      api?.clearDecorations()
+      api.clearDecorations()
       setFindResult({ index: -1, count: 0 })
       return
     }

@@ -4,6 +4,34 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 
 ## [Unreleased]
 
+## [1.4.0] — 2026-10-15
+
+### Look and feel
+
+- **Floating panes** — explorer, workspace, inspector, and console are rounded cards on one canvas with gutters instead of hairlines; works across every dark, black, and light theme.
+- **Softer surfaces** — rounded hover/selection rows in tables, filled inspector sections and overview tiles instead of boxes-in-boxes, pill console tabs.
+- **Home** — braille-style dot wordmark and a new tagline.
+
+### Layout
+
+- **Adaptive rail** — the activity rail shows icons only while an explorer is beside it and labels elsewhere; the toggle returns to automatic when it matches.
+- **Explorer yields to the inspector** — when an open inspector would squeeze the workspace below a usable width, the explorer folds to its icon strip and returns when the inspector closes.
+- **Explorer fits its labels** — width fits most resource-kind names; dragging pins your width (double-click the edge to refit).
+- **Inspector** — opens automatically when you select a resource, as a side panel rather than a takeover; remembers the size you drag it to (double-click the edge to reset); click the workspace to dismiss. Collapsed edge shows a hover-revealed handle.
+
+### Resources browse
+
+- **Accordion navigation** — one category open at a time, animated; collapsed groups no longer render their rows.
+- **Resizable columns** — drag a header edge to resize, double-click to fit content, arrow keys to nudge; widths persist per kind with an Auto widths reset.
+- **Loading** — progress bar and skeleton rows; slow first loads show cluster API discovery status with Reconnect and Proxy actions.
+
+### Terminal
+
+- **Kubeconfig isolation** — each session uses a private session copy pinned to the selected context and namespace; your kubeconfig file is no longer modified. Stale session copies from crashed processes are cleaned up.
+- **Plain shell fallback** — a missing or broken kubeconfig opens an unpinned shell with an explanation instead of failing.
+- **Find** — matches are found and highlighted again.
+- **Shell picker** — first-run dialog renders as a proper card.
+
 ## [1.3.6] — 2026-09-27
 
 ### Admission

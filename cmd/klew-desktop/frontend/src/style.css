@@ -3216,6 +3216,32 @@ body {
   transform: rotate(90deg);
 }
 
+/* Accordion panel: grid-row 0fr → 1fr animates to the content's natural height. */
+.resource-nav-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 0.2s ease,
+    opacity 0.16s ease;
+}
+
+.resource-nav-group.is-open > .resource-nav-panel {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.resource-nav-panel-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .resource-nav-panel {
+    transition: none;
+  }
+}
+
 .resource-nav-kinds {
   list-style: none;
   margin: 0 0 4px 11px;
@@ -3466,6 +3492,7 @@ body {
   overflow: auto;
   flex: 1;
   min-height: 0;
+  min-width: max(100%, var(--entity-col-name-width, 0px));
 }
 
 .entity-list-item {
@@ -3519,10 +3546,8 @@ body {
 .entity-list-led.status-unknown { background: var(--text-secondary); opacity: 0.45; }
 
 .entity-list-name {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -4333,6 +4358,8 @@ body {
   flex: 1;
   min-height: 0;
   overflow: auto;
+  overflow-x: auto;
+  overscroll-behavior: contain;
 }
 
 .entity-table-grid {
@@ -4444,6 +4471,70 @@ body {
   overflow: hidden;
 }
 
+/* Column resize: grip on each header's right edge. */
+.entity-table-grid th {
+  position: relative;
+}
+
+.entity-table-col-resize {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  bottom: 0;
+  width: 8px;
+  z-index: 2;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+}
+
+.entity-table-col-resize::after {
+  content: '';
+  position: absolute;
+  top: 25%;
+  bottom: 25%;
+  left: 3px;
+  width: 2px;
+  border-radius: 999px;
+  background: var(--border);
+  opacity: 0;
+  transition: opacity 0.12s ease, background-color 0.12s ease;
+}
+
+.entity-table-grid thead:hover .entity-table-col-resize::after {
+  opacity: 1;
+}
+
+.entity-table-col-resize:hover::after,
+.entity-table-col-resize:active::after,
+.entity-table-col-resize:focus-visible::after {
+  top: 0;
+  bottom: 0;
+  opacity: 1;
+  background: var(--investigation-accent, var(--accent));
+}
+
+.entity-table-col-resize:focus-visible {
+  outline: none;
+}
+
+/* Manual widths: fixed layout so each column holds exactly its set width. */
+.entity-table .entity-table-grid.is-sized {
+  table-layout: fixed;
+  min-width: 0;
+}
+
+.entity-table .entity-table-grid.is-sized .col-name,
+.entity-table .entity-table-grid.is-measuring .col-name {
+  min-width: 0;
+}
+
+.entity-table-reset-widths {
+  flex-shrink: 0;
+  align-self: center;
+  font-size: 11px;
+}
+
 .entity-table-row {
   cursor: pointer;
 }
@@ -4462,10 +4553,8 @@ body {
 }
 
 .entity-table-name {
-  display: block;
-  max-width: min(280px, 32vw);
-  overflow: hidden;
-  text-overflow: ellipsis;
+  display: inline-block;
+  max-width: none;
   white-space: nowrap;
 }
 
@@ -4498,7 +4587,11 @@ body {
   opacity: 0.45;
 }
 
-.entity-table .col-name { min-width: 9rem; }
+.entity-table .col-name {
+  min-width: var(--entity-col-name-width, 9rem);
+  max-width: none;
+  width: auto;
+}
 .entity-table .col-status { min-width: 6.5rem; }
 .entity-table .col-ns { min-width: 5.5rem; }
 .entity-table .col-node { min-width: 7.5rem; max-width: 14rem; }
@@ -13585,6 +13678,121 @@ button.cluster-context-chip.is-link:hover {
   color: var(--text-secondary);
 }
 
+.klew-loading-bar {
+  --klew-bar-h: 2px;
+  position: relative;
+  height: var(--klew-bar-h);
+  width: 100%;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--investigation-accent) 10%, var(--border));
+}
+
+.klew-loading-bar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 38%;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--investigation-accent) 55%, white),
+    var(--investigation-accent)
+  );
+  box-shadow: 0 0 12px color-mix(in srgb, var(--investigation-accent) 45%, transparent);
+  animation: klew-loading-bar-slide 1.15s cubic-bezier(0.45, 0.05, 0.25, 1) infinite;
+}
+
+@keyframes klew-loading-bar-slide {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(320%); }
+}
+
+.klew-rows-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 16px 16px;
+}
+
+.klew-skeleton-row {
+  height: 34px;
+  border-radius: 8px;
+  background: linear-gradient(
+    100deg,
+    color-mix(in srgb, var(--surface-2) 92%, transparent) 35%,
+    color-mix(in srgb, var(--investigation-accent) 8%, var(--surface-2)) 50%,
+    color-mix(in srgb, var(--surface-2) 92%, transparent) 65%
+  );
+  background-size: 220% 100%;
+  animation: klew-skeleton-shimmer 1.35s ease-in-out infinite;
+}
+
+@keyframes klew-skeleton-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+.resource-pane-loading {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: min(420px, 55vh);
+  padding: 28px 24px 36px;
+  overflow: hidden;
+}
+
+.resource-pane-loading-inner {
+  width: min(440px, 92%);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.resource-pane-loading-bar {
+  height: 3px;
+  border-radius: 999px;
+}
+
+.resource-pane-loading-skeleton {
+  padding: 0;
+}
+
+.resource-pane-loading-slow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+}
+
+.resource-pane-loading-hint {
+  margin: 0;
+  font-size: 0.85em;
+}
+
+.resource-pane-refresh-bar {
+  flex-shrink: 0;
+  margin: 0;
+}
+
+.workload-overview-loading-bar {
+  margin: 0 0 12px;
+}
+
+.inspector-loading-bar {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.inspect-panel-loading-bar {
+  margin: 0 0 12px;
+}
+
 .cluster-fetch-panel {
   display: flex;
   flex-direction: column;
@@ -14211,8 +14419,8 @@ button.cluster-context-chip.is-link:hover {
 
 .pane-resize-handle {
   position: relative;
-  z-index: 2;
-  width: 4px;
+  z-index: 12;
+  width: 7px;
   flex-shrink: 0;
   cursor: col-resize;
   touch-action: none;
@@ -14225,8 +14433,29 @@ button.cluster-context-chip.is-link:hover {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: -6px;
-  right: -6px;
+  left: -10px;
+  right: -10px;
+}
+
+.pane-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 3px;
+  height: 28px;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-muted) 35%, transparent);
+  opacity: 0.55;
+  pointer-events: none;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.pane-resize-handle:hover::after,
+.pane-resize-handle:active::after {
+  opacity: 1;
+  background: color-mix(in srgb, var(--investigation-accent) 70%, var(--text-muted));
 }
 
 .pane-resize-handle:hover,
@@ -14237,6 +14466,68 @@ button.cluster-context-chip.is-link:hover {
 .app-shell-panes.inspector-right > .pane-resize-handle {
   margin: 10px 0;
   border-radius: 999px;
+}
+
+/* Collapsed-inspector edge: a slim transparent gutter (kept in flow so it never
+   covers the workspace scrollbar) that reveals an accent bar on hover.
+   Click opens the inspector, drag pulls it open. */
+.app-inspector-shutter {
+  position: relative;
+  flex: 0 0 6px;
+  width: 6px;
+  z-index: 11;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+}
+
+.app-inspector-shutter::after {
+  content: '';
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: 1px;
+  width: 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--investigation-accent) 55%, transparent);
+  opacity: 0;
+  transform: scaleX(0.5);
+  transition: opacity 140ms ease, transform 140ms ease;
+  pointer-events: none;
+}
+
+.app-inspector-shutter:hover::after,
+.app-inspector-shutter:active::after {
+  opacity: 1;
+  transform: scaleX(1);
+}
+
+.app-inspector-shutter-bottom {
+  flex: 0 0 6px;
+  width: auto;
+  height: 6px;
+  cursor: row-resize;
+}
+
+.app-inspector-shutter-bottom::after {
+  top: 1px;
+  bottom: auto;
+  left: 10px;
+  right: 10px;
+  width: auto;
+  height: 4px;
+  transform: scaleY(0.5);
+}
+
+.app-inspector-shutter-bottom:hover::after,
+.app-inspector-shutter-bottom:active::after {
+  transform: scaleY(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-inspector-shutter::after {
+    transition: none;
+  }
 }
 
 .app-inspector {
@@ -14603,7 +14894,8 @@ button.cluster-context-chip.is-link:hover {
 }
 
 .resources-workbench-shell .entity-table .col-name {
-  min-width: 10rem;
+  min-width: var(--entity-col-name-width, 10rem);
+  max-width: none;
 }
 
 .resources-workbench-shell .entity-table .col-status {
@@ -15433,8 +15725,18 @@ button.cluster-context-chip.is-link:hover {
   border-bottom: 1px solid color-mix(in srgb, var(--crit) 25%, var(--border));
 }
 
+/* Same card surface as .modal.scope-picker — without it the dialog had no
+   background and its text floated over the page. */
 .terminal-shell-modal {
   width: min(420px, 100%);
+  max-height: min(85vh, 720px);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
 }
 
 .terminal-shell-options {
@@ -17603,4 +17905,385 @@ button.cluster-context-chip.is-link:hover {
 
 .helm-notes-warn-icon {
   margin-right: 6px;
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   Floating panes — visual refresh layer.
+   The app sits on one canvas; explorer, workspace, inspector and console are
+   rounded cards separated by gutters instead of full-bleed slabs with
+   hairlines. Built only on theme tokens, so every theme inherits it.
+   Kept last so it wins at equal specificity; remove this block to revert.
+   ════════════════════════════════════════════════════════════════════════ */
+:root {
+  --app-canvas: var(--workspace-bg);
+  --pane-gap: 8px;
+  --pane-radius: 14px;
+  --radius-control: 8px;
+  --pane-border: color-mix(in srgb, var(--border) 65%, transparent);
+  --pane-shadow:
+    0 1px 0 color-mix(in srgb, var(--text) 4%, transparent) inset,
+    0 1px 2px color-mix(in srgb, #000 18%, transparent),
+    0 8px 24px color-mix(in srgb, #000 14%, transparent);
+  --row-radius: 8px;
+}
+
+:root[data-theme-mode='light'] {
+  --app-canvas: var(--sidebar-bg);
+  --pane-border: color-mix(in srgb, var(--border) 80%, transparent);
+  --pane-shadow:
+    0 1px 2px color-mix(in srgb, #0f172a 6%, transparent),
+    0 6px 20px color-mix(in srgb, #0f172a 6%, transparent);
+}
+
+body,
+.app-shell {
+  background: var(--app-canvas);
+}
+
+/* Chrome around the panes melts into the canvas. */
+.topbar {
+  background: var(--app-canvas);
+  border-bottom-color: transparent;
+}
+
+.activity-rail {
+  background: var(--app-canvas);
+  border-right-color: transparent;
+}
+
+/* Pane row: gutters come from padding + resize handles. */
+.app-shell-panes {
+  padding: 0 var(--pane-gap) var(--pane-gap) 0;
+}
+
+.context-explorer:not(.context-explorer-collapsed),
+.app-workspace {
+  background: var(--surface);
+  border: 1px solid var(--pane-border);
+  border-radius: var(--pane-radius);
+  box-shadow: var(--pane-shadow);
+  overflow: hidden;
+}
+
+.context-explorer-collapsed {
+  border: 1px solid var(--pane-border);
+  border-radius: var(--pane-radius);
+  background: color-mix(in srgb, var(--surface) 70%, var(--app-canvas));
+}
+
+/* Resize handles double as the gutter between cards. */
+.app-shell-panes > .pane-resize-handle {
+  width: var(--pane-gap);
+}
+
+.app-shell-panes.inspector-right > .pane-resize-handle {
+  margin: 0;
+}
+
+.app-inspector {
+  margin: 0;
+  border: 1px solid var(--pane-border);
+  border-radius: var(--pane-radius);
+  background: var(--surface);
+  box-shadow:
+    inset 0 2px 0 color-mix(in srgb, var(--investigation-accent, var(--accent)) 70%, transparent),
+    var(--pane-shadow);
+}
+
+.app-shell-main > .app-inspector-bottom,
+.app-inspector-bottom {
+  width: calc(100% - var(--pane-gap)) !important;
+  margin: 0 var(--pane-gap) var(--pane-gap) 0;
+  border-radius: var(--pane-radius);
+}
+
+/* Collapsed-inspector shutter lives in the outer gutter, not over content. */
+.app-inspector-shutter {
+  flex-basis: var(--pane-gap);
+  width: var(--pane-gap);
+  margin-right: calc(-1 * var(--pane-gap));
+}
+
+.app-inspector-shutter::after {
+  left: 2px;
+}
+
+.app-inspector-shutter-bottom {
+  flex-basis: var(--pane-gap);
+  height: var(--pane-gap);
+  margin: calc(-1 * var(--pane-gap)) var(--pane-gap) 0 0;
+}
+
+/* Console dock: canvas strip with segmented tabs; open dock is a card. */
+.stream-dock {
+  background: var(--app-canvas);
+}
+
+.console-dock {
+  background: transparent;
+}
+
+.console-dock-tabs {
+  background: var(--app-canvas);
+  border-top-color: transparent;
+  gap: 2px;
+}
+
+.console-dock-tab {
+  border-radius: 999px;
+}
+
+.console-dock-tab.is-active {
+  background: var(--surface);
+  border-color: var(--pane-border);
+  box-shadow: 0 1px 2px color-mix(in srgb, #000 14%, transparent);
+}
+
+.console-dock.is-expanded {
+  margin: 0 var(--pane-gap) var(--pane-gap);
+  border: 1px solid var(--pane-border);
+  border-radius: var(--pane-radius);
+  background: var(--surface);
+  box-shadow: var(--pane-shadow);
+  overflow: hidden;
+}
+
+.console-dock.is-expanded .console-dock-tabs {
+  background: color-mix(in srgb, var(--surface-2) 60%, var(--surface));
+}
+
+/* Resource nav: soft filled pills instead of outlined boxes. */
+.resource-nav-group-row {
+  border-radius: var(--row-radius);
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+
+.resource-nav-group.is-open .resource-nav-group-row,
+.resource-nav-group-row.is-active {
+  background: color-mix(in srgb, var(--resource-cat-tone, var(--accent)) 10%, transparent);
+  box-shadow: none;
+}
+
+.resource-nav-kinds {
+  border-left-color: color-mix(in srgb, var(--resource-cat-tone, var(--border)) 18%, transparent);
+}
+
+.resource-nav-kind-row {
+  border-radius: var(--row-radius);
+}
+
+.resource-nav-kind-row.selected {
+  background: color-mix(in srgb, var(--resource-cat-tone, var(--accent)) 16%, transparent);
+  border-color: transparent;
+  box-shadow: none;
+}
+
+/* Tables: quieter grid, rounded hover/selection pills inset from the card edge. */
+.entity-table-header {
+  border-bottom-color: var(--pane-border);
+  background: color-mix(in srgb, var(--resource-cat-tone, var(--accent)) 4%, var(--surface));
+}
+
+.entity-table-header::before {
+  display: none;
+}
+
+.entity-table-scroll {
+  padding: 0 6px 6px;
+}
+
+.entity-table-grid thead {
+  box-shadow: 0 1px 0 var(--pane-border);
+}
+
+.entity-table-grid th {
+  border-bottom-color: transparent;
+}
+
+.entity-table-sortable.is-sorted {
+  background: transparent;
+}
+
+.entity-table-grid td {
+  border-bottom-color: color-mix(in srgb, var(--border) 28%, transparent);
+}
+
+.entity-table-row,
+.entity-table-row:hover,
+.entity-table-row.selected {
+  background: transparent;
+}
+
+.entity-table-row:hover > td {
+  background: var(--surface-hover-strong, var(--surface-hover));
+  border-bottom-color: transparent;
+}
+
+.entity-table-row.selected > td {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  border-bottom-color: transparent;
+}
+
+.entity-table-row > td:first-child {
+  border-top-left-radius: var(--row-radius);
+  border-bottom-left-radius: var(--row-radius);
+}
+
+.entity-table-row > td:last-child {
+  border-top-right-radius: var(--row-radius);
+  border-bottom-right-radius: var(--row-radius);
+}
+
+/* Inspector content: filled surfaces instead of bordered boxes-in-boxes. */
+.inspect-section-card,
+.workload-trace,
+.inspect-tab-guide,
+.inspect-browse-intro {
+  border-color: transparent;
+  border-radius: 12px;
+  box-shadow: none;
+}
+
+.inspect-section-card,
+.workload-trace {
+  background: color-mix(in srgb, var(--surface-2) 70%, var(--surface));
+}
+
+.inspect-tab-guide {
+  border-left-width: 1px;
+  background: color-mix(in srgb, var(--investigation-accent, var(--accent)) 7%, var(--surface));
+}
+
+.inspect-browse-intro {
+  background: color-mix(in srgb, var(--investigation-accent, var(--accent)) 6%, var(--surface));
+}
+
+/* Workloads overview: filled tiles, no frame-within-frame. */
+.workload-overview-metrics {
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.workload-overview-summary,
+.resource-metric-card,
+.workload-kind-card {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--surface-2) 72%, var(--surface));
+}
+
+.workload-overview-summary {
+  box-shadow: none;
+}
+
+.workload-kind-card {
+  box-shadow: none;
+}
+
+.workload-kind-card:hover {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--surface-2) 90%, var(--surface));
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--card-tone) 10%, transparent);
+}
+
+/* Toolbar wraps instead of overlapping when the workspace is narrow: the
+   controls keep their content width and the meta group drops to a new line. */
+.scope-toolbar {
+  flex-wrap: wrap;
+  row-gap: 8px;
+  border-bottom-color: var(--pane-border);
+}
+
+.scope-toolbar-controls {
+  flex: 1 0 auto;
+}
+
+.scope-toolbar-meta {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+/* Controls: one consistent, slightly rounder radius. */
+.btn,
+.scope-toolbar-btn,
+.topbar input,
+.scope-toolbar input[type='search'],
+.scope-toolbar input[type='text'] {
+  border-radius: var(--radius-control);
+}
+
+/* Braille-style dot wordmark (Home hero). An accent sweep runs across the
+   dot columns, echoing the orbit's scan. */
+.braille-wordmark {
+  display: block;
+  margin: 0 auto;
+  overflow: visible;
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--investigation-accent, var(--accent)) 28%, transparent));
+}
+
+.braille-wordmark-dot {
+  fill: var(--text);
+  animation: braille-wordmark-sweep 5.2s ease-in-out infinite;
+  animation-delay: calc(var(--col, 0) * 22ms);
+}
+
+@keyframes braille-wordmark-sweep {
+  0%, 100% { fill: var(--text); }
+  3% { fill: var(--investigation-accent, var(--accent)); }
+  9% { fill: var(--text); }
+}
+
+.collect-splash-title-braille {
+  line-height: 0;
+  margin-bottom: 10px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .braille-wordmark-dot {
+    animation: none;
+  }
+}
+
+/* Home tagline: spaced small caps, split by a pulsing accent dot that echoes
+   the braille wordmark. */
+.welcome.welcome-orbit .collect-splash.idle .collect-splash-tagline {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px 14px;
+  margin-top: 14px;
+  font-family: var(--sans);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.collect-splash-tagline-accent {
+  color: var(--investigation-accent, var(--accent));
+}
+
+.collect-splash-tagline-dot {
+  flex-shrink: 0;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--investigation-accent, var(--accent));
+  box-shadow: 0 0 8px color-mix(in srgb, var(--investigation-accent, var(--accent)) 60%, transparent);
+  animation: collect-splash-tagline-pulse 2.6s ease-in-out infinite;
+}
+
+@keyframes collect-splash-tagline-pulse {
+  0%, 100% { opacity: 0.45; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .collect-splash-tagline-dot {
+    animation: none;
+  }
 }

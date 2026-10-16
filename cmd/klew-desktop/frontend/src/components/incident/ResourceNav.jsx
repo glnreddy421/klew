@@ -1,3 +1,4 @@
+import { useEffect, useId, useRef, useState } from 'react'
 import { getKindCountDisplay, resourceMetadataTitle } from '../../lib/resourceCatalog.js'
 import { categorySupportsOverview, isCategoryOverview } from '../../lib/resourceNavigation.js'
 import { resourceCategoryToneClass } from '../../lib/resourceCategoryIcons.js'
@@ -94,6 +95,9 @@ function ResourceKindList({
   )
 }
 
+/** Matches the .resource-nav-panel grid-row transition (0.2s) plus a little slack. */
+const PANEL_CLOSE_MS = 260
+
 function ResourceGroupSection({
   category,
   expanded,
@@ -113,6 +117,23 @@ function ResourceGroupSection({
   }, 0)
 
   const toneClass = resourceCategoryToneClass(category.id)
+  const panelId = useId()
+  // Kind rows render only while open (plus the close animation), so collapsed
+  // groups cost nothing on count refreshes — clusters can have hundreds of CRDs.
+  const [closing, setClosing] = useState(false)
+  const wasExpandedRef = useRef(expanded)
+  useEffect(() => {
+    const wasExpanded = wasExpandedRef.current
+    wasExpandedRef.current = expanded
+    if (expanded || !wasExpanded) {
+      setClosing(false)
+      return undefined
+    }
+    setClosing(true)
+    const t = setTimeout(() => setClosing(false), PANEL_CLOSE_MS)
+    return () => clearTimeout(t)
+  }, [expanded])
+  const renderKinds = expanded || closing
 
   return (
     <div className={[
@@ -129,6 +150,7 @@ function ResourceGroupSection({
           activeInGroup ? 'is-active' : '',
         ].filter(Boolean).join(' ')}
         aria-expanded={expanded}
+        aria-controls={panelId}
         onClick={onToggle}
       >
         <Chevron open={expanded} />
@@ -138,23 +160,32 @@ function ResourceGroupSection({
           <span className="resource-nav-group-count">{categoryCount}</span>
         )}
       </button>
-      {expanded && (
-        <ResourceKindList
-          category={category}
-          selectedGroupId={selectedGroupId}
-          selectedKind={selectedKind}
-          selectedResourceId={selectedResourceId}
-          onSelectKind={onSelectKind}
-          onSelectOverview={onSelectOverview}
-          countsLoading={countsLoading}
-        />
-      )}
+      {/* Panel stays mounted so open/close can animate; inert keeps hidden rows out of tab order. */}
+      <div
+        id={panelId}
+        className="resource-nav-panel"
+        {...(expanded ? {} : { inert: '', 'aria-hidden': true })}
+      >
+        <div className="resource-nav-panel-inner">
+          {renderKinds && (
+          <ResourceKindList
+            category={category}
+            selectedGroupId={selectedGroupId}
+            selectedKind={selectedKind}
+            selectedResourceId={selectedResourceId}
+            onSelectKind={onSelectKind}
+            onSelectOverview={onSelectOverview}
+            countsLoading={countsLoading}
+          />
+          )}
+        </div>
+      </div>
     </div>
   )
 }
 
 /**
- * Vertical resource-kind picker — categories expand, kinds select.
+ * Vertical resource-kind picker — accordion categories (one open at a time), kinds select.
  */
 export function ResourceNav({
   categories = [],

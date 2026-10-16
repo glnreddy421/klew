@@ -20,6 +20,7 @@ import { buildComponentInspect } from '../lib/componentInspect'
 import { mergeInspect, normalizeObjectDetail } from '../lib/objectDetails'
 import { GetObjectDetails } from '../../wailsjs/go/main/App'
 import { useScopeBrowse } from '../context/ScopeBrowseContext.jsx'
+import { ResourcesPaneAutoFit } from '../components/shell/ResourcesPaneAutoFit.jsx'
 import { hasClusterContexts } from '../lib/clusterIdentity.js'
 import { useShellInspector } from '../context/ShellInspectorContext.jsx'
 import {
@@ -180,6 +181,7 @@ export function ResourcesWorkbenchView({ shellMode = false }) {
 
   return (
     <div className={`workbench-surface resources-workbench layout-${layoutMode} ${shellMode ? 'resources-workbench-shell' : ''}`}>
+      {shellMode && <ResourcesPaneAutoFit />}
       {investigationSession?.active && (
         <InvestigationSessionBanner
           namespaceLabel={investigationSession.namespaceLabel}
@@ -244,8 +246,7 @@ export function ResourcesWorkbenchInspector() {
 
   const openInspect = useCallback((key) => {
     handleInspect?.(key)
-    shellInspector?.expandInspector?.()
-  }, [handleInspect, shellInspector])
+  }, [handleInspect])
 
   if (!ctx?.inspectRow && !ctx?.inspectKey) {
     return (

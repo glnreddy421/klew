@@ -22,7 +22,7 @@ import { hasContainerPanelData, parseInspectContainers } from '../../lib/inspect
 import { buildRelationshipGraph } from '../../lib/relationshipGraph'
 import { findServiceEndpointFields } from '../../lib/serviceEndpoints'
 import { isRbacForbiddenMessage } from '../../lib/rbacAccess.js'
-import { InlineLoading, LoadingState } from '../LoadingSpinner.jsx'
+import { EntityRowsSkeleton, InlineLoading, LoadingBar } from '../LoadingSpinner.jsx'
 import { activeTabGuide, buildBrowseTabs, INSPECT_TAB_META } from '../../lib/inspectTabGuide.js'
 import { WorkloadTraceGraph } from '../workloads/WorkloadTraceGraph.jsx'
 
@@ -86,9 +86,12 @@ export function ComponentInspectPanel({
   if (!inspect) {
     return (
       <div className="inspect-empty muted">
-        {loading
-          ? <LoadingState message="Loading object details…" />
-          : (emptyHint || 'Select a component to inspect.')}
+        {loading ? (
+          <>
+            <LoadingBar className="inspect-panel-loading-bar" label="Loading object details" />
+            <EntityRowsSkeleton rows={5} />
+          </>
+        ) : (emptyHint || 'Select a component to inspect.')}
       </div>
     )
   }
@@ -263,9 +266,6 @@ function InspectIdentityHeader({ inspect, showFocusCta, onFocus, onInspect, load
   return (
     <header className="inspect-toolbar">
       <div className="inspect-toolbar-start">
-        {loading && (
-          <InlineLoading message="Fetching live details…" className="inspect-loading muted" />
-        )}
         {inspect.adhoc && (
           <span className="inspect-adhoc-tag" title="Fetched on demand — not in investigation scope">
             On demand

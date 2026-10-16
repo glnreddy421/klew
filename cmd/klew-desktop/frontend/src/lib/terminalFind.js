@@ -66,3 +66,16 @@ export function countTerminalMatches(term, query, { caseSensitive = false } = {}
   }
   return count
 }
+
+/**
+ * Run an xterm search call; a throw (e.g. addon misconfiguration) degrades to
+ * "no match" instead of escaping the find input's change handler.
+ */
+export function runTerminalSearch(fn) {
+  try {
+    return fn()
+  } catch (err) {
+    console.error('terminal find failed', err)
+    return false
+  }
+}

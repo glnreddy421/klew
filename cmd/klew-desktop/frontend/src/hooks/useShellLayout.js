@@ -31,9 +31,9 @@ export function useShellLayout(activeTab) {
     patch({ inspectorCollapsed: !layout.inspectorCollapsed })
   }, [layout.inspectorCollapsed, patch])
 
-  const toggleRail = useCallback(() => {
-    patch({ railCollapsed: !layout.railCollapsed })
-  }, [layout.railCollapsed, patch])
+  const setRailMode = useCallback((railMode) => {
+    patch({ railMode })
+  }, [patch])
 
   const setExplorerWidth = useCallback((w) => {
     patch({ explorerWidth: Math.round(w) })
@@ -50,6 +50,8 @@ export function useShellLayout(activeTab) {
         ...prev,
         inspectorPlacement: bottom ? 'bottom' : 'right',
         inspectorCollapsed: false,
+        // A width set for one placement means nothing for the other.
+        inspectorWidthPinned: false,
       }
       if (bottom && prev.inspectorWidth > 320) {
         next.inspectorWidth = 280
@@ -63,7 +65,7 @@ export function useShellLayout(activeTab) {
     layout,
     toggleExplorer,
     toggleInspector,
-    toggleRail,
+    setRailMode,
     setExplorerWidth,
     setInspectorWidth,
     setInspectorPlacement,

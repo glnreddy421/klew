@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { KindIcon } from '../KindIcon'
 import { LogoMark } from '../Logo'
+import { BrailleWordmark } from '../BrailleWordmark.jsx'
 
 const ORBIT_KINDS = ['Pod', 'Deployment', 'Service', 'Ingress', 'ConfigMap', 'Node']
 
@@ -43,9 +44,13 @@ export function CollectingMatchesSplash({ variant = 'collecting' }) {
       <div className="collect-splash-copy">
         {home ? (
           <>
-            <p className="collect-splash-title">Klew</p>
-            <p className="collect-splash-phase">
-              Choose a local cluster to browse resources
+            <p className="collect-splash-title collect-splash-title-braille">
+              <BrailleWordmark text="Klew" />
+            </p>
+            <p className="collect-splash-phase collect-splash-tagline">
+              <span className="collect-splash-tagline-lead">Pick a cluster</span>
+              <span className="collect-splash-tagline-dot" aria-hidden="true" />
+              <span className="collect-splash-tagline-accent">See everything it&apos;s saying</span>
             </p>
           </>
         ) : idle ? (

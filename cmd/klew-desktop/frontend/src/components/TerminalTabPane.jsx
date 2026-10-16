@@ -3,7 +3,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
 import '@xterm/xterm/css/xterm.css'
-import { buildTerminalFindOptions, countTerminalMatches } from '../lib/terminalFind'
+import { buildTerminalFindOptions, countTerminalMatches, runTerminalSearch } from '../lib/terminalFind'
 import {
   CloseTerminal,
   ResizeTerminal,
@@ -86,17 +86,17 @@ export function TerminalTabPane({
     onSearchRegisterRef.current?.({
       findNext: (query, overrides) => {
         fit?.fit()
-        return search.findNext(
+        return runTerminalSearch(() => search.findNext(
           query,
           buildTerminalFindOptions(appearanceRef.current, overrides),
-        )
+        ))
       },
       findPrevious: (query, overrides) => {
         fit?.fit()
-        return search.findPrevious(
+        return runTerminalSearch(() => search.findPrevious(
           query,
           buildTerminalFindOptions(appearanceRef.current, overrides),
-        )
+        ))
       },
       clearDecorations: () => search.clearDecorations(),
       onResults: (cb) => search.onDidChangeResults(cb),
@@ -254,6 +254,9 @@ export function TerminalTabPane({
       theme: terminalXtermTheme(appearanceRef.current),
       scrollback: 5000,
       disableStdin: false,
+      // SearchAddon highlights matches via registerDecoration, a proposed API in
+      // xterm 5 that throws unless this is set — find would match nothing.
+      allowProposedApi: true,
     })
     const fit = new FitAddon()
     const search = new SearchAddon()

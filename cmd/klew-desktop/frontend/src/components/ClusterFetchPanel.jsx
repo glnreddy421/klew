@@ -34,28 +34,40 @@ export function ClusterFetchPanel({
         <p className="cluster-fetch-detail muted">{detail}</p>
       ) : null}
       {showActionRow && (
-        <div className="cluster-fetch-actions">
-          {onReconnect && (
-            <button
-              type="button"
-              className="btn btn-outline btn-sm cluster-fetch-reconnect-btn"
-              onClick={onReconnect}
-              disabled={reconnectBusy}
-            >
-              {reconnectBusy ? 'Connecting…' : 'Reconnect'}
-            </button>
-          )}
-          {onOpenProxySettings && (
-            <button
-              type="button"
-              className="text-link-btn cluster-fetch-proxy-btn"
-              onClick={onOpenProxySettings}
-              disabled={reconnectBusy}
-            >
-              Proxy settings
-            </button>
-          )}
-        </div>
+        <ClusterFetchActions
+          onReconnect={onReconnect}
+          onOpenProxySettings={onOpenProxySettings}
+          reconnectBusy={reconnectBusy}
+        />
+      )}
+    </div>
+  )
+}
+
+/** Reconnect / proxy actions for a slow or stuck cluster fetch. */
+export function ClusterFetchActions({ onReconnect, onOpenProxySettings, reconnectBusy = false }) {
+  if (!onReconnect && !onOpenProxySettings) return null
+  return (
+    <div className="cluster-fetch-actions">
+      {onReconnect && (
+        <button
+          type="button"
+          className="btn btn-outline btn-sm cluster-fetch-reconnect-btn"
+          onClick={onReconnect}
+          disabled={reconnectBusy}
+        >
+          {reconnectBusy ? 'Connecting…' : 'Reconnect'}
+        </button>
+      )}
+      {onOpenProxySettings && (
+        <button
+          type="button"
+          className="text-link-btn cluster-fetch-proxy-btn"
+          onClick={onOpenProxySettings}
+          disabled={reconnectBusy}
+        >
+          Proxy settings
+        </button>
       )}
     </div>
   )

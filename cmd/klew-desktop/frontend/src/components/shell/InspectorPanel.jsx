@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { KindIcon } from '../KindIcon.jsx'
 import { StatusBadge } from '../incident/StatusBadge.jsx'
-import { InlineLoading } from '../LoadingSpinner.jsx'
+import { LoadingBar } from '../LoadingSpinner.jsx'
 import { useScopeBrowse } from '../../context/ScopeBrowseContext.jsx'
 import { prefetchResourceManifest } from '../../lib/manifestCache.js'
 import { buildManifestTarget } from '../../lib/manifestTarget.js'
@@ -95,9 +95,6 @@ export function InspectorPanel({
               {statusLabel && !detailLoading ? (
                 <StatusBadge status={inspect?.status?.tone || inspectRow.status} label={statusLabel} />
               ) : null}
-              {detailLoading ? (
-                <InlineLoading message="Loading…" className="inspector-header-loading muted" />
-              ) : null}
             </>
           ) : (
             <>
@@ -121,6 +118,9 @@ export function InspectorPanel({
           }}
         />
       </header>
+      {detailLoading ? (
+        <LoadingBar className="inspector-loading-bar" label="Loading details" />
+      ) : null}
       <div className="inspector-body">
         {manifestTarget ? (
           <div className="inspector-pane inspector-pane-manifest" hidden={!manifestOpen}>

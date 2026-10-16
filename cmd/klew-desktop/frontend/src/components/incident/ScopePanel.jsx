@@ -12,7 +12,7 @@ import { useCatalogEntities } from '../../hooks/useCatalogEntities.js'
 import { clusterScopeKey, useLazyResourceCounts } from '../../hooks/useLazyResourceCounts.js'
 import { useScopeBrowse } from '../../context/ScopeBrowseContext.jsx'
 import { InlineLoading } from '../LoadingSpinner.jsx'
-import { ClusterFetchPanel } from '../ClusterFetchPanel.jsx'
+import { useShellInspector } from '../../context/ShellInspectorContext.jsx'
 import { DataAgeLabel } from '../DataAgeLabel.jsx'
 import { RefreshButton } from '../RefreshButton.jsx'
 import { ResourceNav } from './ResourceNav.jsx'
@@ -60,6 +60,7 @@ export function ScopePanel({
   reconnectBusy = false,
   clusterMonitoringEnabled = true,
 }) {
+  const shellInspector = useShellInspector()
   const browseCtx = useScopeBrowse()
   const pods = view?.state?.snapshot?.pods || []
   const chain = mode === 'chain'
@@ -119,8 +120,17 @@ export function ScopePanel({
   const searchPlaceholder = entitySearchPlaceholder(nav.selectedKind, effectiveKindGroup?.label)
   const catalogPending = catalogLoading || catalogEnriching
   const entitiesLoading = lazy.loading && canLazyLoad && displayEntities.length === 0
+  // First API discovery has no catalog yet, so canLazyLoad is false — it must
+  // still show the loading state rather than an empty list.
+  const discoveringCatalog = catalogLoading && !catalog
+  const resourceCenterLoading = !isOverview && clusterMonitoringEnabled && (
+    entitiesLoading || discoveringCatalog
+  )
   const entityFetchProps = {
     catalogPending,
+    loadingHint: discoveringCatalog
+      ? 'Discovering cluster APIs — large clusters can take a minute on first load.'
+      : undefined,
     refreshing: lazy.refreshing,
     onRetry: () => lazy.refresh?.(),
     onReconnect,
@@ -179,7 +189,7 @@ export function ScopePanel({
           {!clusterMonitoringEnabled && (
             <span className="scope-toolbar-hint scope-toolbar-warn">Monitoring paused</span>
           )}
-          {catalogLoading && !catalog && clusterMonitoringEnabled && !isOverview && (
+          {catalogLoading && !catalog && clusterMonitoringEnabled && !isOverview && !resourceCenterLoading && (
             <InlineLoading message="Loading catalog…" className="scope-toolbar-hint" />
           )}
           {(catalogEnriching || (catalogLoading && catalog)) && (
@@ -189,6 +199,26 @@ export function ScopePanel({
             <span className="scope-toolbar-hint scope-toolbar-warn" title={catalogError}>
               Limited discovery
             </span>
+          )}
+          {shellInspector?.toggleInspector && (
+            <button
+              type="button"
+              className={`scope-toolbar-btn scope-inspector-toggle ${shellInspector.inspectorCollapsed ? '' : 'is-active'}`}
+              onClick={() => {
+                if (shellInspector.inspectorCollapsed) {
+                  shellInspector.openInspectorExpanded?.()
+                } else {
+                  shellInspector.collapseInspector?.()
+                }
+              }}
+              data-inspector-keep
+              aria-pressed={!shellInspector.inspectorCollapsed}
+              title={shellInspector.inspectorCollapsed
+                ? 'Open inspector'
+                : 'Close inspector'}
+            >
+              Inspector
+            </button>
           )}
           {!isOverview && canLazyLoad && (
             <RefreshButton
@@ -240,17 +270,6 @@ export function ScopePanel({
       </div>
 
       <div className={`scope-browse-split ${entityView === 'table' ? 'scope-browse-table' : 'scope-browse-list'} ${navInExplorer ? 'scope-browse-no-nav' : ''}`}>
-        {catalogLoading && !catalog && !isOverview && (
-          <ClusterFetchPanel
-            className="scope-catalog-loading"
-            message="Discovering cluster APIs…"
-            detail="Large clusters can take a minute on first load."
-            onReconnect={onReconnect}
-            onOpenProxySettings={onOpenProxySettings}
-            reconnectBusy={reconnectBusy}
-          />
-        )}
-        {!catalogLoading || catalog || isOverview ? (
         <>
         {!navInExplorer && (
           <ResourceNav
@@ -282,6 +301,7 @@ export function ScopePanel({
             entities={displayEntities}
             filteredEntities={filteredEntities}
             entitiesLoading={entitiesLoading}
+            resourceCenterLoading={resourceCenterLoading}
             {...entityFetchProps}
             pods={pods}
             browseScope={browseScope}
@@ -300,6 +320,7 @@ export function ScopePanel({
             entities={displayEntities}
             filteredEntities={filteredEntities}
             entitiesLoading={entitiesLoading}
+            resourceCenterLoading={resourceCenterLoading}
             {...entityFetchProps}
             hasSearchQuery={nav.entitySearchQuery.trim()}
             inspectKey={inspectKey}
@@ -310,7 +331,6 @@ export function ScopePanel({
           />
         )}
         </>
-        ) : null}
       </div>
     </div>
   )

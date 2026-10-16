@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { KindIcon } from '../KindIcon'
 import { isAccessDenied, isAccessError, isUnavailable, kindDisplayLabel, resourceMetadataTitle } from '../../lib/resourceCatalog.js'
@@ -12,6 +12,19 @@ import {
   truncateSelector,
 } from '../../lib/entityTable.js'
 import { useEntityTableColumns } from '../../hooks/useEntityTableColumns.js'
+import { useEntityTableColumnWidths } from '../../hooks/useEntityTableColumnWidths.js'
+import {
+  COLUMN_KEYBOARD_STEP,
+  COLUMN_MAX_WIDTH,
+  COLUMN_MIN_WIDTH,
+  clampColumnWidth,
+  completeColumnWidths,
+  hasColumnWidths,
+  measureHeaderWidths,
+  measureNaturalColumnWidths,
+  totalColumnWidth,
+} from '../../lib/entityTableColumnWidths.js'
+import { runPointerColResize } from '../../lib/paneDragResize.js'
 import { EntityTableColumnPicker } from './EntityTableColumnPicker.jsx'
 import { NodeConditionsCell, NodeNameCell, NodeResourceCell } from './NodeTableCells.jsx'
 import { PodMetricCell } from '../metrics/ResourceMetricDisplay.jsx'
@@ -19,7 +32,8 @@ import { buildPodCpuMetric, buildPodMemMetric } from '../../lib/metricDisplay.js
 import { SchedulingTableCell } from './SchedulingTableCells.jsx'
 import { ContainerStatusIndicators } from './ContainerStatusIndicators.jsx'
 import { DeploymentConditionIndicators } from './DeploymentConditionIndicators.jsx'
-import { ClusterFetchPanel } from '../ClusterFetchPanel.jsx'
+import { LoadingBar, ResourcePaneLoading } from '../LoadingSpinner.jsx'
+import { ClusterFetchActions } from '../ClusterFetchPanel.jsx'
 import { ResourceAccessPanel } from './ResourceAccessPanel.jsx'
 import { rowKeysMatch } from '../../lib/matches.js'
 
@@ -58,7 +72,43 @@ function NamespaceCell({ row, browseScope, onBrowseScopeChange }) {
   )
 }
 
-function SortableColumnHeader({ col, sort, onSort }) {
+/** Right-edge grip: drag to resize, double-click (or Enter) to fit content, arrows to nudge. */
+function ColumnResizeHandle({ col, width, onResizeStart, onFit, onNudge }) {
+  return (
+    <span
+      className="entity-table-col-resize"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={`Resize ${col.label} column`}
+      aria-valuenow={width}
+      aria-valuemin={COLUMN_MIN_WIDTH}
+      aria-valuemax={COLUMN_MAX_WIDTH}
+      tabIndex={0}
+      title="Drag to resize · double-click to fit content"
+      onPointerDown={(e) => {
+        if (e.button !== 0) return
+        e.stopPropagation()
+        onResizeStart(col.id, e)
+      }}
+      onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => {
+        e.stopPropagation()
+        onFit(col.id)
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+          e.preventDefault()
+          onNudge(col.id, e.key === 'ArrowRight' ? COLUMN_KEYBOARD_STEP : -COLUMN_KEYBOARD_STEP)
+        } else if (e.key === 'Enter') {
+          e.preventDefault()
+          onFit(col.id)
+        }
+      }}
+    />
+  )
+}
+
+function SortableColumnHeader({ col, sort, onSort, width, resize }) {
   const active = sort.columnId === col.id
   const ascending = active && sort.direction === 'asc'
   const descending = active && sort.direction === 'desc'
@@ -66,6 +116,7 @@ function SortableColumnHeader({ col, sort, onSort }) {
   return (
     <th
       key={col.id}
+      data-col-id={col.id}
       className={[col.className, 'entity-table-sortable', active ? 'is-sorted' : ''].filter(Boolean).join(' ')}
       aria-sort={active ? (ascending ? 'ascending' : 'descending') : 'none'}
     >
@@ -81,9 +132,12 @@ function SortableColumnHeader({ col, sort, onSort }) {
           <span className={['entity-table-sort-arrow', 'down', descending ? 'active' : ''].filter(Boolean).join(' ')}>▼</span>
         </span>
       </button>
+      {resize && <ColumnResizeHandle col={col} width={width} {...resize} />}
     </th>
   )
 }
+
+const ACTIONS_COL_ID = '__actions'
 
 function TableCellClip({ value, className = '', mono = false }) {
   const text = value ?? '—'
@@ -593,7 +647,9 @@ export function EntityTable({
   entities = [],
   filteredEntities = [],
   entitiesLoading = false,
+  resourceCenterLoading = false,
   catalogPending = false,
+  loadingHint,
   onRetry,
   onReconnect,
   onOpenProxySettings,
@@ -617,6 +673,57 @@ export function EntityTable({
     browseScope,
   })
   const [sort, setSort] = useState({ columnId: 'name', direction: 'asc' })
+  const tableRef = useRef(null)
+  const { widths, previewWidths, commitWidths, setWidths, resetWidths } = useEntityTableColumnWidths(resolvedKind)
+  const showActionsColumn = showFocusButton && !!onFocus
+  const layoutIds = useMemo(
+    () => [...columns.map((c) => c.id), ...(showActionsColumn ? [ACTIONS_COL_ID] : [])],
+    [columns, showActionsColumn],
+  )
+  const manualWidths = hasColumnWidths(widths)
+
+  /** Widths for every rendered column: saved, else as currently laid out. */
+  const frozenWidths = useCallback(
+    () => completeColumnWidths(widths, layoutIds, measureHeaderWidths(tableRef.current)),
+    [layoutIds, widths],
+  )
+
+  // Widths freeze (switching to fixed layout) on the first real move, so a plain
+  // click on the grip changes nothing; they persist once, when the drag ends.
+  const startColumnResize = useCallback((colId, e) => {
+    const base = frozenWidths()
+    let moved = false
+    runPointerColResize(e, {
+      startX: e.clientX,
+      startSize: base[colId],
+      min: COLUMN_MIN_WIDTH,
+      max: COLUMN_MAX_WIDTH,
+      onSize: (w) => {
+        moved = true
+        previewWidths(() => ({ ...base, [colId]: Math.round(w) }))
+      },
+      onEnd: () => {
+        if (moved) commitWidths()
+      },
+    })
+  }, [commitWidths, frozenWidths, previewWidths])
+
+  const fitColumn = useCallback((colId) => {
+    const base = frozenWidths()
+    const natural = measureNaturalColumnWidths(tableRef.current)
+    if (natural[colId] == null) return
+    setWidths(() => ({ ...base, [colId]: clampColumnWidth(natural[colId]) }))
+  }, [frozenWidths, setWidths])
+
+  const nudgeColumn = useCallback((colId, delta) => {
+    const base = frozenWidths()
+    setWidths(() => ({ ...base, [colId]: clampColumnWidth(base[colId] + delta) }))
+  }, [frozenWidths, setWidths])
+
+  const columnResize = useMemo(
+    () => ({ onResizeStart: startColumnResize, onFit: fitColumn, onNudge: nudgeColumn }),
+    [fitColumn, nudgeColumn, startColumnResize],
+  )
 
   useEffect(() => {
     setSort({ columnId: 'name', direction: 'asc' })
@@ -640,8 +747,11 @@ export function EntityTable({
     })
   }
 
+  const centerLoading = resourceCenterLoading || (entitiesLoading && sortedRows.length === 0)
+
   const accessBlocked = entities.length === 0
     && !entitiesLoading
+    && !resourceCenterLoading
     && !catalogPending
     && (isAccessDenied(kindGroup) || isUnavailable(kindGroup) || isAccessError(kindGroup))
 
@@ -680,6 +790,16 @@ export function EntityTable({
               </p>
             )}
           </div>
+          {!accessBlocked && manualWidths && (
+            <button
+              type="button"
+              className="text-link-btn entity-table-reset-widths"
+              onClick={resetWidths}
+              title="Return all columns to automatic widths"
+            >
+              Auto widths
+            </button>
+          )}
           {!accessBlocked && selectable.length > 0 && (
             <EntityTableColumnPicker
               columns={selectable}
@@ -699,9 +819,32 @@ export function EntityTable({
             onOpenProxySettings={onOpenProxySettings}
             reconnectBusy={reconnectBusy}
           />
+        ) : centerLoading ? (
+          <ResourcePaneLoading slowHint={loadingHint}>
+            <ClusterFetchActions
+              onReconnect={onReconnect}
+              onOpenProxySettings={onOpenProxySettings}
+              reconnectBusy={reconnectBusy}
+            />
+          </ResourcePaneLoading>
         ) : (
           <div className="entity-table-scroll">
-            <table className="entity-table-grid">
+            {refreshing && sortedRows.length > 0 && (
+              <LoadingBar className="resource-pane-refresh-bar" label="Refreshing resources" />
+            )}
+            <table
+              ref={tableRef}
+              className={['entity-table-grid', manualWidths ? 'is-sized' : ''].filter(Boolean).join(' ')}
+              style={manualWidths ? { width: `${totalColumnWidth(widths, layoutIds)}px` } : undefined}
+              data-inspector-keep
+            >
+              {manualWidths && (
+                <colgroup>
+                  {layoutIds.map((id) => (
+                    <col key={id} style={{ width: `${completeColumnWidths(widths, [id])[id]}px` }} />
+                  ))}
+                </colgroup>
+              )}
               <thead>
                 <tr>
                   {columns.map((col) => (
@@ -710,34 +853,20 @@ export function EntityTable({
                       col={col}
                       sort={sort}
                       onSort={handleSort}
+                      width={widths[col.id]}
+                      resize={columnResize}
                     />
                   ))}
-                  {showFocusButton && onFocus && (
-                    <th className="entity-table-actions col-actions" aria-label="Focus actions" />
+                  {showActionsColumn && (
+                    <th
+                      data-col-id={ACTIONS_COL_ID}
+                      className="entity-table-actions col-actions"
+                      aria-label="Focus actions"
+                    />
                   )}
                 </tr>
               </thead>
               <tbody>
-                {entitiesLoading && sortedRows.length === 0 && (
-                  <tr className="entity-table-placeholder-row">
-                    <td colSpan={Math.max(columns.length, 1)} className="entity-table-placeholder-cell">
-                      <ClusterFetchPanel
-                        message="Loading resources…"
-                        compact
-                        onReconnect={onReconnect}
-                        onOpenProxySettings={onOpenProxySettings}
-                        reconnectBusy={reconnectBusy}
-                      />
-                    </td>
-                  </tr>
-                )}
-                {refreshing && sortedRows.length > 0 && (
-                  <tr className="entity-table-refresh-row">
-                    <td colSpan={Math.max(columns.length, 1)} className="entity-table-refresh-cell muted">
-                      Refreshing…
-                    </td>
-                  </tr>
-                )}
                 {sortedRows.map((row) => (
                   <TableRow
                     key={row.key}

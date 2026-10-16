@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { KindIcon } from '../KindIcon'
-import { InlineLoading, LoadingState } from '../LoadingSpinner.jsx'
+import { LoadingBar, ResourcePaneLoading } from '../LoadingSpinner.jsx'
 import { DataAgeLabel } from '../DataAgeLabel.jsx'
 import { RefreshButton } from '../RefreshButton.jsx'
 import { useWorkloadOverview } from '../../hooks/useWorkloadOverview.js'
@@ -155,7 +155,7 @@ export function WorkloadOverviewPanel({
     return (
       <div className="workload-overview-panel">
         {loading && !hasOverview ? (
-          <LoadingState message="Loading workload types…" />
+          <ResourcePaneLoading label="Loading overview" />
         ) : (
           <p className="muted">No workload types discovered in this scope.</p>
         )}
@@ -198,7 +198,7 @@ export function WorkloadOverviewPanel({
           />
         </div>
         {backgroundRefresh && (
-          <InlineLoading message="Updating…" className="workload-overview-status muted" />
+          <LoadingBar className="workload-overview-loading-bar" label="Updating overview" />
         )}
         {!initialLoad && (live || updatedAt > 0) && (
           <span className="workload-overview-status">
@@ -208,9 +208,6 @@ export function WorkloadOverviewPanel({
               <DataAgeLabel updatedAt={updatedAt} />
             )}
           </span>
-        )}
-        {initialLoad && (
-          <InlineLoading message="Loading overview…" className="workload-overview-status muted" />
         )}
         {deniedCount > 0 && !initialLoad && (
           <p className="workload-overview-status scope-toolbar-warn">
@@ -260,20 +257,19 @@ export function WorkloadOverviewPanel({
           <p className="workload-overview-section-lead muted">Health breakdown by kind in the current scope.</p>
         </div>
       <div className="workload-overview-grid-wrap">
-        {initialLoad && (
-          <div className="workload-overview-grid-loading" aria-hidden="true">
-            <LoadingState message="Loading overview…" />
+        {initialLoad ? (
+          <ResourcePaneLoading label="Loading overview" />
+        ) : (
+          <div className="workload-overview-grid">
+            {cards.map((card) => (
+              <WorkloadKindDonut
+                key={card.kind}
+                card={card}
+                onSelectKind={onSelectKind}
+              />
+            ))}
           </div>
         )}
-        <div className={`workload-overview-grid ${initialLoad ? 'is-loading' : ''}`}>
-          {cards.map((card) => (
-            <WorkloadKindDonut
-              key={card.kind}
-              card={card}
-              onSelectKind={onSelectKind}
-            />
-          ))}
-        </div>
       </div>
       </section>
     </div>

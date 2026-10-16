@@ -6,6 +6,7 @@ import {
   isCategoryOverview,
   pickDefaultKindSelection,
   resolveKindSelection,
+  toggleAccordionGroup,
   visibleCategories,
 } from '../lib/resourceNavigation.js'
 
@@ -50,15 +51,10 @@ export function useResourceNavigation(tree, { enabled = true } = {}) {
     }
   }, [tree, showEmptyKinds, enabled])
 
-  // Keep the selected category expanded — do not auto-expand everything.
+  // Open the selected category when selection moves (accordion: closes the rest).
   useEffect(() => {
     if (!enabled || !selectedGroupId) return
-    setExpandedGroups((prev) => {
-      if (prev.has(selectedGroupId)) return prev
-      const next = new Set(prev)
-      next.add(selectedGroupId)
-      return next
-    })
+    setExpandedGroups((prev) => (prev.has(selectedGroupId) ? prev : new Set([selectedGroupId])))
   }, [selectedGroupId, enabled])
 
   const entities = useMemo(() => {
@@ -79,12 +75,7 @@ export function useResourceNavigation(tree, { enabled = true } = {}) {
   }, [tree, selectedGroupId, selectedKind, selectedResourceId])
 
   const toggleGroup = useCallback((groupId) => {
-    setExpandedGroups((prev) => {
-      const next = new Set(prev)
-      if (next.has(groupId)) next.delete(groupId)
-      else next.add(groupId)
-      return next
-    })
+    setExpandedGroups((prev) => toggleAccordionGroup(prev, groupId))
   }, [])
 
   const selectKind = useCallback((groupId, kind, resourceId) => {
@@ -92,11 +83,7 @@ export function useResourceNavigation(tree, { enabled = true } = {}) {
     setSelectedKind(kind)
     setSelectedResourceId(resourceId || null)
     setEntitySearchQuery('')
-    setExpandedGroups((prev) => {
-      const next = new Set(prev)
-      next.add(groupId)
-      return next
-    })
+    setExpandedGroups((prev) => (prev.has(groupId) && prev.size === 1 ? prev : new Set([groupId])))
   }, [])
 
   const selectOverview = useCallback((groupId) => {

@@ -1,7 +1,8 @@
 import { KindIcon } from '../KindIcon'
 import { formatReady, rowKeysMatch } from '../../lib/matches'
 import { isAccessDenied, isAccessError, isUnavailable, kindDisplayLabel } from '../../lib/resourceCatalog.js'
-import { ClusterFetchPanel } from '../ClusterFetchPanel.jsx'
+import { LoadingBar, ResourcePaneLoading } from '../LoadingSpinner.jsx'
+import { ClusterFetchActions } from '../ClusterFetchPanel.jsx'
 import { ResourceAccessPanel } from './ResourceAccessPanel.jsx'
 
 function EmptyEntityState({ label, hasSearch }) {
@@ -74,7 +75,9 @@ export function EntityList({
   entities = [],
   filteredEntities = [],
   entitiesLoading = false,
+  resourceCenterLoading = false,
   catalogPending = false,
+  loadingHint,
   onRetry,
   onReconnect,
   onOpenProxySettings,
@@ -92,9 +95,12 @@ export function EntityList({
   const label = title || kindGroup?.label || (kind ? kindDisplayLabel(kind) : 'Resources')
   const list = filteredEntities
 
+  const centerLoading = resourceCenterLoading || (entitiesLoading && list.length === 0)
+
   const accessBlocked = !chainMode
     && entities.length === 0
     && !entitiesLoading
+    && !resourceCenterLoading
     && !catalogPending
     && (isAccessDenied(kindGroup) || isUnavailable(kindGroup) || isAccessError(kindGroup))
 
@@ -123,23 +129,21 @@ export function EntityList({
             onOpenProxySettings={onOpenProxySettings}
             reconnectBusy={reconnectBusy}
           />
+        ) : centerLoading ? (
+          <ResourcePaneLoading slowHint={loadingHint}>
+            <ClusterFetchActions
+              onReconnect={onReconnect}
+              onOpenProxySettings={onOpenProxySettings}
+              reconnectBusy={reconnectBusy}
+            />
+          </ResourcePaneLoading>
         ) : (
           <>
-            {entitiesLoading && list.length === 0 && (
-              <ClusterFetchPanel
-                message="Loading resources…"
-                compact
-                className="entity-list-loading"
-                onReconnect={onReconnect}
-                onOpenProxySettings={onOpenProxySettings}
-                reconnectBusy={reconnectBusy}
-              />
-            )}
             {refreshing && list.length > 0 && (
-              <p className="entity-list-refresh-hint muted" role="status">Refreshing…</p>
+              <LoadingBar className="resource-pane-refresh-bar" label="Refreshing resources" />
             )}
             {list.length > 0 && (
-              <ul className="entity-list-rows">
+              <ul className="entity-list-rows" data-inspector-keep>
                 {list.map((row) => (
                   <EntityListItem
                     key={row.key}
@@ -153,7 +157,7 @@ export function EntityList({
                 ))}
               </ul>
             )}
-            {!entitiesLoading && !list.length && (
+            {!list.length && !entitiesLoading && (
               <EmptyEntityState label={label} hasSearch={hasSearchQuery} />
             )}
           </>
