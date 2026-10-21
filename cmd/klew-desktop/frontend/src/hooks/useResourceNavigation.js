@@ -6,14 +6,15 @@ import {
   isCategoryOverview,
   pickDefaultKindSelection,
   resolveKindSelection,
-  toggleAccordionGroup,
+  expandGroup,
+  toggleExpandedGroup,
   visibleCategories,
 } from '../lib/resourceNavigation.js'
 
 const DEFAULT_EXPANDED = new Set(['workloads'])
 
 /**
- * Resource navigation state — accordion-style groups, kind selection.
+ * Resource navigation state — independently expandable groups, kind selection.
  */
 export function useResourceNavigation(tree, { enabled = true } = {}) {
   const [expandedGroups, setExpandedGroups] = useState(() => new Set(DEFAULT_EXPANDED))
@@ -51,10 +52,10 @@ export function useResourceNavigation(tree, { enabled = true } = {}) {
     }
   }, [tree, showEmptyKinds, enabled])
 
-  // Open the selected category when selection moves (accordion: closes the rest).
+  // Open the selected category when selection moves; other open categories stay open.
   useEffect(() => {
     if (!enabled || !selectedGroupId) return
-    setExpandedGroups((prev) => (prev.has(selectedGroupId) ? prev : new Set([selectedGroupId])))
+    setExpandedGroups((prev) => expandGroup(prev, selectedGroupId))
   }, [selectedGroupId, enabled])
 
   const entities = useMemo(() => {
@@ -75,7 +76,7 @@ export function useResourceNavigation(tree, { enabled = true } = {}) {
   }, [tree, selectedGroupId, selectedKind, selectedResourceId])
 
   const toggleGroup = useCallback((groupId) => {
-    setExpandedGroups((prev) => toggleAccordionGroup(prev, groupId))
+    setExpandedGroups((prev) => toggleExpandedGroup(prev, groupId))
   }, [])
 
   const selectKind = useCallback((groupId, kind, resourceId) => {
@@ -83,7 +84,7 @@ export function useResourceNavigation(tree, { enabled = true } = {}) {
     setSelectedKind(kind)
     setSelectedResourceId(resourceId || null)
     setEntitySearchQuery('')
-    setExpandedGroups((prev) => (prev.has(groupId) && prev.size === 1 ? prev : new Set([groupId])))
+    setExpandedGroups((prev) => expandGroup(prev, groupId))
   }, [])
 
   const selectOverview = useCallback((groupId) => {

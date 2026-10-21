@@ -185,7 +185,7 @@ function ResourceGroupSection({
 }
 
 /**
- * Vertical resource-kind picker — accordion categories (one open at a time), kinds select.
+ * Vertical resource-kind picker — collapsible categories (each opens and closes independently), kinds select.
  */
 export function ResourceNav({
   categories = [],
