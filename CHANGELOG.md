@@ -4,6 +4,8 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 
 ## [Unreleased]
 
+## [1.4.0] — 2026-10-20
+
 ### Event history
 
 - **Local event recorder** — Kubernetes Events expire after about an hour; Klew now records them while it runs, for the active context and every favorite context, so investigations can show what happened before you started looking. Read-only (List/Watch only), stored locally in `~/Library/Application Support/Klew/history/events.db`, never uploaded. **On by default**; off switch in Settings.
@@ -14,16 +16,10 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 - **Multiple windows** — one window records each cluster at a time; the others read the shared history and take over when that window closes.
 - **Limited RBAC** — when cluster-wide events are denied, records per namespace (up to 50) instead; under very high event volume, keeps Warning events only and says so.
 
-### Resources browse
-
-- **Categories stay open** — opening a category (e.g. Network) no longer collapses the others; each one stays open until you collapse it. Selecting a kind opens its category without closing the rest.
-
 ### Settings
 
 - **Refreshed layout** — grouped cards with label-left / control-right rows, switches instead of checkboxes, and a lighter sidebar; long kubectl details fold behind a disclosure.
 - **Fix** — "Download kubectl matching cluster version" is now disabled when bundled kubectl is off.
-
-## [1.4.0] — 2026-10-15
 
 ### Look and feel
 
@@ -40,7 +36,7 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 
 ### Resources browse
 
-- **Accordion navigation** — one category open at a time, animated; collapsed groups no longer render their rows.
+- **Collapsible categories** — each category stays open until you collapse it; selecting a kind opens its category without closing the rest. Collapsed groups no longer render their rows.
 - **Resizable columns** — drag a header edge to resize, double-click to fit content, arrow keys to nudge; widths persist per kind with an Auto widths reset.
 - **Loading** — progress bar and skeleton rows; slow first loads show cluster API discovery status with Reconnect and Proxy actions.
 
