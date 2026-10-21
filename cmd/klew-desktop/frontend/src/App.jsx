@@ -41,6 +41,8 @@ import { useTerminalPanel } from './hooks/useTerminalPanel'
 import { useConsoleDock } from './hooks/useConsoleDock'
 import { useTheme } from './hooks/useTheme'
 import { usePreferences } from './hooks/usePreferences'
+import { useEventHistory } from './hooks/useEventHistory'
+import { EventHistoryProvider } from './context/EventHistoryContext.jsx'
 import { startOptionsFromPreferences } from './lib/preferences'
 import { applyUiFont, scheduleFontCacheRefresh } from './lib/fonts'
 import { applyTopbarScale } from './lib/topbarScale'
@@ -253,6 +255,15 @@ export default function App() {
     autoMonitor: prefs.autoMonitorCluster !== false,
     monitoringPaused,
     onMonitoringPausedChange: setMonitoringPaused,
+  })
+  const kubeContextNames = useMemo(
+    () => (cluster?.contexts || []).map((c) => c?.name).filter(Boolean),
+    [cluster?.contexts],
+  )
+  const eventHistory = useEventHistory({
+    favoriteContexts: prefs.favoriteContexts,
+    monitoringPaused,
+    contexts: kubeContextNames,
   })
   const stream = useStreamPanel()
   const terminal = useTerminalPanel()
@@ -1066,6 +1077,7 @@ export default function App() {
         </div>
       )}
 
+      <EventHistoryProvider value={eventHistory}>
       <TerminalLaunchProvider launch={launchTerminalCommand}>
       <div className={`app-root ${maximized ? 'stream-maximized' : ''}`}>
       <ClusterConnectionBanner
@@ -1206,6 +1218,7 @@ export default function App() {
       </div>
       </div>
       </TerminalLaunchProvider>
+      </EventHistoryProvider>
 
       <TerminalShellModal
         open={terminalShellPickerOpen}

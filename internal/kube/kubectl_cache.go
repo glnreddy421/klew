@@ -123,3 +123,8 @@ func downloadFile(ctx context.Context, url, dest string) error {
 	}
 	return nil
 }
+
+// DataDir is Klew's per-user application data directory ("" when unknown).
+func DataDir() string {
+	return klewDataDir()
+}

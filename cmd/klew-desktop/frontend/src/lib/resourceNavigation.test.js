@@ -5,7 +5,8 @@ import {
   filterEntitiesBySearch,
   pickDefaultKindSelection,
   resolveKindSelection,
-  toggleAccordionGroup,
+  expandGroup,
+  toggleExpandedGroup,
   visibleCategories,
 } from './resourceNavigation.js'
 
@@ -130,16 +131,33 @@ describe('resourceNavigation', () => {
   })
 })
 
-describe('toggleAccordionGroup', () => {
-  it('opens one category and closes the others', () => {
-    expect([...toggleAccordionGroup(new Set(['workloads']), 'network')]).toEqual(['network'])
+describe('toggleExpandedGroup', () => {
+  it('opens a category without closing the others', () => {
+    expect([...toggleExpandedGroup(new Set(['workloads']), 'network')]).toEqual(['workloads', 'network'])
   })
 
-  it('closes the open category when toggled again', () => {
-    expect(toggleAccordionGroup(new Set(['network']), 'network').size).toBe(0)
+  it('closes only the toggled category', () => {
+    expect([...toggleExpandedGroup(new Set(['workloads', 'network']), 'network')]).toEqual(['workloads'])
   })
 
   it('opens from fully collapsed', () => {
-    expect([...toggleAccordionGroup(new Set(), 'storage')]).toEqual(['storage'])
+    expect([...toggleExpandedGroup(new Set(), 'storage')]).toEqual(['storage'])
+  })
+
+  it('does not mutate the previous set', () => {
+    const prev = new Set(['workloads'])
+    toggleExpandedGroup(prev, 'network')
+    expect([...prev]).toEqual(['workloads'])
+  })
+})
+
+describe('expandGroup', () => {
+  it('adds the selected category and keeps the rest open', () => {
+    expect([...expandGroup(new Set(['workloads']), 'network')]).toEqual(['workloads', 'network'])
+  })
+
+  it('returns the same set when already open (no re-render)', () => {
+    const prev = new Set(['workloads', 'network'])
+    expect(expandGroup(prev, 'network')).toBe(prev)
   })
 })

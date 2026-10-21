@@ -148,14 +148,14 @@ func (col *Collector) Collect(ctx context.Context, opts CollectOptions) (model.E
 		}
 	}
 
-	if allowed(perms, "events", "list") {
+	{
 		scopePods := make([]string, 0, len(bundle.Pods))
 		for _, p := range bundle.Pods {
 			if p.Name != "" {
 				scopePods = append(scopePods, p.Name)
 			}
 		}
-		bundle.Events = col.collectEvents(ctx, ns, opts.Query, deployNames, scopePods)
+		bundle.Events, bundle.EventHistory = col.collectEvents(ctx, ns, opts.Query, deployNames, scopePods, allowed(perms, "events", "list"))
 	}
 
 	logLimit := opts.LogLines

@@ -5,6 +5,7 @@ import { hasClusterContexts } from '../../lib/clusterIdentity.js'
 import { isFavoriteContext, orderContextsForDisplay } from '../../lib/clusterContexts.js'
 import { FavoriteStarIcon, LaunchDefaultIcon } from './ContextActionIcons.jsx'
 import { ClusterCloudIcon } from './ClusterCloudIcon.jsx'
+import { ContextRecordingHint } from './ContextRecordingHint.jsx'
 import {
   allBrowseScope,
   browseScopeLabel,
@@ -274,6 +275,7 @@ export function ContextPopover({
                       {c.cluster && c.cluster !== c.name && (
                         <span className="shell-popover-item-sub muted">{c.cluster}</span>
                       )}
+                      <ContextRecordingHint contextName={c.name} />
                     </span>
                   </button>
                   <div className="shell-popover-item-actions">

@@ -4,8 +4,11 @@ import {main} from '../models';
 import {model} from '../models';
 import {version} from '../models';
 import {kube} from '../models';
+import {history} from '../models';
 import {details} from '../models';
 import {api} from '../models';
+
+export function ClearEventHistory():Promise<main.EventHistorySettings>;
 
 export function ClearLogs():Promise<void>;
 
@@ -20,6 +23,10 @@ export function GetBrowseMetrics(arg1:main.GetBrowseMetricsOptions):Promise<kube
 export function GetCluster():Promise<kube.ClusterState>;
 
 export function GetClusterStatus():Promise<kube.ClusterStatus>;
+
+export function GetEventHistorySettings():Promise<main.EventHistorySettings>;
+
+export function GetEventHistoryStatus(arg1:Array<string>):Promise<Array<history.ContextStatus>>;
 
 export function GetKubectlInfo():Promise<kube.KubectlInfo>;
 
@@ -59,6 +66,10 @@ export function SelectNamespace(arg1:string):Promise<kube.ClusterState>;
 
 export function SetAutoRefresh(arg1:boolean):Promise<void>;
 
+export function SetEventHistorySettings(arg1:boolean,arg2:number,arg3:number):Promise<main.EventHistorySettings>;
+
+export function SetEventRecordingPaused(arg1:boolean):Promise<void>;
+
 export function SetKubeconfigPath(arg1:string):Promise<kube.ClusterState>;
 
 export function SetKubectlOptions(arg1:boolean,arg2:string,arg3:boolean):Promise<kube.KubectlInfo>;
@@ -66,6 +77,8 @@ export function SetKubectlOptions(arg1:boolean,arg2:string,arg3:boolean):Promise
 export function SetNetworkProxy(arg1:string,arg2:string,arg3:string):Promise<kube.NetworkProxyOptions>;
 
 export function SetPollEverySec(arg1:number):Promise<void>;
+
+export function SetRecordedContexts(arg1:Array<string>):Promise<Array<history.ContextStatus>>;
 
 export function StartCatalogEntityWatch(arg1:main.StartCatalogEntityWatchOptions):Promise<void>;
 

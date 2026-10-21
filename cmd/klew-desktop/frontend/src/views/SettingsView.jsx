@@ -12,6 +12,15 @@ import {
 import { WorkspaceLayoutPicker } from '../components/incident/WorkspaceLayoutPicker'
 import { TerminalShellSelect } from '../components/TerminalShellSelect'
 import { TerminalAppearancePicker } from '../components/TerminalAppearancePicker'
+import { EventHistorySettings } from '../components/EventHistorySettings.jsx'
+import {
+  InfoRow,
+  NumberRow,
+  SettingRow,
+  SettingsGroup,
+  SettingsMessage,
+  SwitchRow,
+} from '../components/settings/SettingsControls.jsx'
 import { SETTINGS_SECTIONS } from '../lib/preferences'
 import {
   OpenKubeconfigDir,
@@ -38,7 +47,7 @@ const KEYBOARD_SHORTCUTS = [
 ]
 
 /**
- * Docker Desktop–style settings: section nav + form controls.
+ * Settings: section nav + grouped cards of rows (label left, control right).
  */
 export function SettingsView({
   cluster,
@@ -170,16 +179,21 @@ export function SettingsView({
     }
   }
 
+  const monitoringLabel = monitoringPaused
+    ? 'Paused'
+    : (connection?.phase === 'connected' ? 'Active' : (connection?.phase || '—'))
+
   return (
     <div className="settings-shell">
       <aside className="settings-nav" aria-label="Settings sections">
-        <div className="settings-nav-search muted">Preferences</div>
+        <div className="settings-nav-search">Settings</div>
         <nav className="settings-nav-list">
           {SETTINGS_SECTIONS.map((s) => (
             <button
               key={s.id}
               type="button"
               className={`settings-nav-item ${section === s.id ? 'active' : ''}`}
+              aria-current={section === s.id ? 'page' : undefined}
               onClick={() => setSection(s.id)}
             >
               <span className="settings-nav-label">{s.label}</span>
@@ -192,134 +206,157 @@ export function SettingsView({
       <div className="settings-main">
         {section === 'general' && (
           <SettingsSection title="General" subtitle="Defaults when you start an investigation.">
-            <Toggle
-              label="Open logs panel when investigating"
-              checked={prefs.openStreamOnInvestigate}
-              onChange={(v) => set({ openStreamOnInvestigate: v })}
-            />
-            <Toggle
-              label="Auto-scroll while gathering logs"
-              checked={prefs.followLogsByDefault}
-              onChange={(v) => set({ followLogsByDefault: v })}
-            />
-            <Toggle
-              label="Keep query text after Stop"
-              checked={prefs.rememberLastQuery}
-              onChange={(v) => set({ rememberLastQuery: v })}
-            />
-            <h4 className="settings-subhead">Session</h4>
-            <Toggle
-              label="End investigation after inactivity"
-              checked={prefs.idleAutoStop}
-              onChange={(v) => set({ idleAutoStop: v })}
-            />
-            <NumberField
-              label="Inactivity limit (minutes)"
-              value={prefs.idleAutoStopMin}
-              min={30}
-              max={480}
-              disabled={!prefs.idleAutoStop}
-              onChange={(v) => set({ idleAutoStopMin: v })}
-            />
-            <h4 className="settings-subhead">Terminal</h4>
-            <TerminalShellSelect
-              value={prefs.terminalShell}
-              onChange={(shell) => {
-                set({ terminalShell: shell, terminalShellPrompted: true })
-                onTerminalShellChange?.(shell)
-              }}
-            />
-            <div className="settings-about">
-              <h4>About</h4>
-              <p className="settings-about-version">
-                Klew {appInfo?.version ? `v${appInfo.version}` : '—'}
-              </p>
+            <SettingsGroup>
+              <SwitchRow
+                label="Open logs panel when investigating"
+                checked={prefs.openStreamOnInvestigate}
+                onChange={(v) => set({ openStreamOnInvestigate: v })}
+              />
+              <SwitchRow
+                label="Auto-scroll while gathering logs"
+                checked={prefs.followLogsByDefault}
+                onChange={(v) => set({ followLogsByDefault: v })}
+              />
+              <SwitchRow
+                label="Keep query text after Stop"
+                checked={prefs.rememberLastQuery}
+                onChange={(v) => set({ rememberLastQuery: v })}
+              />
+            </SettingsGroup>
+
+            <SettingsGroup title="Session">
+              <SwitchRow
+                label="End investigation after inactivity"
+                checked={prefs.idleAutoStop}
+                onChange={(v) => set({ idleAutoStop: v })}
+              />
+              <NumberRow
+                label="Inactivity limit"
+                value={prefs.idleAutoStopMin}
+                min={30}
+                max={480}
+                suffix="min"
+                disabled={!prefs.idleAutoStop}
+                onChange={(v) => set({ idleAutoStopMin: v })}
+              />
+            </SettingsGroup>
+
+            <SettingsGroup title="Terminal">
+              <SettingRow stacked>
+                <TerminalShellSelect
+                  value={prefs.terminalShell}
+                  onChange={(shell) => {
+                    set({ terminalShell: shell, terminalShellPrompted: true })
+                    onTerminalShellChange?.(shell)
+                  }}
+                />
+              </SettingRow>
+            </SettingsGroup>
+
+            <SettingsGroup title="About">
+              <InfoRow label="Version" value={appInfo?.version ? `Klew v${appInfo.version}` : '—'} mono={false} />
               {appInfo?.commit && appInfo.commit !== 'none' && (
-                <div className="settings-readonly settings-readonly-compact">
-                  <ReadOnly k="Build" v={appInfo.commit} />
-                  {appInfo.date && appInfo.date !== 'unknown' && (
-                    <ReadOnly k="Built" v={appInfo.date} />
-                  )}
-                </div>
+                <InfoRow label="Build" value={appInfo.commit} />
               )}
-              <p className="muted">
-                Install: <code>brew tap glnreddy421/klew &amp;&amp; brew install --cask klew</code>
-              </p>
-              <p className="muted">
-                Upgrade: <code>brew update &amp;&amp; brew upgrade --cask klew</code>
-              </p>
-              <p className="muted">
-                Releases:{' '}
-                <a href="https://github.com/glnreddy421/klew/releases" target="_blank" rel="noreferrer">
+              {appInfo?.commit && appInfo.commit !== 'none' && appInfo.date && appInfo.date !== 'unknown' && (
+                <InfoRow label="Built" value={appInfo.date} />
+              )}
+              <InfoRow label="Install" value="brew tap glnreddy421/klew && brew install --cask klew" />
+              <InfoRow label="Upgrade" value="brew update && brew upgrade --cask klew" />
+              <SettingRow label="Releases">
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => BrowserOpenURL('https://github.com/glnreddy421/klew/releases')}
+                >
                   github.com/glnreddy421/klew/releases
-                </a>
-              </p>
-            </div>
+                </button>
+              </SettingRow>
+            </SettingsGroup>
           </SettingsSection>
         )}
 
         {section === 'appearance' && (
           <SettingsSection title="Appearance" subtitle="Theme, fonts, workspace layout, and live-tail typography.">
-            <h4 className="settings-subhead">Theme</h4>
-            <ThemePicker themeId={themeId} onChange={onThemeChange} />
-            <h4 className="settings-subhead">Font</h4>
-            <FontPicker
-              value={prefs.uiFont}
-              onChange={(id) => {
-                set({ uiFont: id })
-                applyUiFont(id).catch(() => {})
-              }}
-            />
-            <h4 className="settings-subhead">Top bar size</h4>
-            <p className="settings-note muted">
-              Zoom the header — logo, scope, search, and Investigate. Use the top bar size icon or adjust here (85–130%).
-            </p>
-            <NumberField
-              label="Scale (%)"
-              value={prefs.topbarScale}
-              min={TOPBAR_SCALE_MIN}
-              max={TOPBAR_SCALE_MAX}
-              step={TOPBAR_SCALE_STEP}
-              onChange={(v) => {
-                const next = normalizeTopbarScale(v)
-                set({ topbarScale: next })
-                applyTopbarScale(next)
-              }}
-            />
-            <h4 className="settings-subhead">Workspace layout</h4>
-            <p className="settings-note muted">
-              Choose how resources, entities, and signals are arranged on Overview. You can also switch layouts from the header while investigating.
-            </p>
-            <WorkspaceLayoutPicker
-              value={prefs.workspaceLayout}
-              onChange={(id) => set({ workspaceLayout: id })}
-            />
-            <h4 className="settings-subhead">Live tail</h4>
-            <NumberField
-              label="Font size (px)"
-              value={prefs.streamFontSize}
-              min={10}
-              max={18}
-              onChange={(v) => set({ streamFontSize: v })}
-            />
-            <Toggle
-              label="Dense stream rows"
-              checked={prefs.streamDense}
-              onChange={(v) => set({ streamDense: v })}
-            />
-            <Toggle
-              label="Wrap long log lines"
-              checked={prefs.streamWrapLines}
-              onChange={(v) => set({ streamWrapLines: v })}
-            />
-            <h4 className="settings-subhead">In-app terminal</h4>
-            <p className="settings-note muted">
-              Terminal panel colors — pair with a Black theme above for a fully dark workspace. Applied instantly.
-            </p>
-            <TerminalAppearancePicker
-              value={prefs.terminalAppearance}
-              onChange={(id) => set({ terminalAppearance: id })}
-            />
+            <SettingsGroup title="Theme">
+              <SettingRow stacked>
+                <ThemePicker themeId={themeId} onChange={onThemeChange} />
+              </SettingRow>
+            </SettingsGroup>
+
+            <SettingsGroup title="Font">
+              <SettingRow stacked>
+                <FontPicker
+                  value={prefs.uiFont}
+                  onChange={(id) => {
+                    set({ uiFont: id })
+                    applyUiFont(id).catch(() => {})
+                  }}
+                />
+              </SettingRow>
+            </SettingsGroup>
+
+            <SettingsGroup title="Top bar">
+              <NumberRow
+                label="Size"
+                hint="Zoom the header — logo, scope, search, and Investigate (85–130%)."
+                value={prefs.topbarScale}
+                min={TOPBAR_SCALE_MIN}
+                max={TOPBAR_SCALE_MAX}
+                step={TOPBAR_SCALE_STEP}
+                suffix="%"
+                onChange={(v) => {
+                  const next = normalizeTopbarScale(v)
+                  set({ topbarScale: next })
+                  applyTopbarScale(next)
+                }}
+              />
+            </SettingsGroup>
+
+            <SettingsGroup
+              title="Workspace layout"
+              description="How resources, entities, and signals are arranged on Overview. You can also switch from the header while investigating."
+            >
+              <SettingRow stacked>
+                <WorkspaceLayoutPicker
+                  value={prefs.workspaceLayout}
+                  onChange={(id) => set({ workspaceLayout: id })}
+                />
+              </SettingRow>
+            </SettingsGroup>
+
+            <SettingsGroup title="Live tail">
+              <NumberRow
+                label="Font size"
+                value={prefs.streamFontSize}
+                min={10}
+                max={18}
+                suffix="px"
+                onChange={(v) => set({ streamFontSize: v })}
+              />
+              <SwitchRow
+                label="Dense stream rows"
+                checked={prefs.streamDense}
+                onChange={(v) => set({ streamDense: v })}
+              />
+              <SwitchRow
+                label="Wrap long log lines"
+                checked={prefs.streamWrapLines}
+                onChange={(v) => set({ streamWrapLines: v })}
+              />
+            </SettingsGroup>
+
+            <SettingsGroup
+              title="In-app terminal"
+              description="Terminal panel colors — pair with a Black theme for a fully dark workspace. Applied instantly."
+            >
+              <SettingRow stacked>
+                <TerminalAppearancePicker
+                  value={prefs.terminalAppearance}
+                  onChange={(id) => set({ terminalAppearance: id })}
+                />
+              </SettingRow>
+            </SettingsGroup>
           </SettingsSection>
         )}
 
@@ -328,34 +365,39 @@ export function SettingsView({
             title="Investigation"
             subtitle="Applied on the next Investigate, or immediately when a session is already running."
           >
-            <NumberField
-              label="Log tail lines (per container)"
-              value={prefs.tailLines}
-              min={0}
-              max={5000}
-              hint="0 follows from now with no history buffer"
-              onChange={(v) => set({ tailLines: v })}
-            />
-            <NumberField
-              label="Snapshot refresh (seconds)"
-              value={prefs.refreshSec}
-              min={2}
-              max={300}
-              onChange={(v) => set({ refreshSec: v })}
-            />
-            <NumberField
-              label="Evidence window (minutes)"
-              value={prefs.windowMin}
-              min={1}
-              max={15}
-              hint="Capped at 15 minutes"
-              onChange={(v) => set({ windowMin: v })}
-            />
-            <Toggle
-              label="Auto-refresh cluster snapshot while investigating"
-              checked={prefs.autoRefresh}
-              onChange={(v) => set({ autoRefresh: v })}
-            />
+            <SettingsGroup title="Collection">
+              <NumberRow
+                label="Log tail lines"
+                hint="Per container. 0 follows from now with no history buffer."
+                value={prefs.tailLines}
+                min={0}
+                max={5000}
+                onChange={(v) => set({ tailLines: v })}
+              />
+              <NumberRow
+                label="Snapshot refresh"
+                value={prefs.refreshSec}
+                min={2}
+                max={300}
+                suffix="sec"
+                onChange={(v) => set({ refreshSec: v })}
+              />
+              <NumberRow
+                label="Evidence window"
+                hint="Capped at 15 minutes."
+                value={prefs.windowMin}
+                min={1}
+                max={15}
+                suffix="min"
+                onChange={(v) => set({ windowMin: v })}
+              />
+              <SwitchRow
+                label="Auto-refresh cluster snapshot while investigating"
+                checked={prefs.autoRefresh}
+                onChange={(v) => set({ autoRefresh: v })}
+              />
+            </SettingsGroup>
+            <EventHistorySettings />
           </SettingsSection>
         )}
 
@@ -364,286 +406,272 @@ export function SettingsView({
             title="Concurrency"
             subtitle="Protect the API server when many pods match. Extra containers wait for a free slot."
           >
-            <NumberField
-              label="Max concurrent log follows"
-              value={prefs.maxLogRequests}
-              min={1}
-              max={200}
-              hint="Default 50. Each follow is one pod/container GetLogs stream."
-              onChange={(v) => set({ maxLogRequests: v })}
-            />
-            <p className="settings-note muted">
-              Frontend pod filters only hide lines — they do not close kube streams.
-              Lower this value on large namespaces.
-            </p>
+            <SettingsGroup
+              description="Frontend pod filters only hide lines — they do not close kube streams. Lower this value on large namespaces."
+            >
+              <NumberRow
+                label="Max concurrent log follows"
+                hint="Default 50. Each follow is one pod/container GetLogs stream."
+                value={prefs.maxLogRequests}
+                min={1}
+                max={200}
+                onChange={(v) => set({ maxLogRequests: v })}
+              />
+            </SettingsGroup>
           </SettingsSection>
         )}
 
         {section === 'kubernetes' && (
           <SettingsSection title="Kubernetes" subtitle="Cluster access and metrics source.">
-            <label className="settings-field">
-              <span className="settings-field-label">Kubeconfig path</span>
-              <div className="settings-field-row">
-                <input
-                  type="text"
-                  className="settings-input"
-                  value={kubeDraft}
-                  placeholder={cluster?.kubeconfigPath || '~/.kube/config'}
-                  onChange={(e) => setKubeDraft(e.target.value)}
-                />
-                <button type="button" className="btn btn-outline btn-sm" disabled={kubeBusy} onClick={applyKubeconfig}>
-                  Apply
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-outline btn-sm"
-                  onClick={() => OpenKubeconfigDir?.()}
-                >
-                  Open folder
-                </button>
-              </div>
-              {kubeMsg && <span className="settings-field-hint">{kubeMsg}</span>}
-            </label>
-
-            <div className="settings-readonly">
-              <ReadOnly k="Active path" v={cluster?.kubeconfigPath || '—'} />
-              <ReadOnly k="Context" v={cluster?.selectedContext || '—'} />
-              <ReadOnly k="Cluster" v={cluster?.cluster || '—'} />
-              <ReadOnly k="User" v={cluster?.user || '—'} />
-              <ReadOnly k="Namespace" v={cluster?.selectedNamespace || '—'} />
-            </div>
-
-            <h4 className="settings-subhead">Contexts</h4>
-            <p className="settings-note muted">
-              Star favorites on Home or in the context picker (many allowed). The home icon sets an
-              optional launch default — it does not lock which cluster you connect to.
-            </p>
-            <div className="settings-readonly">
-              <ReadOnly
-                k="Favorites"
-                v={prefs.favoriteContexts?.length
-                  ? prefs.favoriteContexts.join(', ')
-                  : 'None'}
-              />
-              <ReadOnly k="Launch default" v={prefs.defaultContext || 'None'} />
-            </div>
-            {prefs.defaultContext && (
-              <div className="settings-field-row">
-                <button
-                  type="button"
-                  className="btn btn-outline btn-sm"
-                  onClick={() => onClearDefaultContext?.()}
-                >
-                  Clear default
-                </button>
-              </div>
-            )}
-
-            <h4 className="settings-subhead">Cluster connection</h4>
-            <Toggle
-              label="Automatically reconnect when disconnected"
-              checked={prefs.autoMonitorCluster !== false}
-              onChange={(v) => set({ autoMonitorCluster: v })}
-            />
-            <p className="settings-note muted">
-              When off, Klew will not retry or poll in the background after a connection loss.
-              Use Reconnect manually, or disconnect below to pause all cluster monitoring.
-            </p>
-            <div className="settings-readonly">
-              <ReadOnly
-                k="Monitoring"
-                v={monitoringPaused
-                  ? 'Paused'
-                  : (connection?.phase === 'connected' ? 'Active' : (connection?.phase || '—'))}
-              />
-            </div>
-            <div className="settings-field-row">
-              {!monitoringPaused ? (
-                <button
-                  type="button"
-                  className="btn btn-outline btn-sm"
-                  disabled={reconnectBusy || !(cluster?.selectedContext || cluster?.currentContext)}
-                  onClick={() => onDisconnect?.()}
-                >
-                  Disconnect
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="btn btn-outline btn-sm"
-                  disabled={reconnectBusy}
-                  onClick={() => onReconnect?.()}
-                >
-                  {reconnectBusy ? 'Connecting…' : 'Reconnect'}
-                </button>
-              )}
-            </div>
-
-            <h4 className="settings-subhead">Network proxy</h4>
-            <p className="settings-note muted">
-              Route Kubernetes API traffic through an HTTP(S) proxy (for example corporate VPN gateways).
-              Applies to in-app cluster reads — same variables as kubectl (<span className="mono">HTTP_PROXY</span>, <span className="mono">HTTPS_PROXY</span>, <span className="mono">NO_PROXY</span>).
-            </p>
-            <label className="settings-field">
-              <span className="settings-field-label">HTTP proxy</span>
-              <input
-                type="text"
-                className="settings-input"
-                value={proxyDraft.httpProxy}
-                placeholder="http://127.0.0.1:8888"
-                onChange={(e) => setProxyDraft((d) => ({ ...d, httpProxy: e.target.value }))}
-              />
-            </label>
-            <label className="settings-field">
-              <span className="settings-field-label">HTTPS proxy</span>
-              <input
-                type="text"
-                className="settings-input"
-                value={proxyDraft.httpsProxy}
-                placeholder="http://127.0.0.1:8888"
-                onChange={(e) => setProxyDraft((d) => ({ ...d, httpsProxy: e.target.value }))}
-              />
-            </label>
-            <label className="settings-field">
-              <span className="settings-field-label">No proxy</span>
-              <input
-                type="text"
-                className="settings-input"
-                value={proxyDraft.noProxy}
-                placeholder="localhost,127.0.0.1,.cluster.local"
-                onChange={(e) => setProxyDraft((d) => ({ ...d, noProxy: e.target.value }))}
-              />
-            </label>
-            <div className="settings-field-row">
-              <button type="button" className="btn btn-outline btn-sm" disabled={proxyBusy} onClick={applyProxy}>
-                Apply proxy
-              </button>
-            </div>
-            {proxyMsg && <span className="settings-field-hint">{proxyMsg}</span>}
-            <div className="settings-readonly">
-              <ReadOnly k="Active HTTP proxy" v={activeProxy?.httpProxy || '—'} />
-              <ReadOnly k="Active HTTPS proxy" v={activeProxy?.httpsProxy || '—'} />
-              <ReadOnly k="Active NO_PROXY" v={activeProxy?.noProxy || '—'} />
-            </div>
-
-            <h4 className="settings-subhead">kubectl binary</h4>
-            <Toggle
-              label="Use bundled kubectl (recommended)"
-              checked={prefs.useBundledKubectl}
-              onChange={(v) => applyKubectl({ useBundledKubectl: v })}
-            />
-            <Toggle
-              label="Download kubectl matching cluster version when needed"
-              checked={prefs.matchClusterKubectl}
-              disabled={!prefs.useBundledKubectl || kubectlBusy}
-              onChange={(v) => applyKubectl({ matchClusterKubectl: v })}
-            />
-            <p className="settings-note muted">
-              Only downloads when the cluster is more than one minor version away from the bundled kubectl (Kubernetes skew policy).
-            </p>
-            {!prefs.useBundledKubectl && (
-              <label className="settings-field">
-                <span className="settings-field-label">Custom kubectl path</span>
+            <SettingsGroup title="Kubeconfig" footer={<SettingsMessage>{kubeMsg}</SettingsMessage>}>
+              <SettingRow label="Kubeconfig path" stacked>
                 <div className="settings-field-row">
                   <input
                     type="text"
                     className="settings-input"
-                    value={kubectlDraft}
-                    placeholder={kubectlInfo?.systemPath || '/opt/homebrew/bin/kubectl'}
-                    onChange={(e) => setKubectlDraft(e.target.value)}
+                    value={kubeDraft}
+                    placeholder={cluster?.kubeconfigPath || '~/.kube/config'}
+                    aria-label="Kubeconfig path"
+                    onChange={(e) => setKubeDraft(e.target.value)}
                   />
+                  <button type="button" className="btn btn-primary btn-sm" disabled={kubeBusy} onClick={applyKubeconfig}>
+                    Apply
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => OpenKubeconfigDir?.()}
+                  >
+                    Open folder
+                  </button>
+                </div>
+              </SettingRow>
+              <InfoRow label="Active path" value={cluster?.kubeconfigPath} />
+              <InfoRow label="Context" value={cluster?.selectedContext} />
+              <InfoRow label="Cluster" value={cluster?.cluster} />
+              <InfoRow label="User" value={cluster?.user} />
+              <InfoRow label="Namespace" value={cluster?.selectedNamespace} />
+            </SettingsGroup>
+
+            <SettingsGroup
+              title="Contexts"
+              description="Star favorites on Home or in the context picker (many allowed). The home icon sets an optional launch default — it does not lock which cluster you connect to."
+            >
+              <InfoRow
+                label="Favorites"
+                value={prefs.favoriteContexts?.length ? prefs.favoriteContexts.join(', ') : 'None'}
+              />
+              <SettingRow label="Launch default" hint={prefs.defaultContext || 'None'}>
+                {prefs.defaultContext && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => onClearDefaultContext?.()}
+                  >
+                    Clear default
+                  </button>
+                )}
+              </SettingRow>
+            </SettingsGroup>
+
+            <SettingsGroup title="Cluster connection">
+              <SwitchRow
+                label="Automatically reconnect when disconnected"
+                hint="When off, Klew will not retry or poll in the background after a connection loss."
+                checked={prefs.autoMonitorCluster !== false}
+                onChange={(v) => set({ autoMonitorCluster: v })}
+              />
+              <SettingRow
+                label="Monitoring"
+                hint={monitoringPaused ? 'Paused — Klew is not polling this cluster.' : monitoringLabel}
+              >
+                {!monitoringPaused ? (
                   <button
                     type="button"
                     className="btn btn-outline btn-sm"
-                    disabled={kubectlBusy}
-                    onClick={() => applyKubectl()}
+                    disabled={reconnectBusy || !(cluster?.selectedContext || cluster?.currentContext)}
+                    onClick={() => onDisconnect?.()}
                   >
-                    Apply
+                    Disconnect
                   </button>
-                </div>
-                <span className="settings-field-hint">
-                  Leave empty to use kubectl from your shell PATH.
-                </span>
-              </label>
-            )}
-            {kubectlMsg && <span className="settings-field-hint">{kubectlMsg}</span>}
-            <div className="settings-readonly">
-              <ReadOnly k="Active kubectl" v={kubectlInfo?.activePath || '—'} />
-              <ReadOnly k="Source" v={kubectlInfo?.source || '—'} />
-              <ReadOnly k="Version" v={kubectlInfo?.version || '—'} />
-              <ReadOnly k="Cluster version" v={kubectlInfo?.clusterVersion || '—'} />
-              <ReadOnly k="Skew detected" v={kubectlInfo?.clusterSkewDetected ? 'yes' : 'no'} />
-              <ReadOnly k="Bundled path" v={kubectlInfo?.bundledPath || '—'} />
-              <ReadOnly k="Cluster-matched path" v={kubectlInfo?.clusterMatchedPath || '—'} />
-              <ReadOnly k="System path" v={kubectlInfo?.systemPath || '—'} />
-            </div>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    disabled={reconnectBusy}
+                    onClick={() => onReconnect?.()}
+                  >
+                    {reconnectBusy ? 'Connecting…' : 'Reconnect'}
+                  </button>
+                )}
+              </SettingRow>
+            </SettingsGroup>
 
-            <h4 className="settings-subhead">Investigation</h4>
-            <Toggle
-              label="Check admission webhooks when pods are missing"
-              checked={prefs.checkAdmissionPerimeter}
-              onChange={(v) => set({ checkAdmissionPerimeter: v })}
-            />
-            <span className="settings-field-hint">
-              Lists cluster-scoped mutating and validating webhook configurations that apply to the
-              investigate namespace. Requires elevated RBAC; without permission KLEW labels the perimeter as unknown.
-            </span>
+            <SettingsGroup
+              title="Network proxy"
+              description={(
+                <>
+                  Route Kubernetes API traffic through an HTTP(S) proxy (for example corporate VPN gateways).
+                  Same variables as kubectl (<span className="mono">HTTP_PROXY</span>, <span className="mono">HTTPS_PROXY</span>, <span className="mono">NO_PROXY</span>).
+                </>
+              )}
+              footer={<SettingsMessage>{proxyMsg}</SettingsMessage>}
+            >
+              <SettingRow label="HTTP proxy" stacked>
+                <input
+                  type="text"
+                  className="settings-input"
+                  value={proxyDraft.httpProxy}
+                  placeholder="http://127.0.0.1:8888"
+                  aria-label="HTTP proxy"
+                  onChange={(e) => setProxyDraft((d) => ({ ...d, httpProxy: e.target.value }))}
+                />
+              </SettingRow>
+              <SettingRow label="HTTPS proxy" stacked>
+                <input
+                  type="text"
+                  className="settings-input"
+                  value={proxyDraft.httpsProxy}
+                  placeholder="http://127.0.0.1:8888"
+                  aria-label="HTTPS proxy"
+                  onChange={(e) => setProxyDraft((d) => ({ ...d, httpsProxy: e.target.value }))}
+                />
+              </SettingRow>
+              <SettingRow label="No proxy" stacked>
+                <input
+                  type="text"
+                  className="settings-input"
+                  value={proxyDraft.noProxy}
+                  placeholder="localhost,127.0.0.1,.cluster.local"
+                  aria-label="No proxy"
+                  onChange={(e) => setProxyDraft((d) => ({ ...d, noProxy: e.target.value }))}
+                />
+              </SettingRow>
+              <SettingRow
+                label="Active"
+                hint={[
+                  activeProxy?.httpProxy && `HTTP ${activeProxy.httpProxy}`,
+                  activeProxy?.httpsProxy && `HTTPS ${activeProxy.httpsProxy}`,
+                  activeProxy?.noProxy && `NO_PROXY ${activeProxy.noProxy}`,
+                ].filter(Boolean).join(' · ') || 'No proxy'}
+              >
+                <button type="button" className="btn btn-primary btn-sm" disabled={proxyBusy} onClick={applyProxy}>
+                  Apply proxy
+                </button>
+              </SettingRow>
+            </SettingsGroup>
 
-            <h4 className="settings-subhead">Metrics</h4>
-            <Toggle
-              label="Use metrics-server when available"
-              checked={prefs.useMetricsServer}
-              onChange={(v) => set({ useMetricsServer: v })}
-            />
-            <label className="settings-field">
-              <span className="settings-field-label">Metrics API group</span>
-              <input
-                type="text"
-                className="settings-input"
-                value={prefs.metricsApiGroup}
-                onChange={(e) => set({ metricsApiGroup: e.target.value })}
+            <SettingsGroup title="kubectl" footer={<SettingsMessage>{kubectlMsg}</SettingsMessage>}>
+              <SwitchRow
+                label="Use bundled kubectl"
+                hint="Recommended."
+                checked={prefs.useBundledKubectl}
+                disabled={kubectlBusy}
+                onChange={(v) => applyKubectl({ useBundledKubectl: v })}
               />
-              <span className="settings-field-hint">
-                Klew probes the cluster aggregated API (default metrics.k8s.io).
-                Custom endpoints require a metrics-server (or compatible) install in-cluster.
-              </span>
-            </label>
+              <SwitchRow
+                label="Download kubectl matching cluster version"
+                hint="Only when the cluster is more than one minor version away from the bundled kubectl (Kubernetes skew policy)."
+                checked={prefs.matchClusterKubectl}
+                disabled={!prefs.useBundledKubectl || kubectlBusy}
+                onChange={(v) => applyKubectl({ matchClusterKubectl: v })}
+              />
+              {!prefs.useBundledKubectl && (
+                <SettingRow label="Custom kubectl path" hint="Leave empty to use kubectl from your shell PATH." stacked>
+                  <div className="settings-field-row">
+                    <input
+                      type="text"
+                      className="settings-input"
+                      value={kubectlDraft}
+                      placeholder={kubectlInfo?.systemPath || '/opt/homebrew/bin/kubectl'}
+                      aria-label="Custom kubectl path"
+                      onChange={(e) => setKubectlDraft(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      disabled={kubectlBusy}
+                      onClick={() => applyKubectl()}
+                    >
+                      Apply
+                    </button>
+                  </div>
+                </SettingRow>
+              )}
+              <InfoRow label="Active kubectl" value={kubectlInfo?.activePath} />
+              <InfoRow
+                label="Version"
+                value={[kubectlInfo?.version, kubectlInfo?.source && `(${kubectlInfo.source})`].filter(Boolean).join(' ')}
+              />
+              <details className="settings-disclosure">
+                <summary>More kubectl details</summary>
+                <InfoRow label="Cluster version" value={kubectlInfo?.clusterVersion} />
+                <InfoRow label="Skew detected" value={kubectlInfo?.clusterSkewDetected ? 'yes' : 'no'} />
+                <InfoRow label="Bundled path" value={kubectlInfo?.bundledPath} />
+                <InfoRow label="Cluster-matched path" value={kubectlInfo?.clusterMatchedPath} />
+                <InfoRow label="System path" value={kubectlInfo?.systemPath} />
+              </details>
+            </SettingsGroup>
+
+            <SettingsGroup title="Investigation">
+              <SwitchRow
+                label="Check admission webhooks when pods are missing"
+                hint="Lists cluster-scoped mutating and validating webhook configurations that apply to the investigate namespace. Requires elevated RBAC; without permission KLEW labels the perimeter as unknown."
+                checked={prefs.checkAdmissionPerimeter}
+                onChange={(v) => set({ checkAdmissionPerimeter: v })}
+              />
+            </SettingsGroup>
+
+            <SettingsGroup title="Metrics">
+              <SwitchRow
+                label="Use metrics-server when available"
+                checked={prefs.useMetricsServer}
+                onChange={(v) => set({ useMetricsServer: v })}
+              />
+              <SettingRow
+                label="Metrics API group"
+                hint="Klew probes the cluster aggregated API (default metrics.k8s.io). Custom endpoints require a metrics-server (or compatible) install in-cluster."
+                stacked
+              >
+                <input
+                  type="text"
+                  className="settings-input"
+                  value={prefs.metricsApiGroup}
+                  aria-label="Metrics API group"
+                  onChange={(e) => set({ metricsApiGroup: e.target.value })}
+                />
+              </SettingRow>
+            </SettingsGroup>
           </SettingsSection>
         )}
 
         {section === 'help' && (
           <SettingsSection title="Help" subtitle="Shortcuts and where to learn more.">
-            <h4 className="settings-subhead">Keyboard shortcuts</h4>
-            <dl className="help-shortcuts">
+            <SettingsGroup title="Keyboard shortcuts">
               {KEYBOARD_SHORTCUTS.map((row) => (
-                <div key={row.keys} className="help-shortcut-row">
-                  <dt><kbd>{row.keys}</kbd></dt>
-                  <dd>{row.action}</dd>
-                </div>
+                <SettingRow key={row.keys} label={row.action}>
+                  <kbd className="settings-kbd">{row.keys}</kbd>
+                </SettingRow>
               ))}
-            </dl>
+            </SettingsGroup>
 
-            <h4 className="settings-subhead">Links</h4>
-            <ul className="help-links">
+            <SettingsGroup title="Links">
               {HELP_LINKS.map((link) => (
-                <li key={link.url}>
-                  <button
-                    type="button"
-                    className="help-link"
-                    onClick={() => BrowserOpenURL(link.url)}
-                  >
-                    {link.label}
-                  </button>
-                </li>
+                <button
+                  key={link.url}
+                  type="button"
+                  className="settings-row settings-row-link"
+                  onClick={() => BrowserOpenURL(link.url)}
+                >
+                  <span className="settings-row-label">{link.label}</span>
+                  <span className="settings-row-chevron" aria-hidden="true">↗</span>
+                </button>
               ))}
-            </ul>
+            </SettingsGroup>
 
-            <div className="settings-about">
-              <h4>Getting started</h4>
-              <p className="muted">
-                Pick a context and namespace in the top bar, then click Investigate.
-              </p>
-            </div>
+            <SettingsGroup title="Getting started">
+              <SettingRow hint="Pick a context and namespace in the top bar, then click Investigate." />
+            </SettingsGroup>
           </SettingsSection>
         )}
       </div>
@@ -660,45 +688,5 @@ function SettingsSection({ title, subtitle, children }) {
       </header>
       <div className="settings-section-body">{children}</div>
     </section>
-  )
-}
-
-function Toggle({ label, checked, onChange }) {
-  return (
-    <label className="settings-toggle">
-      <input
-        type="checkbox"
-        checked={Boolean(checked)}
-        onChange={(e) => onChange?.(e.target.checked)}
-      />
-      <span>{label}</span>
-    </label>
-  )
-}
-
-function NumberField({ label, value, min, max, hint, disabled = false, onChange }) {
-  return (
-    <label className="settings-field">
-      <span className="settings-field-label">{label}</span>
-      <input
-        type="number"
-        className="settings-input settings-input-num"
-        value={value}
-        min={min}
-        max={max}
-        disabled={disabled}
-        onChange={(e) => onChange?.(Number(e.target.value))}
-      />
-      {hint && <span className="settings-field-hint">{hint}</span>}
-    </label>
-  )
-}
-
-function ReadOnly({ k, v }) {
-  return (
-    <div className="kv-row">
-      <span className="kv-k">{k}</span>
-      <span className="kv-v mono" title={v}>{v}</span>
-    </div>
   )
 }

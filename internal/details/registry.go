@@ -122,7 +122,7 @@ func Build(ctx context.Context, req *Request) (*ObjectDetail, error) {
 
 	// Always append events when present (provider may already have added).
 	if !hasSection(detail.Sections, "events") {
-		if ev := eventsSection(req); !ev.Empty() {
+		if ev := eventsSection(ctx, req); !ev.Empty() {
 			detail.Sections = append(detail.Sections, ev)
 		}
 	}

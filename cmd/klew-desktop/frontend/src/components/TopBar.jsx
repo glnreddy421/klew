@@ -8,6 +8,7 @@ import {
 } from '../lib/investigationQuery'
 import { ContextPopover, NamespacePopover } from './shell/ClusterNamespacePopover.jsx'
 import { ClusterConnectionDot } from './shell/ClusterConnectionDot.jsx'
+import { EventRecordingDot } from './shell/EventRecordingDot.jsx'
 import { TimeWindowPopover } from './shell/TimeWindowPopover.jsx'
 import { scopeSupportsInvestigate } from '../lib/browseScope.js'
 import { activeContextLabel } from '../lib/clusterConnection.js'
@@ -176,6 +177,7 @@ export function TopBar({
             reconnectBusy={reconnectBusy}
             contextLabel={activeContextLabel(cluster, { connecting, connectingTarget })}
           />
+          <EventRecordingDot contextName={cluster?.selectedContext || cluster?.currentContext || ''} />
         </div>
       </div>
 

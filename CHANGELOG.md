@@ -4,6 +4,25 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 
 ## [Unreleased]
 
+### Event history
+
+- **Local event recorder** — Kubernetes Events expire after about an hour; Klew now records them while it runs, for the active context and every favorite context, so investigations can show what happened before you started looking. Read-only (List/Watch only), stored locally in `~/Library/Application Support/Klew/history/events.db`, never uploaded. **On by default**; off switch in Settings.
+- **Honest coverage** — Klew tracks when it was recording and shows gaps when it was not. Top bar shows a small recording dot beside the cluster cloud (hover for "history since …" and gap count, or why it is not recording: paused, RBAC denied, turned off); Home and the context picker show per-context history depth.
+- **Investigations** — recorded events from the last 6 hours merge into Overview, Failures, Evidence, and Patterns (deduplicated by event UID) with a "recorded" marker and an "Includes recorded events…" line listing gaps. The live 15-minute signal window is unchanged.
+- **Inspector → Events** — includes recorded events for the object, newest first, with "History since …" and "No history … (Klew not recording)" for gaps during the object's lifetime.
+- **Settings → Investigation → Event history** — on/off, retention (default 7 days), size limit (default 500 MB), current size, history start per context, and Clear history.
+- **Multiple windows** — one window records each cluster at a time; the others read the shared history and take over when that window closes.
+- **Limited RBAC** — when cluster-wide events are denied, records per namespace (up to 50) instead; under very high event volume, keeps Warning events only and says so.
+
+### Resources browse
+
+- **Categories stay open** — opening a category (e.g. Network) no longer collapses the others; each one stays open until you collapse it. Selecting a kind opens its category without closing the rest.
+
+### Settings
+
+- **Refreshed layout** — grouped cards with label-left / control-right rows, switches instead of checkboxes, and a lighter sidebar; long kubectl details fold behind a disclosure.
+- **Fix** — "Download kubectl matching cluster version" is now disabled when bundled kubectl is off.
+
 ## [1.4.0] — 2026-10-15
 
 ### Look and feel

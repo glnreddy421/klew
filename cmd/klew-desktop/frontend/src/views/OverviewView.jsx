@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { CollectingMatchesSplash } from '../components/incident/CollectingMatchesSplash'
 import { InvestigationHeader } from '../components/overview/InvestigationHeader'
+import { RecordedHistoryLine } from '../components/overview/RecordedHistoryLine.jsx'
 import { InvestigationChain } from '../components/overview/InvestigationChain'
 import { KeyFindings } from '../components/overview/KeyFindings'
 import { InvestigationTimeline } from '../components/overview/InvestigationTimeline'
@@ -127,6 +128,7 @@ export function OverviewView({
         visibilityWarning={visibilityWarning}
         onNavigate={onNavigate}
       />
+      <RecordedHistoryLine view={view} />
 
       {visibilityWarning && (
         <div

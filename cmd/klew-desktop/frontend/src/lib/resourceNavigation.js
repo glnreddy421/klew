@@ -14,11 +14,22 @@ export function categorySupportsOverview(categoryId) {
 }
 
 /**
- * Accordion toggle for resource categories: at most one open at a time.
- * Opening a category closes the others; toggling the open one closes it.
+ * Toggle one resource category. Categories open and close independently —
+ * opening one never collapses the others.
  */
-export function toggleAccordionGroup(expanded, groupId) {
-  return expanded.has(groupId) ? new Set() : new Set([groupId])
+export function toggleExpandedGroup(expanded, groupId) {
+  const next = new Set(expanded)
+  if (next.has(groupId)) next.delete(groupId)
+  else next.add(groupId)
+  return next
+}
+
+/** Ensure a category is open, keeping every other open category as is. */
+export function expandGroup(expanded, groupId) {
+  if (!groupId || expanded.has(groupId)) return expanded
+  const next = new Set(expanded)
+  next.add(groupId)
+  return next
 }
 
 /**

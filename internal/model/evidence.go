@@ -2,6 +2,7 @@ package model
 
 import (
 	"strings"
+	"time"
 )
 
 // VerdictStatus is the overall workload health classification.
@@ -157,6 +158,12 @@ type EventRecord struct {
 	Count          int32     `json:"count"`
 	Source         string    `json:"source,omitempty"`
 	InvolvedObject ObjectRef `json:"involvedObject"`
+	// UID is the Event object's metadata.uid (shared by core/v1 and events.k8s.io/v1).
+	UID       string    `json:"uid,omitempty"`
+	FirstSeen Timestamp `json:"firstSeen,omitempty"`
+	LastSeen  Timestamp `json:"lastSeen,omitempty"`
+	// Recorded is true when the event came from Klew's local event history.
+	Recorded bool `json:"recorded,omitempty"`
 }
 
 // LogRecord holds container log text.
@@ -244,6 +251,37 @@ type EvidenceBundle struct {
 	DetectedCRDKinds []string            `json:"detectedCRDKinds,omitempty"`
 	Metrics            MetricsSummary             `json:"metrics"`
 	AdmissionPerimeter *AdmissionPerimeterSummary `json:"admissionPerimeter,omitempty"`
+	// EventHistory describes recorded events merged into Events (nil when none).
+	EventHistory *EventHistoryCoverage `json:"eventHistory,omitempty"`
+}
+
+// TimeRange is a closed time interval.
+type TimeRange struct {
+	From Timestamp `json:"from"`
+	To   Timestamp `json:"to"`
+}
+
+// EventHistoryQuery selects recorded events.
+type EventHistoryQuery struct {
+	// Namespace filters by event namespace; "" means all namespaces.
+	Namespace string
+	// Since bounds last_seen; zero means the whole retained history.
+	Since time.Time
+	// RegardingName limits to events about this object name.
+	RegardingName string
+	// NamePrefix also matches "<RegardingName>-*" (workload → pods/replicasets).
+	NamePrefix bool
+	Limit      int
+}
+
+// EventHistoryCoverage summarises Klew's local event recording for a cluster.
+// History is never complete: Since is when recording began and Gaps are
+// periods Klew was not recording.
+type EventHistoryCoverage struct {
+	Since Timestamp   `json:"since,omitempty"`
+	Gaps  []TimeRange `json:"gaps,omitempty"`
+	// RecordedEvents counts events that came only from history (no longer in the API).
+	RecordedEvents int `json:"recordedEvents,omitempty"`
 }
 
 // TimelineEvent is a correlated incident timeline entry.

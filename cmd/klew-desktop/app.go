@@ -58,6 +58,9 @@ type App struct {
 
 	lastCatalogEmit    time.Time
 	catalogEmitPending *time.Timer
+
+	history    *eventHistory
+	historyErr string
 }
 
 func NewApp(boot bootOptions) *App { return &App{boot: boot} }
@@ -71,6 +74,7 @@ func (a *App) startup(ctx context.Context) {
 		a.cluster = snapshot
 	}
 	a.cluster = kube.PreserveClusterPickerOnSyncError(a.cluster, a.refreshCluster(a.boot.Context, a.boot.Namespace))
+	a.startEventHistory()
 	a.updateWindowTitle()
 	a.emitCluster()
 }
@@ -81,6 +85,7 @@ func (a *App) shutdown(context.Context) {
 	if a.terminals != nil {
 		a.terminals.closeAll()
 	}
+	a.stopEventHistory()
 }
 
 func (a *App) refreshCluster(contextName, namespace string) kube.ClusterState {
@@ -124,6 +129,7 @@ func (a *App) emitCluster() {
 	st := a.cluster
 	a.mu.Unlock()
 	a.updateWindowTitle()
+	a.syncHistoryActive()
 	runtime.EventsEmit(a.ctx, "cluster", st)
 }
 
@@ -306,6 +312,7 @@ func (a *App) GetObjectDetails(kind, name, namespace string) (*details.ObjectDet
 	if err != nil {
 		return nil, err
 	}
+	a.attachHistory(client)
 	return details.Build(ctx, &details.Request{
 		Client:   client,
 		Snapshot: model.EvidenceBundle{},
@@ -863,6 +870,7 @@ func (a *App) StartInvestigation(opts StartOptions) error {
 		a.stopInvestigation()
 		return err
 	}
+	a.attachHistory(client)
 	if ns == "" {
 		ns = client.ContextNamespace
 		if ns == "" {
@@ -1110,6 +1118,9 @@ func (a *App) SetKubeconfigPath(path string) kube.ClusterState {
 	a.mu.Lock()
 	a.cluster = st
 	a.mu.Unlock()
+	if m := a.historyManager(); m != nil {
+		m.Restart()
+	}
 	a.emitCluster()
 	return st
 }
@@ -1133,6 +1144,9 @@ func (a *App) GetNetworkProxy() kube.NetworkProxyOptions {
 func (a *App) SetNetworkProxy(httpProxy, httpsProxy, noProxy string) kube.NetworkProxyOptions {
 	opts := kube.SetNetworkProxy(httpProxy, httpsProxy, noProxy)
 	a.invalidateClusterStatusCache()
+	if m := a.historyManager(); m != nil {
+		m.Restart()
+	}
 	return opts
 }
 

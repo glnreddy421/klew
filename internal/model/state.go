@@ -53,6 +53,8 @@ type EvidenceEvent struct {
 	Annotations       map[string]string `json:"annotations,omitempty"`
 	Confidence        float64           `json:"confidence"`
 	RelatedObjectRefs []ObjectRef       `json:"relatedObjectRefs,omitempty"`
+	// Recorded marks evidence from Klew's local event history (expired from the API).
+	Recorded bool `json:"recorded,omitempty"`
 }
 
 // ActiveWatch tracks a running watch/stream.
