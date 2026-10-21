@@ -25,6 +25,7 @@ import { isRbacForbiddenMessage } from '../../lib/rbacAccess.js'
 import { EntityRowsSkeleton, InlineLoading, LoadingBar } from '../LoadingSpinner.jsx'
 import { activeTabGuide, buildBrowseTabs, INSPECT_TAB_META } from '../../lib/inspectTabGuide.js'
 import { WorkloadTraceGraph } from '../workloads/WorkloadTraceGraph.jsx'
+import { historyGapLines, historySinceLine } from '../../lib/eventHistory'
 
 /**
  * Kind-aware object inspector.
@@ -932,6 +933,17 @@ export function DetailSection({ section, groupId, onInspect, inspectNamespace = 
           </button>
         )}
       </div>
+      {section.history?.since && (
+        <p className="inspect-history-line">
+          {historySinceLine(section.history)}
+          {historyGapLines(section.history).map((g) => (
+            <span key={g} className="inspect-history-gap">
+              <br />
+              {g}
+            </span>
+          ))}
+        </p>
+      )}
       {hasFields && (
         <dl className="inspect-prop-list">
           {section.fields.map((f, i) => (
@@ -1022,6 +1034,14 @@ export function DetailSection({ section, groupId, onInspect, inspectNamespace = 
                           </button>
                         ) : (
                           cell || '—'
+                        )}
+                        {j === 0 && section.table.rowTags?.[i] && (
+                          <span
+                            className="inspect-recorded-badge"
+                            title="From Klew's local event history — no longer in the Kubernetes API"
+                          >
+                            {section.table.rowTags[i]}
+                          </span>
                         )}
                       </td>
                     )

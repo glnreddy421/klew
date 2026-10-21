@@ -3,6 +3,7 @@ import { StatusBadge } from '../components/incident/StatusBadge'
 import { InvestigationSurfaceGuide } from '../components/incident/InvestigationSurfaceGuide.jsx'
 import { SurfaceGuideIcon } from '../components/incident/surfaceGuideIcons.jsx'
 import { AdmissionPerimeterPanel } from '../components/incident/AdmissionPerimeterPanel.jsx'
+import { RecordedBadge, RecordedHistoryLine } from '../components/overview/RecordedHistoryLine.jsx'
 import {
   containerHealthLabel,
   formatClock,
@@ -99,6 +100,7 @@ export function FailuresView({ view, explorerFilter, investigationActive = false
     <div className="inv-page failures-page">
       <section className="card inv-card">
         <h3>Failures</h3>
+        <RecordedHistoryLine view={view} className="card-body" />
         <div className="card-body failures-summary">
           <div className="failures-signal">
             <StatusBadge
@@ -225,7 +227,10 @@ function PodDetail({ pod, events }) {
           {events.map((ev, i) => (
             <li key={`${ev.time}-${i}`} className={`inspect-event sev-${ev.severity}`}>
               <span className="inspect-event-time mono">{ev.time}</span>
-              <span className="inspect-event-reason">{ev.reason}</span>
+              <span className="inspect-event-reason">
+                {ev.reason}
+                <RecordedBadge show={ev.recorded} />
+              </span>
               <span className="inspect-event-msg" title={ev.message}>{ev.message}</span>
             </li>
           ))}
@@ -279,6 +284,7 @@ function relatedEvents(view, podName) {
       reason: e.reason || e.type || '',
       message: e.message || '',
       severity: severityRankTL(e.type === 'Warning' ? 'warning' : 'info') >= 2 ? 'warning' : 'info',
+      recorded: Boolean(e.recorded),
     })
   }
   for (const e of view?.evidence || []) {

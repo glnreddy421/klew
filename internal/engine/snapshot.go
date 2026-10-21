@@ -86,6 +86,7 @@ func PublishSnapshotEvents(bus *Bus, bundle model.EvidenceBundle) {
 			Raw:               e.Message,
 			Confidence:        0.85,
 			RelatedObjectRefs: []model.ObjectRef{e.InvolvedObject},
+			Recorded:          e.Recorded,
 		})
 	}
 	for _, lr := range bundle.Logs {

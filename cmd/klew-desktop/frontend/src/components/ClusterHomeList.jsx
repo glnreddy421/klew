@@ -4,6 +4,7 @@ import { LoadingState } from './LoadingSpinner.jsx'
 import { connectionErrorMessage } from '../lib/clusterConnection.js'
 import { isFavoriteContext, orderContextsForDisplay } from '../lib/clusterContexts.js'
 import { FavoriteStarIcon, LaunchDefaultIcon } from './shell/ContextActionIcons.jsx'
+import { ContextRecordingHint } from './shell/ContextRecordingHint.jsx'
 
 /**
  * Local kubeconfig context list for Home.
@@ -125,6 +126,7 @@ export function ClusterHomeList({
                             .join(' · ')}
                         </span>
                       )}
+                      <ContextRecordingHint contextName={c.name} />
                     </span>
                     <span className="cluster-home-row-cta">
                       {connecting && isActive ? '…' : 'Open'}

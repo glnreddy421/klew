@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { EvidenceBoardPanel } from '../components/evidence/EvidenceBoardPanel'
 import { InvestigationSurfaceGuide } from '../components/incident/InvestigationSurfaceGuide.jsx'
 import { AdmissionPerimeterPanel } from '../components/incident/AdmissionPerimeterPanel.jsx'
+import { RecordedBadge, RecordedHistoryLine } from '../components/overview/RecordedHistoryLine.jsx'
 import {
   formatClock,
   getAdmissionPerimeter,
@@ -78,6 +79,7 @@ export function EvidenceView({ view, onFilterLogs, explorerFilter, investigation
   return (
     <div className="inv-page evidence-page ev-revamp">
       <AdmissionPerimeterPanel summary={admissionPerimeter} />
+      <RecordedHistoryLine view={view} />
       <EvidenceBoardPanel board={evidenceBoard} onFilterLogs={onFilterLogs} />
 
       <div className="ev-support">
@@ -95,6 +97,7 @@ export function EvidenceView({ view, onFilterLogs, explorerFilter, investigation
                     <strong>{e.reason || e.sourceKind || e.sourceType}</strong>
                     {' '}
                     {e.message}
+                    <RecordedBadge show={e.recorded} />
                   </span>
                 </li>
               ))}

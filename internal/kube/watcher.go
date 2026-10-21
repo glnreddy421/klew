@@ -31,6 +31,7 @@ type LiveWatcher struct {
 
 	dedupeMu sync.Mutex
 	dedupe   map[string]struct{}
+	seenUIDs map[string]struct{}
 }
 
 // SetScopePodNames updates the investigation pod allowlist used for live events.
@@ -220,19 +221,51 @@ func (w *LiveWatcher) watchEventsV1Once(ctx context.Context) (established bool, 
 	}
 }
 
-func (w *LiveWatcher) shouldEmit(kind, name, reason, msg string) bool {
+// SeedEventUIDs marks events already published from the snapshot (live list or
+// recorded history) so the watch does not emit them again.
+func (w *LiveWatcher) SeedEventUIDs(uids []string) {
+	if w == nil {
+		return
+	}
+	w.dedupeMu.Lock()
+	defer w.dedupeMu.Unlock()
+	if w.seenUIDs == nil {
+		w.seenUIDs = make(map[string]struct{}, len(uids))
+	}
+	for _, u := range uids {
+		if u != "" {
+			w.seenUIDs[u] = struct{}{}
+		}
+	}
+}
+
+func (w *LiveWatcher) shouldEmit(uid, kind, name, reason, msg string) bool {
 	key := kind + "|" + name + "|" + reason + "|" + msg
 	w.dedupeMu.Lock()
 	defer w.dedupeMu.Unlock()
 	if w.dedupe == nil {
 		w.dedupe = make(map[string]struct{}, 256)
 	}
+	if w.seenUIDs == nil {
+		w.seenUIDs = make(map[string]struct{}, 256)
+	}
+	if uid != "" {
+		if _, ok := w.seenUIDs[uid]; ok {
+			return false
+		}
+	}
 	if _, ok := w.dedupe[key]; ok {
 		return false
 	}
 	w.dedupe[key] = struct{}{}
+	if uid != "" {
+		w.seenUIDs[uid] = struct{}{}
+	}
 	if len(w.dedupe) > 500 {
 		w.dedupe = make(map[string]struct{}, 256)
+	}
+	if len(w.seenUIDs) > 5000 {
+		w.seenUIDs = make(map[string]struct{}, 256)
 	}
 	return true
 }
@@ -246,7 +279,7 @@ func (w *LiveWatcher) emitCoreEvent(e *corev1.Event, scope investigationPods) {
 	if !EventInInvestigationScope(kind, name, w.Query, scope) {
 		return
 	}
-	if !w.shouldEmit(kind, name, e.Reason, e.Message) {
+	if !w.shouldEmit(string(e.UID), kind, name, e.Reason, e.Message) {
 		return
 	}
 	ts := e.LastTimestamp.Time
@@ -284,7 +317,7 @@ func (w *LiveWatcher) emitEventsV1(e *eventsv1.Event, scope investigationPods) {
 	if !EventInInvestigationScope(kind, name, w.Query, scope) {
 		return
 	}
-	if !w.shouldEmit(kind, name, e.Reason, msg) {
+	if !w.shouldEmit(string(e.UID), kind, name, e.Reason, msg) {
 		return
 	}
 	rec := eventV1ToRecord(*e)

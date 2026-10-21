@@ -23,6 +23,8 @@ type Client struct {
 	Namespace string
 	// ContextNamespace is the namespace stored on the kubeconfig context (may be empty).
 	ContextNamespace string
+	// History reads Klew's local event recordings (optional; nil disables).
+	History EventHistory
 }
 
 // configureLoadingRules mirrors configLoader: empty path uses KUBECONFIG env merge;

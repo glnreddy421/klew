@@ -46,6 +46,9 @@ type Section struct {
 	Code           string     `json:"code,omitempty"`
 	AltCode        string     `json:"altCode,omitempty"`
 	AltToggleLabel string     `json:"altToggleLabel,omitempty"`
+	// History is set on the Events section when local event history is
+	// available: when it starts and gaps that overlap the object's lifetime.
+	History *model.EventHistoryCoverage `json:"history,omitempty"`
 }
 
 // Field is a single key/value row.
@@ -66,6 +69,8 @@ type Table struct {
 	Rows        [][]string `json:"rows"`
 	Sensitive   bool       `json:"sensitive,omitempty"`   // value column holds base64; UI toggles decode
 	ValueColumn int        `json:"valueColumn,omitempty"` // 0-based index; defaults to 1 when sensitive
+	// RowTags parallels Rows; a non-empty tag (e.g. "recorded") renders as a badge.
+	RowTags []string `json:"rowTags,omitempty"`
 }
 
 // Empty reports whether the section has nothing to render.

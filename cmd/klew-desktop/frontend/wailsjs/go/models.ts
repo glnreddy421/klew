@@ -108,6 +108,7 @@ export namespace details {
 	    rows: string[][];
 	    sensitive?: boolean;
 	    valueColumn?: number;
+	    rowTags?: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new Table(source);
@@ -119,6 +120,7 @@ export namespace details {
 	        this.rows = source["rows"];
 	        this.sensitive = source["sensitive"];
 	        this.valueColumn = source["valueColumn"];
+	        this.rowTags = source["rowTags"];
 	    }
 	}
 	export class Section {
@@ -132,6 +134,7 @@ export namespace details {
 	    code?: string;
 	    altCode?: string;
 	    altToggleLabel?: string;
+	    history?: model.EventHistoryCoverage;
 	
 	    static createFrom(source: any = {}) {
 	        return new Section(source);
@@ -149,6 +152,7 @@ export namespace details {
 	        this.code = source["code"];
 	        this.altCode = source["altCode"];
 	        this.altToggleLabel = source["altToggleLabel"];
+	        this.history = this.convertValues(source["history"], model.EventHistoryCoverage);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -271,6 +275,59 @@ export namespace engine {
 	        this.window = source["window"];
 	        this.live = source["live"];
 	    }
+	}
+
+}
+
+export namespace history {
+	
+	export class ContextStatus {
+	    context: string;
+	    clusterKey?: string;
+	    state: string;
+	    reason?: string;
+	    scope?: string;
+	    highVolume?: boolean;
+	    active?: boolean;
+	    favorite?: boolean;
+	    since?: string;
+	    gaps?: model.TimeRange[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ContextStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.context = source["context"];
+	        this.clusterKey = source["clusterKey"];
+	        this.state = source["state"];
+	        this.reason = source["reason"];
+	        this.scope = source["scope"];
+	        this.highVolume = source["highVolume"];
+	        this.active = source["active"];
+	        this.favorite = source["favorite"];
+	        this.since = source["since"];
+	        this.gaps = this.convertValues(source["gaps"], model.TimeRange);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 
 }
@@ -822,6 +879,30 @@ export namespace main {
 	        this.namespaces = source["namespaces"];
 	        this.kubeconfig = source["kubeconfig"];
 	        this.context = source["context"];
+	    }
+	}
+	export class EventHistorySettings {
+	    available: boolean;
+	    enabled: boolean;
+	    retentionDays: number;
+	    maxMB: number;
+	    sizeBytes: number;
+	    path?: string;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new EventHistorySettings(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.available = source["available"];
+	        this.enabled = source["enabled"];
+	        this.retentionDays = source["retentionDays"];
+	        this.maxMB = source["maxMB"];
+	        this.sizeBytes = source["sizeBytes"];
+	        this.path = source["path"];
+	        this.error = source["error"];
 	    }
 	}
 	export class GetBrowseMetricsOptions {
@@ -1631,6 +1712,54 @@ export namespace model {
 	        this.args = source["args"];
 	    }
 	}
+	export class TimeRange {
+	    from: string;
+	    to: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TimeRange(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.from = source["from"];
+	        this.to = source["to"];
+	    }
+	}
+	export class EventHistoryCoverage {
+	    since?: string;
+	    gaps?: TimeRange[];
+	    recordedEvents?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new EventHistoryCoverage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.since = source["since"];
+	        this.gaps = this.convertValues(source["gaps"], TimeRange);
+	        this.recordedEvents = source["recordedEvents"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class ObjectRef {
 	    kind: string;
 	    name: string;
@@ -1657,6 +1786,10 @@ export namespace model {
 	    count: number;
 	    source?: string;
 	    involvedObject: ObjectRef;
+	    uid?: string;
+	    firstSeen?: string;
+	    lastSeen?: string;
+	    recorded?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new EventRecord(source);
@@ -1671,6 +1804,10 @@ export namespace model {
 	        this.count = source["count"];
 	        this.source = source["source"];
 	        this.involvedObject = this.convertValues(source["involvedObject"], ObjectRef);
+	        this.uid = source["uid"];
+	        this.firstSeen = source["firstSeen"];
+	        this.lastSeen = source["lastSeen"];
+	        this.recorded = source["recorded"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -2270,6 +2407,7 @@ export namespace model {
 	    detectedCRDKinds?: string[];
 	    metrics: MetricsSummary;
 	    admissionPerimeter?: AdmissionPerimeterSummary;
+	    eventHistory?: EventHistoryCoverage;
 	
 	    static createFrom(source: any = {}) {
 	        return new EvidenceBundle(source);
@@ -2301,6 +2439,7 @@ export namespace model {
 	        this.detectedCRDKinds = source["detectedCRDKinds"];
 	        this.metrics = this.convertValues(source["metrics"], MetricsSummary);
 	        this.admissionPerimeter = this.convertValues(source["admissionPerimeter"], AdmissionPerimeterSummary);
+	        this.eventHistory = this.convertValues(source["eventHistory"], EventHistoryCoverage);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -2342,6 +2481,7 @@ export namespace model {
 	    annotations?: Record<string, string>;
 	    confidence: number;
 	    relatedObjectRefs?: ObjectRef[];
+	    recorded?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new EvidenceEvent(source);
@@ -2368,6 +2508,7 @@ export namespace model {
 	        this.annotations = source["annotations"];
 	        this.confidence = source["confidence"];
 	        this.relatedObjectRefs = this.convertValues(source["relatedObjectRefs"], ObjectRef);
+	        this.recorded = source["recorded"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -3110,6 +3251,7 @@ export namespace model {
 		    return a;
 		}
 	}
+	
 	
 	
 	

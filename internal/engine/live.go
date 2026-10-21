@@ -131,6 +131,7 @@ func StartLive(ctx context.Context, client *kube.Client, opts LiveOptions) (*Liv
 	go session.runRefreshLoop(ctx)
 
 	watcher := &kube.LiveWatcher{Client: client, Sink: sink, Namespace: ns, Query: opts.Query}
+	watcher.SeedEventUIDs(eventUIDs(bundle.Events))
 	scopePods := podSummaryNames(bundle.Pods)
 	watches := watcher.Start(ctx, &session.wg, scopePods)
 	session.watcher = watcher
@@ -565,4 +566,14 @@ func RunFor(ctx context.Context, client *kube.Client, opts LiveOptions, duration
 	case <-time.After(duration):
 		return session.State(), nil
 	}
+}
+
+func eventUIDs(events []model.EventRecord) []string {
+	out := make([]string, 0, len(events))
+	for _, e := range events {
+		if e.UID != "" {
+			out = append(out, e.UID)
+		}
+	}
+	return out
 }
