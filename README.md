@@ -1,117 +1,92 @@
 # Klew
 
-Live Kubernetes incident investigation for macOS.
+**Live Kubernetes incident investigation for macOS.**
 
-When something breaks in a cluster, you need to answer three questions quickly: **what failed**, **why it failed**, and **what else is affected**. Klew discovers related objects, watches live state and events, correlates logs and infrastructure signals, and keeps a single investigation updated as the cluster changes.
+When something breaks in a cluster you need three answers fast: **what failed**, **why**, and **what else is affected**. Klew discovers the related objects, watches live state, events, and logs, correlates them, and keeps one investigation up to date as the cluster changes — instead of a dozen `kubectl` commands across terminal tabs.
 
-Built for engineers on call, SREs, and platform teams who already use `kubectl` and want a focused workspace instead of stitching together commands across terminal tabs.
+![Klew investigation overview — OOMKilled diagnosis with affected path and key findings](docs/screenshots/overview.png)
+
+## What you get
+
+- **A verdict, not a dump** — status, leading signal, causal chain, confidence, and next steps for the workload you're investigating.
+- **Failures ranked by severity** — pod triage with container state, exit codes, limits, and related events.
+- **Patterns** — log and event templates mined from every pod in scope, with recurring and emerging behavior.
+- **Evidence** — infrastructure events linked to log templates by time overlap, plus the observations behind each claim.
+- **Resources** — a full read-only cluster catalog with a live inspector, connection trace, and manifest view. Works without an investigation.
+- **Graph** — ingress → service → workload → pod relationships, colored by health.
+- **Event history** — Kubernetes keeps Events for about an hour; Klew records them locally while it runs, so you can see what happened before you started looking.
+- **Built in** — cluster terminal pinned to the active context, multi-pod live logs, and one window per cluster.
+
+Klew is **read-only**: it lists and watches resources and never changes your cluster.
 
 ## Screenshots
 
-| Welcome | Overview |
-| --- | --- |
-| Pick context, namespace, and start investigating. | Live brief — signals, chain, confidence, next steps. |
-| ![Welcome](docs/screenshots/overview.png) | ![Overview](docs/screenshots/investigation.png) |
-
 | Failures | Patterns |
 | --- | --- |
-| Ranked runtime failures in scope. | Log and event templates with correlated behavior. |
-| ![Failures](docs/screenshots/failures.png) | ![Patterns](docs/screenshots/patterns.png) |
+| ![Failures — pod triage and pod investigation](docs/screenshots/failures.png) | ![Patterns — top words, fields, and log templates](docs/screenshots/patterns.png) |
+| **Evidence** | **Resources** |
+| ![Evidence — correlated signals, observations, and claims](docs/screenshots/evidence.png) | ![Resources — catalog, pod list, and live inspector](docs/screenshots/resources.png) |
 
-| Evidence | Resources |
-| --- | --- |
-| Correlated signals and supporting facts. | Catalog browse, inspector, and live logs in one workspace. |
-| ![Evidence](docs/screenshots/evidence.png) | ![Resources](docs/screenshots/resources.png) |
-
-| Graph |
-| --- |
-| Relationships across workloads, services, and ingress. |
-| ![Graph](docs/screenshots/graph.png) |
+![Graph — relationships across ingress, services, workloads, and pods](docs/screenshots/graph.png)
 
 ## Install
 
-**Requirements:** macOS 12+, a valid kubeconfig (`~/.kube/config` or `KUBECONFIG` from your shell profile).
-
-### Download
-
-Latest release: [github.com/glnreddy421/klew/releases](https://github.com/glnreddy421/klew/releases)
-
-| Mac | File |
-| --- | --- |
-| Apple Silicon | `Klew-x.y.z-macos-arm64.dmg` |
-| Intel | `Klew-x.y.z-macos-amd64.dmg` |
-
-Open the DMG and drag **Klew** to Applications.
+**Requires** macOS 12+ and a working kubeconfig (`~/.kube/config`, or `KUBECONFIG` from your shell profile).
 
 ### Homebrew
-
-Installs **Klew.app** to `/Applications` (standard macOS cask).
 
 ```bash
 brew tap glnreddy421/klew
 brew install --cask klew
 ```
 
-**Upgrade** (after a new release):
+Upgrade with `brew update && brew upgrade --cask klew`; remove with `brew uninstall --cask klew`.
 
-```bash
-brew update && brew upgrade --cask klew
-```
+<details>
+<summary>Migrating from the old formula</summary>
 
-**Uninstall:**
-
-```bash
-brew uninstall --cask klew
-```
-
-If you installed an older **formula** build (`brew install klew` without `--cask`), migrate once:
+If you installed with `brew install klew` (no `--cask`), switch once:
 
 ```bash
 brew uninstall klew
 brew install --cask klew
 ```
 
+</details>
+
+### Download
+
+Grab the DMG from [Releases](https://github.com/glnreddy421/klew/releases) — `Klew-x.y.z-macos-arm64.dmg` for Apple Silicon, `Klew-x.y.z-macos-amd64.dmg` for Intel — and drag **Klew** to Applications.
+
 ## Quick start
 
-### Browse (no investigation)
+**Browse** — pick a context and namespace in the top bar, open **Resources**, choose a category, and select a row. The inspector loads live details, the connection trace, and the manifest.
 
-1. Launch Klew and set **Resources scope** (context + namespace(s)) in the top bar.
-2. Open **Resources**, pick a category, and select a row — the inspector loads live object details, focus chain, and manifest.
+**Investigate** — set a single namespace, optionally search for a workload, and click **Investigate**. Move through **Overview → Failures → Patterns → Evidence** as signals arrive.
 
-### Investigate (incident)
-
-1. Set **Investigate scope** to a single namespace in the top bar.
-2. Search for a workload (optional) and click **Investigate**.
-3. Move through Overview, Failures, Patterns, and Evidence as signals arrive.
-
-**Namespace is the boundary.** Klew investigates workloads inside the selected namespace, not the namespace object itself. Overview, Patterns, Failures, and Evidence require an active investigation; Resources works without one.
-
-## Surfaces
-
-| Surface | Purpose |
-| --- | --- |
-| **Overview** | Status, leading signal, causal chain, and next steps |
-| **Failures** | Concrete runtime failures ranked by severity |
-| **Patterns** | Log and infrastructure event templates |
-| **Evidence** | Correlated signals and supporting observations |
-| **Resources** | Kubernetes catalog browse, focus chain, and live inspector (works without Investigate) |
-| **Graph** | Relationships between affected resources |
-| **Terminal** | Cluster shell for the active context |
-| **Live logs** | Tail container logs from investigation pods |
+> **The namespace is the boundary.** Klew investigates workloads inside the selected namespace. Overview, Failures, Patterns, Evidence, and Graph need an active investigation; Resources does not.
 
 ## Keyboard shortcuts
 
 | Shortcut | Action |
 | --- | --- |
 | ⌘K | Focus search |
-| ⌘N | New window |
-| ⌘R | Sync kubeconfig |
+| ⌘R | Refresh the investigation, or sync kubeconfig when idle |
+| ⌘N | New window (another cluster) |
+| ⌘, | Settings |
 | ⌘\` | Terminal |
 | ⌘⇧L | Live logs |
+| ⌘⇧\` | Split terminal and logs |
+
+## Privacy
+
+No telemetry and no account. Klew connects to the Kubernetes API servers in your kubeconfig (through your proxy settings, if any). Other network use is limited to downloading a version-matched `kubectl` from `dl.k8s.io` when your cluster needs one, and fetching UI fonts from Google Fonts (cached locally).
+
+Recorded event history stays on your Mac in `~/Library/Application Support/Klew/history/` and is never uploaded. Turn it off or clear it in **Settings → Investigation**.
 
 ## Build from source
 
-Requires Go 1.22+, Node 22+, and [Wails v2](https://wails.io).
+Requires Go 1.25+, Node 24, and [Wails v2](https://wails.io).
 
 ```bash
 git clone https://github.com/glnreddy421/klew.git
@@ -119,7 +94,7 @@ cd klew/cmd/klew-desktop
 wails dev
 ```
 
-Release builds use `.github/scripts/build-macos.sh`.
+Release builds use `.github/scripts/build-macos.sh`. See [CHANGELOG.md](CHANGELOG.md) for what's new.
 
 ## License
 
