@@ -442,7 +442,7 @@ func recoveredCorrelation(b model.EvidenceBundle, evidenceSignals []model.Signal
 	}
 	return Correlation{
 		LeadingSignal:   "",
-		HypothesisLabel: "Workload operating normally",
+		HypothesisLabel: HealthyLabel,
 		Reasons:         []string{"Pods ready", "Endpoints healthy", "No active failure state"},
 		Bullets:         bullets,
 		Confidence:      0.85,

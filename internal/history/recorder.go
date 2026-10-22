@@ -68,6 +68,9 @@ type RecorderConfig struct {
 	CoverageHeartbeat time.Duration
 	OnStatus          func(RecorderStatus)
 	Now               func() time.Time
+	// SleptSince reports whether the system slept after t (default: macOS
+	// kernel wake time). Used to label gaps caused by sleep.
+	SleptSince func(time.Time) bool
 }
 
 func (c *RecorderConfig) defaults() {
@@ -101,6 +104,9 @@ func (c *RecorderConfig) defaults() {
 	if c.Now == nil {
 		c.Now = func() time.Time { return time.Now().UTC() }
 	}
+	if c.SleptSince == nil {
+		c.SleptSince = systemSleptSince
+	}
 }
 
 // Recorder lists and watches Events for one cluster and writes them to the
@@ -108,11 +114,18 @@ func (c *RecorderConfig) defaults() {
 type Recorder struct {
 	cfg RecorderConfig
 
-	mu         sync.Mutex
-	status     RecorderStatus
-	live       int // established watch streams
-	sessionID  int64
-	lastTouch  time.Time
+	mu        sync.Mutex
+	status    RecorderStatus
+	live      int // established watch streams
+	sessionID int64
+	// sessionStart/sessionBackfilled describe the open coverage session.
+	sessionStart      time.Time
+	sessionBackfilled bool
+	lastTouch         time.Time
+	// stopReason is recorded as the session's end reason when Run exits.
+	stopReason string
+	// resync asks runPlan to drop and re-establish every stream.
+	resync     chan struct{}
 	writes     chan writeItem
 	volume     volumeGuard
 	streamErrs map[string]error
@@ -126,7 +139,7 @@ type writeItem struct {
 // NewRecorder builds a recorder; call Run to start it.
 func NewRecorder(cfg RecorderConfig) *Recorder {
 	cfg.defaults()
-	r := &Recorder{cfg: cfg}
+	r := &Recorder{cfg: cfg, resync: make(chan struct{}, 1)}
 	r.status = RecorderStatus{ClusterKey: cfg.ClusterKey, State: StateStarting, UpdatedAt: cfg.Now()}
 	r.volume = volumeGuard{window: cfg.VolumeWindow, high: cfg.HighVolumePerSec}
 	return r
@@ -320,7 +333,17 @@ func (r *Recorder) runPlan(ctx context.Context, plan recordPlan) error {
 			}
 		}(ns)
 	}
-	wg.Wait()
+	done := make(chan struct{})
+	go func() { wg.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-r.resync:
+		// Clock jump (sleep): the connection may be stale. Re-establish so the
+		// list or resumed watch backfills what the API server still holds.
+		cancel()
+		<-done
+		return nil
+	}
 	if denied == len(plan.namespaces) {
 		return deniedErr
 	}
@@ -582,7 +605,7 @@ func (r *Recorder) streamUp() {
 	r.mu.Lock()
 	r.live++
 	r.mu.Unlock()
-	r.touchCoverage()
+	r.coverageEstablished()
 	r.setStatus(func(s *RecorderStatus) {
 		s.State = StateRecording
 		if s.Scope == ScopeCluster {
@@ -600,6 +623,13 @@ func (r *Recorder) streamDown() {
 	r.mu.Unlock()
 }
 
+// SetStopReason sets the end reason recorded when Run exits (EndKlewClosed, …).
+func (r *Recorder) SetStopReason(reason string) {
+	r.mu.Lock()
+	r.stopReason = reason
+	r.mu.Unlock()
+}
+
 func (r *Recorder) coverageLoop(ctx context.Context) {
 	t := time.NewTicker(r.cfg.CoverageHeartbeat)
 	defer t.Stop()
@@ -608,51 +638,113 @@ func (r *Recorder) coverageLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			r.touchCoverage()
+			r.coverageTick()
 		}
 	}
 }
 
-// touchCoverage extends the current session while at least one stream is up.
-// After an outage longer than GapTolerance a new session starts, so the gap
-// is visible to the UI.
-func (r *Recorder) touchCoverage() {
+func storeCtx() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), 5*time.Second)
+}
+
+// coverageEstablished runs whenever a stream (re)establishes. Every
+// establishment follows a successful list or a watch resumed from a known
+// resourceVersion, so the API server's retained events were captured: a new
+// session is backfilled, and a session opened moments ago (after a clock jump)
+// earns the backfill now.
+func (r *Recorder) coverageEstablished() {
+	now := r.cfg.Now()
 	r.mu.Lock()
-	live := r.live
-	id := r.sessionID
-	last := r.lastTouch
+	id, last, started, backfilled := r.sessionID, r.lastTouch, r.sessionStart, r.sessionBackfilled
 	scope := r.status.Scope
 	r.mu.Unlock()
+	ctx, cancel := storeCtx()
+	defer cancel()
+
+	if id != 0 && now.Sub(last) <= GapTolerance {
+		if err := r.cfg.Store.TouchSession(ctx, id, now); err == nil {
+			if !backfilled && now.Sub(started) <= GapTolerance {
+				if r.cfg.Store.MarkBackfilled(ctx, id) == nil {
+					backfilled = true
+				}
+			}
+			r.mu.Lock()
+			r.lastTouch, r.sessionBackfilled = now, backfilled
+			r.mu.Unlock()
+			return
+		}
+	}
+	r.beginSession(ctx, scope, now, true)
+}
+
+// coverageTick is the heartbeat. Time is wall-clock (Now strips the monotonic
+// reading), so a sleep shows up as a late tick.
+func (r *Recorder) coverageTick() {
+	now := r.cfg.Now()
+	r.mu.Lock()
+	live, id, last := r.live, r.sessionID, r.lastTouch
+	scope, state := r.status.Scope, r.status.State
+	r.mu.Unlock()
+	ctx, cancel := storeCtx()
+	defer cancel()
+
 	if live == 0 {
+		// Streams down past the tolerance: the session ended at its last touch.
+		if id != 0 && now.Sub(last) > GapTolerance {
+			reason := EndUnreachable
+			if state == StateNotRecordable {
+				reason = EndRBACDenied
+			}
+			_ = r.cfg.Store.SetEndReason(ctx, id, reason)
+			r.mu.Lock()
+			r.sessionID = 0
+			r.mu.Unlock()
+		}
 		return
 	}
-	now := r.cfg.Now()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	begin := id == 0 || now.Sub(last) > GapTolerance
-	if !begin {
-		err := r.cfg.Store.TouchSession(ctx, id, now)
-		if errors.Is(err, ErrNoSession) {
-			begin = true
-		} else if err != nil {
-			return
-		}
+	if id == 0 {
+		r.beginSession(ctx, scope, now, false)
+		return
 	}
-	if begin {
-		newID, err := r.cfg.Store.BeginSession(ctx, r.cfg.ClusterKey, scope, now)
-		if err != nil {
-			return
+	if now.Sub(last) > GapTolerance {
+		// Clock jump while "live": the old session ends at its last touch. It is
+		// labelled sleep only when the OS confirms a wake since then (a stalled
+		// or throttled process stays unknown). Start a new session and force a
+		// resync; the re-establishment earns the backfill.
+		if r.cfg.SleptSince(last) {
+			_ = r.cfg.Store.SetEndReason(ctx, id, EndSystemSleep)
 		}
-		id = newID
+		r.beginSession(ctx, scope, now, false)
+		select {
+		case r.resync <- struct{}{}:
+		default:
+		}
+		return
+	}
+	if err := r.cfg.Store.TouchSession(ctx, id, now); errors.Is(err, ErrNoSession) {
+		r.beginSession(ctx, scope, now, false) // history was cleared
+	} else if err == nil {
+		r.mu.Lock()
+		r.lastTouch = now
+		r.mu.Unlock()
+	}
+}
+
+func (r *Recorder) beginSession(ctx context.Context, scope string, now time.Time, backfilled bool) {
+	id, err := r.cfg.Store.BeginSession(ctx, r.cfg.ClusterKey, scope, now, backfilled)
+	if err != nil {
+		return
 	}
 	r.mu.Lock()
-	r.sessionID, r.lastTouch = id, now
+	r.sessionID, r.sessionStart, r.sessionBackfilled, r.lastTouch = id, now, backfilled, now
 	r.mu.Unlock()
 }
 
+// finishCoverage closes the open session with the stop reason. A session that
+// already stalled keeps its end time and reason.
 func (r *Recorder) finishCoverage() {
 	r.mu.Lock()
-	id, last := r.sessionID, r.lastTouch
+	id, last, reason := r.sessionID, r.lastTouch, r.stopReason
 	r.sessionID = 0
 	r.mu.Unlock()
 	if id == 0 {
@@ -662,9 +754,9 @@ func (r *Recorder) finishCoverage() {
 	if now.Sub(last) > GapTolerance {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := storeCtx()
 	defer cancel()
-	_ = r.cfg.Store.TouchSession(ctx, id, now)
+	_ = r.cfg.Store.EndSession(ctx, id, now, reason)
 }
 
 func (r *Recorder) observeVolume(now time.Time) bool {

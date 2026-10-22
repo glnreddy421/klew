@@ -23,13 +23,15 @@ type eventHistory struct {
 
 // EventHistorySettings is the Settings → Investigation → Event history payload.
 type EventHistorySettings struct {
-	Available     bool   `json:"available"`
-	Enabled       bool   `json:"enabled"`
-	RetentionDays int    `json:"retentionDays"`
-	MaxMB         int    `json:"maxMB"`
-	SizeBytes     int64  `json:"sizeBytes"`
-	Path          string `json:"path,omitempty"`
-	Error         string `json:"error,omitempty"`
+	Available     bool `json:"available"`
+	Enabled       bool `json:"enabled"`
+	RetentionDays int  `json:"retentionDays"`
+	MaxMB         int  `json:"maxMB"`
+	// EventTTLMinutes is the cluster's --event-ttl, used for backfill credit.
+	EventTTLMinutes int    `json:"eventTTLMinutes"`
+	SizeBytes       int64  `json:"sizeBytes"`
+	Path            string `json:"path,omitempty"`
+	Error           string `json:"error,omitempty"`
 }
 
 func (a *App) startEventHistory() {
@@ -163,19 +165,20 @@ func (a *App) GetEventHistorySettings() EventHistorySettings {
 	m := a.historyManager()
 	if m == nil {
 		d := history.DefaultSettings()
-		return EventHistorySettings{Enabled: d.Enabled, RetentionDays: d.RetentionDays, MaxMB: d.MaxMB, Error: a.historyErr}
+		return EventHistorySettings{Enabled: d.Enabled, RetentionDays: d.RetentionDays, MaxMB: d.MaxMB,
+			EventTTLMinutes: d.EventTTLMinutes, Error: a.historyErr}
 	}
 	s := m.Settings()
 	return EventHistorySettings{
 		Available: true, Enabled: s.Enabled, RetentionDays: s.RetentionDays, MaxMB: s.MaxMB,
-		SizeBytes: m.SizeBytes(), Path: m.Store().Path(),
+		EventTTLMinutes: s.EventTTLMinutes, SizeBytes: m.SizeBytes(), Path: m.Store().Path(),
 	}
 }
 
 // SetEventHistorySettings saves recording settings (shared by all windows).
-func (a *App) SetEventHistorySettings(enabled bool, retentionDays, maxMB int) EventHistorySettings {
+func (a *App) SetEventHistorySettings(enabled bool, retentionDays, maxMB, eventTTLMinutes int) EventHistorySettings {
 	if m := a.historyManager(); m != nil {
-		_, _ = m.SetSettings(history.Settings{Enabled: enabled, RetentionDays: retentionDays, MaxMB: maxMB})
+		_, _ = m.SetSettings(history.Settings{Enabled: enabled, RetentionDays: retentionDays, MaxMB: maxMB, EventTTLMinutes: eventTTLMinutes})
 	}
 	return a.GetEventHistorySettings()
 }

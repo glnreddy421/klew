@@ -73,7 +73,7 @@ export function useEventHistory({ favoriteContexts = [], monitoringPaused = fals
     const next = normalizeHistorySettings({ ...settings, ...patch })
     setSettings((prev) => ({ ...prev, ...next }))
     setBusy(true)
-    return SetEventHistorySettings(next.enabled, next.retentionDays, next.maxMB)
+    return SetEventHistorySettings(next.enabled, next.retentionDays, next.maxMB, next.eventTTLMinutes)
       .then((s) => setSettings(normalizeHistorySettings(s)))
       .catch((err) => setSettings((prev) => ({ ...prev, error: errorText(err, 'Could not save event history settings') })))
       .finally(() => {

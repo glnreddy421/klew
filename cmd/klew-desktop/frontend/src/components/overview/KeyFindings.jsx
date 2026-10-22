@@ -14,7 +14,16 @@ export function KeyFindings({
 }) {
   const [hoveredId, setHoveredId] = useState(null)
 
-  if (!findings.length) return null
+  if (!findings.length) {
+    return (
+      <section className="inv-visual-section inv-findings-section">
+        <div className="inv-section-head">
+          <h2 className="inv-section-title">Key findings</h2>
+        </div>
+        <p className="muted inv-findings-empty">No issues found in this window.</p>
+      </section>
+    )
+  }
 
   function handleHover(finding, active) {
     setHoveredId(active ? finding.id : null)

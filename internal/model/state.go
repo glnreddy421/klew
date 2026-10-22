@@ -132,6 +132,8 @@ type InvestigationState struct {
 	HypothesisAlts    []Hypothesis      `json:"hypothesisAlternatives,omitempty"`
 	ConfidenceTrend   string            `json:"confidenceTrend,omitempty"` // up | down | flat
 	CausalChain       []string          `json:"causalChain,omitempty"`
+	// Incidents groups Warning events in the window; empty when there were none.
+	Incidents []Incident `json:"incidents,omitempty"`
 	NextChecks        []string          `json:"nextChecks,omitempty"`
 	FixActions        []string          `json:"fixActions,omitempty"`
 	LastTransition    *HypothesisTransition `json:"lastTransition,omitempty"`
@@ -164,6 +166,7 @@ func (s InvestigationState) Clone() InvestigationState {
 	out.HypothesisReasons = append([]string(nil), s.HypothesisReasons...)
 	out.HypothesisAlts = append([]Hypothesis(nil), s.HypothesisAlts...)
 	out.CausalChain = append([]string(nil), s.CausalChain...)
+	out.Incidents = append([]Incident(nil), s.Incidents...)
 	out.NextChecks = append([]string(nil), s.NextChecks...)
 	out.FixActions = append([]string(nil), s.FixActions...)
 	out.LogTailPods = append([]string(nil), s.LogTailPods...)
@@ -209,4 +212,18 @@ func NewInvestigationState(query string, mode Mode) InvestigationState {
 		},
 		LiveEvidence: make([]EvidenceEvent, 0, 256),
 	}
+}
+
+// Incident is a burst of Warning events. Recovered means its objects are
+// healthy now and no Warning arrived for the quiet period; otherwise ongoing.
+type Incident struct {
+	Start         Timestamp   `json:"start"`
+	End           Timestamp   `json:"end"`
+	LeadingReason string      `json:"leadingReason"`
+	Severity      Severity    `json:"severity"`
+	Count         int         `json:"count"`
+	Objects       []ObjectRef `json:"objects,omitempty"`
+	Recovered     bool        `json:"recovered"`
+	// Recorded is true when every event came from local history.
+	Recorded bool `json:"recorded,omitempty"`
 }

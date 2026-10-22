@@ -12210,6 +12210,8 @@ body {
   font-weight: 500;
   font-size: 11px;
   text-transform: lowercase;
+  /* Flex layout drops whitespace text, so space the prefix explicitly. */
+  margin-right: 0.35em;
 }
 
 .cluster-context-query {
@@ -18727,4 +18729,152 @@ body,
   .settings-info-value {
     max-width: 55%;
   }
+}
+
+/* History gaps popover (coverage line, inspector, top-bar recording dot). */
+.history-gaps {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.history-gaps-trigger {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline dotted color-mix(in srgb, currentColor 45%, transparent);
+  text-underline-offset: 3px;
+}
+
+.event-recording .history-gaps-trigger {
+  padding: 6px 4px;
+  text-decoration: none;
+}
+
+.history-gaps-trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.history-gaps-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: max-content;
+  min-width: 240px;
+  max-width: 380px;
+  padding: 10px 12px;
+  border-radius: var(--radius-control, 8px);
+  background: var(--surface);
+  border: 1px solid var(--pane-border, var(--border));
+  box-shadow: var(--pane-shadow, 0 8px 24px rgba(0, 0, 0, 0.25));
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.4;
+  text-decoration: none;
+  cursor: default;
+}
+
+.history-gaps-panel.align-end {
+  left: auto;
+  right: -8px;
+}
+
+.history-gaps-title {
+  font-weight: 600;
+}
+
+.history-gaps-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.history-gaps-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.history-gaps-range {
+  white-space: nowrap;
+}
+
+.history-gaps-reason,
+.history-gaps-empty,
+.history-gaps-note {
+  color: var(--text-secondary);
+}
+
+.history-gaps-note {
+  font-size: 11px;
+}
+
+/* Overview incidents (Warning bursts, recovered or ongoing). */
+.inv-incidents {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.inv-incident {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: color-mix(in srgb, var(--surface-2) 72%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+
+.inv-incident.is-ongoing {
+  border-color: color-mix(in srgb, var(--tone-warn, #f5a623) 45%, transparent);
+}
+
+.inv-incident-status {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.inv-incident-status.tone-ok,
+.inv-chain-recovered.tone-ok {
+  color: var(--tone-ok, #3dd68c);
+}
+
+.inv-incident-status.tone-warn {
+  color: var(--tone-warn, #f5a623);
+}
+
+.inv-chain-window {
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+.inv-chain-recovered {
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: lowercase;
+}
+
+.inv-chain-section.is-recovered .inv-chain-node {
+  opacity: 0.7;
 }

@@ -22,14 +22,31 @@ type Settings struct {
 	Enabled       bool `json:"enabled"`
 	RetentionDays int  `json:"retentionDays"`
 	MaxMB         int  `json:"maxMB"`
+	// EventTTLMinutes is the cluster's --event-ttl: how long the API server
+	// keeps Events, so how far back a fresh list backfills.
+	EventTTLMinutes int `json:"eventTTLMinutes"`
 }
 
-// DefaultSettings: on, 7 days, 500 MB.
+// DefaultSettings: on, 7 days, 500 MB, 60-minute event TTL.
 func DefaultSettings() Settings {
-	return Settings{Enabled: true, RetentionDays: 7, MaxMB: 500}
+	return Settings{Enabled: true, RetentionDays: 7, MaxMB: 500, EventTTLMinutes: int(DefaultEventTTL / time.Minute)}
+}
+
+// EventTTL is EventTTLMinutes as a duration.
+func (s Settings) EventTTL() time.Duration {
+	return time.Duration(s.EventTTLMinutes) * time.Minute
 }
 
 func (s Settings) normalized() Settings {
+	if s.EventTTLMinutes <= 0 {
+		s.EventTTLMinutes = int(DefaultEventTTL / time.Minute)
+	}
+	if s.EventTTLMinutes < 5 {
+		s.EventTTLMinutes = 5
+	}
+	if s.EventTTLMinutes > 24*60 {
+		s.EventTTLMinutes = 24 * 60
+	}
 	if s.RetentionDays <= 0 {
 		s.RetentionDays = 7
 	}
@@ -178,7 +195,7 @@ func (m *Manager) Close() {
 	m.mu.Unlock()
 	m.loopCancel()
 	<-m.loopDone
-	m.stopAll()
+	m.stopAll(EndKlewClosed)
 	_ = m.store.Close()
 }
 
@@ -237,7 +254,7 @@ func (m *Manager) SetSettings(s Settings) (Settings, error) {
 // Clear deletes all recorded history and restarts recording from now.
 func (m *Manager) Clear() error {
 	m.reconcileMu.Lock()
-	m.stopAll()
+	m.stopAll("")
 	err := m.store.Clear(context.Background())
 	m.reconcileMu.Unlock()
 	m.Kick()
@@ -307,7 +324,14 @@ func (m *Manager) reconcile() {
 	m.settings = s
 	m.mu.Unlock()
 
-	want, _, _ := m.desired()
+	want, enabled, paused := m.desired()
+	stopReason := EndContextInactive
+	switch {
+	case !enabled:
+		stopReason = EndRecordingOff
+	case paused:
+		stopReason = EndMonitoringPaused
+	}
 	wantSet := map[string]bool{}
 	for _, c := range want {
 		wantSet[c] = true
@@ -335,7 +359,7 @@ func (m *Manager) reconcile() {
 	m.mu.Unlock()
 
 	for _, rr := range stop {
-		rr.halt()
+		rr.halt(stopReason)
 	}
 	for _, c := range start {
 		m.startContext(c)
@@ -395,7 +419,9 @@ func (m *Manager) startContext(name string) {
 	}()
 }
 
-func (rr *runningRecorder) halt() {
+// halt stops the recorder; reason becomes its coverage session's end reason.
+func (rr *runningRecorder) halt(reason string) {
+	rr.rec.SetStopReason(reason)
 	rr.cancel()
 	<-rr.done
 	rr.lock.Release()
@@ -407,7 +433,7 @@ func (m *Manager) setBlocked(name string, st ContextStatus) {
 	m.mu.Unlock()
 }
 
-func (m *Manager) stopAll() {
+func (m *Manager) stopAll(reason string) {
 	m.mu.Lock()
 	all := make([]*runningRecorder, 0, len(m.running))
 	for name, rr := range m.running {
@@ -416,7 +442,7 @@ func (m *Manager) stopAll() {
 	}
 	m.mu.Unlock()
 	for _, rr := range all {
-		rr.halt()
+		rr.halt(reason)
 	}
 }
 
@@ -502,7 +528,7 @@ func (m *Manager) Statuses(extra []string) []ContextStatus {
 			st.ClusterKey = byContext[name]
 		}
 		if st.ClusterKey != "" {
-			if cov, err := m.store.Coverage(ctx, st.ClusterKey, since, now); err == nil && cov.Recorded() {
+			if cov, err := m.store.Coverage(ctx, st.ClusterKey, since, now, settings.EventTTL()); err == nil && cov.Recorded() {
 				st.Since = model.TimestampFrom(cov.Since)
 				st.Gaps = toRanges(cov.Gaps)
 			}
@@ -535,7 +561,7 @@ func (m *Manager) RecordedEvents(ctx context.Context, contextName, serverURL str
 	if err != nil {
 		return nil, model.EventHistoryCoverage{}, err
 	}
-	cov, err := m.store.Coverage(ctx, key, since, m.cfg.Now())
+	cov, err := m.store.Coverage(ctx, key, since, m.cfg.Now(), m.Settings().EventTTL())
 	if err != nil {
 		return nil, model.EventHistoryCoverage{}, err
 	}
@@ -575,7 +601,7 @@ func toRanges(gaps []Gap) []model.TimeRange {
 	}
 	out := make([]model.TimeRange, 0, len(gaps))
 	for _, g := range gaps {
-		out = append(out, model.TimeRange{From: model.TimestampFrom(g.From), To: model.TimestampFrom(g.To)})
+		out = append(out, model.TimeRange{From: model.TimestampFrom(g.From), To: model.TimestampFrom(g.To), Reason: g.Reason})
 	}
 	return out
 }
@@ -645,7 +671,7 @@ func saveSettings(dir string, s Settings) error {
 func (m *Manager) Restart() {
 	m.reconcileMu.Lock()
 	defer m.reconcileMu.Unlock()
-	m.stopAll()
+	m.stopAll("")
 	m.mu.Lock()
 	m.blocked = map[string]ContextStatus{}
 	m.keys = map[string]string{}

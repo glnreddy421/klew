@@ -8,7 +8,9 @@ export const RECORDING_STATES = new Set(['recording', 'other_window'])
 export const RETENTION_DAY_OPTIONS = [1, 3, 7, 14, 30]
 export const MAX_MB_OPTIONS = [100, 250, 500, 1000, 2000]
 
-const DEFAULT_SETTINGS = { enabled: true, retentionDays: 7, maxMB: 500 }
+const DEFAULT_SETTINGS = { enabled: true, retentionDays: 7, maxMB: 500, eventTTLMinutes: 60 }
+
+export const EVENT_TTL_MINUTE_OPTIONS = [15, 30, 60, 120, 180, 360, 720, 1440]
 
 function toDate(v) {
   if (!v) return null
@@ -91,11 +93,11 @@ export function notRecordingReason(status) {
 export function recordingTooltip(status, { timeZone } = {}) {
   if (!isRecordingStatus(status)) {
     const base = `Not recording — ${notRecordingReason(status)}`
-    if (status?.since) return `${base} · history since ${formatHistoryTime(status.since, { timeZone })}`
+    if (status?.since) return `${base} · history since ${formatSince(status.since, { timeZone })}`
     return base
   }
   const parts = [status.state === 'other_window' ? 'Recording events (another Klew window)' : 'Recording events']
-  if (status.since) parts.push(`history since ${formatHistoryTime(status.since, { timeZone })}`)
+  if (status.since) parts.push(`history since ${formatSince(status.since, { timeZone })}`)
   const gaps = gapCountText(status.gaps?.length || 0)
   if (gaps) parts.push(gaps)
   if (status.highVolume) parts.push('high event volume — recording Warnings only')
@@ -132,39 +134,64 @@ export function statusByContext(list) {
   return out
 }
 
-/** Inspector Events header: "History since Oct 18, 14:02". */
-export function historySinceLine(history, { timeZone } = {}) {
-  if (!history?.since) return ''
-  return `History since ${formatHistoryTime(history.since, { timeZone })}`
+/** Why recording stopped before a gap (backend coverage end reasons). */
+export const GAP_REASON_LABELS = {
+  klew_closed: 'Klew closed',
+  monitoring_paused: 'monitoring paused',
+  cluster_unreachable: 'cluster unreachable',
+  recording_off: 'recording off',
+  rbac_denied: 'RBAC denied',
+  context_inactive: 'context not recorded',
+  system_sleep: 'Mac asleep',
 }
 
-/**
- * Inspector Events gaps: "No history Oct 18 16:00–19:00 (Klew not recording)".
- * Gaps come from Klew being closed, paused, denied by RBAC, or the context not
- * being active or a favorite — so the label stays generic.
- */
-export function historyGapLines(history, { timeZone } = {}) {
-  return (history?.gaps || [])
-    .map((g) => formatGap(g, { timeZone }))
-    .filter(Boolean)
-    .map((g) => `No history ${g} (Klew not recording)`)
+/** "Not recorded · Mac asleep", or plain "Not recorded" when the reason is unknown. */
+export function gapReasonLabel(reason) {
+  const why = GAP_REASON_LABELS[reason]
+  return why ? `Not recorded · ${why}` : 'Not recorded'
 }
 
-/**
- * Evidence / Failures / Overview line when an investigation used recorded events:
- * "Includes recorded events from the last 6h · gaps: Oct 18 16:00–19:00"
- */
-export function evidenceHistoryLine(eventHistory, { now = new Date(), timeZone } = {}) {
-  if (!eventHistory?.recordedEvents) return ''
-  const since = toDate(eventHistory.since)
-  let span = ''
-  if (since) {
-    const hours = Math.max(1, Math.ceil((toDate(now).getTime() - since.getTime()) / 3_600_000))
-    span = ` from the last ${hours}h`
+/** "09:09" for today, "Oct 18, 14:02" otherwise. */
+export function formatSince(value, { now = new Date(), timeZone } = {}) {
+  const d = toDate(value)
+  if (!d) return ''
+  if (sameDay(d, toDate(now), timeZone)) {
+    return dateTimeFormat({ hour: '2-digit', minute: '2-digit' }, timeZone).format(d)
   }
-  const gaps = (eventHistory.gaps || []).map((g) => formatGap(g, { timeZone })).filter(Boolean)
-  const gapText = gaps.length ? ` · gaps: ${gaps.join(', ')}` : ''
-  return `Includes recorded events${span}${gapText}`
+  return formatHistoryTime(d, { timeZone })
+}
+
+/** Popover rows: { key, range: "Oct 21 15:09–15:25", label: "Not recorded · Klew closed" }. */
+export function gapRows(history, { timeZone } = {}) {
+  return (history?.gaps || [])
+    .map((g, i) => ({ key: `${g.from}-${i}`, range: formatGap(g, { timeZone }), label: gapReasonLabel(g.reason) }))
+    .filter((g) => g.range)
+}
+
+/**
+ * One compact coverage line:
+ *   "Includes recorded events · history since 09:09"
+ *   "Includes recorded events · history since 09:09 · 2 gaps"
+ * With no prefix it starts "History since 09:09". The gap list goes in a popover.
+ */
+export function coverageSummary(history, { prefix = '', now = new Date(), timeZone } = {}) {
+  if (!history?.since) return ''
+  const since = formatSince(history.since, { now, timeZone })
+  const parts = prefix ? [prefix, `history since ${since}`] : [`History since ${since}`]
+  const gaps = gapCountText(gapRows(history, { timeZone }).length)
+  if (gaps) parts.push(gaps)
+  return parts.join(' · ')
+}
+
+/** Overview / Failures / Evidence line — only when the investigation used recorded events. */
+export function evidenceHistoryLine(eventHistory, opts = {}) {
+  if (!eventHistory?.recordedEvents) return ''
+  return coverageSummary(eventHistory, { ...opts, prefix: 'Includes recorded events' })
+}
+
+/** Inspector Events header: "History since 09:09 · 1 gap". */
+export function historySinceLine(history, opts = {}) {
+  return coverageSummary(history, opts)
 }
 
 export function formatBytes(n) {
@@ -180,11 +207,15 @@ export function normalizeHistorySettings(raw) {
   const s = { ...DEFAULT_SETTINGS, available: false, sizeBytes: 0, ...(raw || {}) }
   const days = Number(s.retentionDays)
   const mb = Number(s.maxMB)
+  const ttl = Number(s.eventTTLMinutes)
   return {
     available: Boolean(s.available),
     enabled: s.enabled !== false,
     retentionDays: Number.isFinite(days) && days > 0 ? Math.min(90, Math.round(days)) : DEFAULT_SETTINGS.retentionDays,
     maxMB: Number.isFinite(mb) && mb > 0 ? Math.round(mb) : DEFAULT_SETTINGS.maxMB,
+    eventTTLMinutes: Number.isFinite(ttl) && ttl > 0
+      ? Math.min(1440, Math.max(5, Math.round(ttl)))
+      : DEFAULT_SETTINGS.eventTTLMinutes,
     sizeBytes: Number(s.sizeBytes) || 0,
     error: s.error || '',
   }
@@ -206,4 +237,11 @@ export function settingsContextRows(statuses, { timeZone } = {}) {
       if (gaps) parts.push(gaps)
       return { context: s.context, text: parts.join(' · '), recording: isRecordingStatus(s) }
     })
+}
+
+/** "1 hour", "90 minutes", "6 hours". */
+export function formatTTL(minutes) {
+  const m = Number(minutes) || 0
+  if (m >= 60 && m % 60 === 0) return m === 60 ? '1 hour' : `${m / 60} hours`
+  return `${m} minutes`
 }

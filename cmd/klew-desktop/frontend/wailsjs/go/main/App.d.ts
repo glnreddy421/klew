@@ -66,7 +66,7 @@ export function SelectNamespace(arg1:string):Promise<kube.ClusterState>;
 
 export function SetAutoRefresh(arg1:boolean):Promise<void>;
 
-export function SetEventHistorySettings(arg1:boolean,arg2:number,arg3:number):Promise<main.EventHistorySettings>;
+export function SetEventHistorySettings(arg1:boolean,arg2:number,arg3:number,arg4:number):Promise<main.EventHistorySettings>;
 
 export function SetEventRecordingPaused(arg1:boolean):Promise<void>;
 

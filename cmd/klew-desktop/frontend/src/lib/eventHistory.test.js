@@ -5,7 +5,9 @@ import {
   formatBytes,
   formatGap,
   historyDepthLabel,
-  historyGapLines,
+  gapReasonLabel,
+  gapRows,
+  formatTTL,
   historySinceLine,
   normalizeHistorySettings,
   optionsWithValue,
@@ -19,7 +21,7 @@ const tz = { timeZone: 'UTC' }
 
 describe('History since line (inspector)', () => {
   it('formats the start of history', () => {
-    expect(historySinceLine({ since: '2026-10-18T14:02:00Z' }, tz)).toBe('History since Oct 18, 14:02')
+    expect(historySinceLine({ since: '2026-10-18T14:02:00Z' }, { now: new Date('2026-10-21T15:00:00Z'), ...tz })).toBe('History since Oct 18, 14:02')
   })
 
   it('is empty without coverage', () => {
@@ -27,23 +29,41 @@ describe('History since line (inspector)', () => {
     expect(historySinceLine({}, tz)).toBe('')
   })
 
-  it('lists gaps as periods Klew was not recording', () => {
-    const lines = historyGapLines({
+  it('lists gaps with their reason, or plain "Not recorded"', () => {
+    const rows = gapRows({
       since: '2026-10-18T14:02:00Z',
       gaps: [
-        { from: '2026-10-18T16:00:00Z', to: '2026-10-18T19:00:00Z' },
+        { from: '2026-10-18T16:00:00Z', to: '2026-10-18T19:00:00Z', reason: 'klew_closed' },
         { from: '2026-10-18T23:00:00Z', to: '2026-10-19T08:30:00Z' },
       ],
     }, tz)
-    expect(lines).toEqual([
-      'No history Oct 18 16:00–19:00 (Klew not recording)',
-      'No history Oct 18 23:00–Oct 19 08:30 (Klew not recording)',
+    expect(rows.map((r) => [r.range, r.label])).toEqual([
+      ['Oct 18 16:00–19:00', 'Not recorded · Klew closed'],
+      ['Oct 18 23:00–Oct 19 08:30', 'Not recorded'],
     ])
+  })
+
+  it('names every known end reason', () => {
+    expect(gapReasonLabel('system_sleep')).toBe('Not recorded · Mac asleep')
+    expect(gapReasonLabel('monitoring_paused')).toBe('Not recorded · monitoring paused')
+    expect(gapReasonLabel('cluster_unreachable')).toBe('Not recorded · cluster unreachable')
+    expect(gapReasonLabel('recording_off')).toBe('Not recorded · recording off')
+    expect(gapReasonLabel('rbac_denied')).toBe('Not recorded · RBAC denied')
+    expect(gapReasonLabel('context_inactive')).toBe('Not recorded · context not recorded')
+    expect(gapReasonLabel('')).toBe('Not recorded')
+    expect(gapReasonLabel('something_new')).toBe('Not recorded')
   })
 
   it('ignores malformed gaps', () => {
     expect(formatGap({ from: 'nope', to: '' }, tz)).toBe('')
-    expect(historyGapLines({ gaps: [{}] }, tz)).toEqual([])
+    expect(gapRows({ gaps: [{}] }, tz)).toEqual([])
+  })
+
+  it('is one compact line in the inspector', () => {
+    const now = new Date('2026-10-21T15:00:00Z')
+    expect(historySinceLine({ since: '2026-10-21T09:09:00Z' }, { now, ...tz })).toBe('History since 09:09')
+    expect(historySinceLine({ since: '2026-10-21T09:09:00Z', gaps: [{ from: '2026-10-21T10:00:00Z', to: '2026-10-21T11:00:00Z' }] }, { now, ...tz }))
+      .toBe('History since 09:09 · 1 gap')
   })
 })
 
@@ -99,20 +119,24 @@ describe('evidence history line', () => {
     expect(evidenceHistoryLine(null)).toBe('')
   })
 
-  it('summarises span and gaps', () => {
-    const line = evidenceHistoryLine({
-      since: '2026-10-21T09:00:00Z',
-      recordedEvents: 3,
-      gaps: [{ from: '2026-10-21T10:00:00Z', to: '2026-10-21T11:15:00Z' }],
-    }, { now: new Date('2026-10-21T15:00:00Z'), ...tz })
-    expect(line).toBe('Includes recorded events from the last 6h · gaps: Oct 21 10:00–11:15')
+  it('is one compact line without gaps', () => {
+    const line = evidenceHistoryLine({ since: '2026-10-21T09:09:00Z', recordedEvents: 3 }, { now: new Date('2026-10-21T15:00:00Z'), ...tz })
+    expect(line).toBe('Includes recorded events · history since 09:09')
+  })
+
+  it('counts gaps instead of listing them inline', () => {
+    const gaps = Array.from({ length: 15 }, (_, i) => ({
+      from: `2026-10-21T1${i % 10}:00:00Z`, to: `2026-10-21T1${i % 10}:05:00Z`,
+    }))
+    const line = evidenceHistoryLine({ since: '2026-10-21T09:09:00Z', recordedEvents: 3, gaps }, { now: new Date('2026-10-21T21:00:00Z'), ...tz })
+    expect(line).toBe('Includes recorded events · history since 09:09 · 15 gaps')
   })
 })
 
 describe('Settings → Event history controls', () => {
   it('defaults to on, 7 days, 500 MB', () => {
     expect(normalizeHistorySettings(undefined)).toEqual({
-      available: false, enabled: true, retentionDays: 7, maxMB: 500, sizeBytes: 0, error: '',
+      available: false, enabled: true, retentionDays: 7, maxMB: 500, eventTTLMinutes: 60, sizeBytes: 0, error: '',
     })
   })
 
@@ -121,6 +145,16 @@ describe('Settings → Event history controls', () => {
       .toMatchObject({ available: true, enabled: false, retentionDays: 3, maxMB: 250, sizeBytes: 1024 })
     expect(normalizeHistorySettings({ retentionDays: -1, maxMB: 'x' })).toMatchObject({ retentionDays: 7, maxMB: 500 })
     expect(normalizeHistorySettings({ retentionDays: 400 }).retentionDays).toBe(90)
+  })
+
+  it('keeps the cluster event TTL within 5 minutes and 24 hours', () => {
+    expect(normalizeHistorySettings({ eventTTLMinutes: 120 }).eventTTLMinutes).toBe(120)
+    expect(normalizeHistorySettings({ eventTTLMinutes: 1 }).eventTTLMinutes).toBe(5)
+    expect(normalizeHistorySettings({ eventTTLMinutes: 99999 }).eventTTLMinutes).toBe(1440)
+    expect(normalizeHistorySettings({ eventTTLMinutes: 'x' }).eventTTLMinutes).toBe(60)
+    expect(formatTTL(60)).toBe('1 hour')
+    expect(formatTTL(180)).toBe('3 hours')
+    expect(formatTTL(15)).toBe('15 minutes')
   })
 
   it('formats current size', () => {

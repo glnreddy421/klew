@@ -10,6 +10,7 @@ import {
   groupEvidence,
   rankedVerdictSignals,
 } from '../lib/investigationViews'
+import { readableReason } from '../lib/readableReason.js'
 
 /**
  * Evidence — correlated pattern links and supporting observations.
@@ -94,7 +95,7 @@ export function EvidenceView({ view, onFilterLogs, explorerFilter, investigation
                   <span className="mono muted">{formatClock(e.timestamp)}</span>
                   <span className="ev-obs-bucket">{e._bucket}</span>
                   <span className="ev-obs-body">
-                    <strong>{e.reason || e.sourceKind || e.sourceType}</strong>
+                    <strong>{readableReason(e.reason) || e.sourceKind || e.sourceType}</strong>
                     {' '}
                     {e.message}
                     <RecordedBadge show={e.recorded} />

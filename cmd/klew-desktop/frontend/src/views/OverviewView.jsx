@@ -2,6 +2,8 @@ import { useMemo, useRef, useState } from 'react'
 import { CollectingMatchesSplash } from '../components/incident/CollectingMatchesSplash'
 import { InvestigationHeader } from '../components/overview/InvestigationHeader'
 import { RecordedHistoryLine } from '../components/overview/RecordedHistoryLine.jsx'
+import { IncidentList } from '../components/overview/IncidentList.jsx'
+import { getState } from '../lib/investigationViews'
 import { InvestigationChain } from '../components/overview/InvestigationChain'
 import { KeyFindings } from '../components/overview/KeyFindings'
 import { InvestigationTimeline } from '../components/overview/InvestigationTimeline'
@@ -129,6 +131,7 @@ export function OverviewView({
         onNavigate={onNavigate}
       />
       <RecordedHistoryLine view={view} />
+      <IncidentList incidents={getState(view).incidents} />
 
       {visibilityWarning && (
         <div
@@ -195,6 +198,7 @@ export function OverviewView({
         <div className="inv-chain-row">
           <InvestigationChain
             chain={visualChain}
+            incidents={getState(view).incidents}
             highlightedNodeIds={highlightedNodeIds}
             onNodeSelect={handleChainNodeSelect}
             onNavigate={onNavigate}
@@ -212,7 +216,7 @@ export function OverviewView({
 
       <div className="inv-visual-grid">
         <div className="inv-visual-main">
-          {findings.length > 0 && (
+          {(findings.length > 0 || phase === 'active') && (
             <KeyFindings
               findings={findings}
               onNavigate={onNavigate}

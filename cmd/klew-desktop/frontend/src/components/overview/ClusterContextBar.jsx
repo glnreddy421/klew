@@ -24,7 +24,7 @@ export function ClusterContextBar({ context, onNavigate, onChipAction }) {
         {scopeParts.map((part, i) => (
           <span key={part.key} className="cluster-context-scope-part">
             {i > 0 && <span className="cluster-context-sep muted" aria-hidden="true">/</span>}
-            {part.prefix && <span className="cluster-context-prefix muted">{part.prefix} </span>}
+            {part.prefix && <span className="cluster-context-prefix muted">{part.prefix}:</span>}
             <span className={part.mono ? 'mono' : ''}>{part.text}</span>
           </span>
         ))}

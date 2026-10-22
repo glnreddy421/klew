@@ -2,6 +2,7 @@ package history
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -184,18 +185,18 @@ func TestCoverageGaps(t *testing.T) {
 	ctx := context.Background()
 	t0 := time.Date(2026, 10, 18, 14, 2, 0, 0, time.UTC)
 
-	id1, _ := s.BeginSession(ctx, "k", "cluster", t0)
+	id1, _ := s.BeginSession(ctx, "k", "cluster", t0, false)
 	_ = s.TouchSession(ctx, id1, t0.Add(time.Hour))
 	// Short reconnect (< tolerance) is not a gap.
-	id2, _ := s.BeginSession(ctx, "k", "cluster", t0.Add(time.Hour+30*time.Second))
+	id2, _ := s.BeginSession(ctx, "k", "cluster", t0.Add(time.Hour+30*time.Second), false)
 	_ = s.TouchSession(ctx, id2, t0.Add(2*time.Hour))
 	// Klew closed for 3h.
-	id3, _ := s.BeginSession(ctx, "k", "cluster", t0.Add(5*time.Hour))
+	id3, _ := s.BeginSession(ctx, "k", "cluster", t0.Add(5*time.Hour), false)
 	_ = s.TouchSession(ctx, id3, t0.Add(6*time.Hour))
 	// Other cluster is ignored.
-	_, _ = s.BeginSession(ctx, "other", "cluster", t0.Add(-time.Hour))
+	_, _ = s.BeginSession(ctx, "other", "cluster", t0.Add(-time.Hour), false)
 
-	cov, err := s.Coverage(ctx, "k", time.Time{}, t0.Add(6*time.Hour+30*time.Second))
+	cov, err := s.Coverage(ctx, "k", time.Time{}, t0.Add(6*time.Hour+30*time.Second), DefaultEventTTL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +215,7 @@ func TestCoverageGaps(t *testing.T) {
 	}
 
 	// Trailing gap when nothing has recorded recently.
-	cov, _ = s.Coverage(ctx, "k", time.Time{}, t0.Add(8*time.Hour))
+	cov, _ = s.Coverage(ctx, "k", time.Time{}, t0.Add(8*time.Hour), DefaultEventTTL)
 	if len(cov.Gaps) != 2 {
 		t.Fatalf("want trailing gap, got %+v", cov.Gaps)
 	}
@@ -236,7 +237,7 @@ func TestClearEmptiesEverything(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now().UTC()
 	_ = s.UpsertEvents(ctx, []EventRow{{ClusterKey: "k", UID: "u", LastSeen: now, RecordedAt: now}})
-	_, _ = s.BeginSession(ctx, "k", "", now)
+	_, _ = s.BeginSession(ctx, "k", "", now, false)
 	if err := s.Clear(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -279,5 +280,131 @@ func TestTwoHandlesShareOneFile(t *testing.T) {
 	n, _ := a.CountEvents(ctx, "k")
 	if n != 100 {
 		t.Fatalf("want 100 rows, got %d", n)
+	}
+}
+
+// Backfill credit: a session that began with a successful list (or a resumed
+// watch) also covers the event TTL before it, because the API server still
+// held those events.
+func TestCoverageBackfillShortPauseHasNoGap(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	t0 := time.Date(2026, 10, 21, 9, 0, 0, 0, time.UTC)
+	id1, _ := s.BeginSession(ctx, "k", "cluster", t0, true)
+	_ = s.EndSession(ctx, id1, t0.Add(time.Hour), EndKlewClosed)
+	// Klew closed for 10 minutes (< 60m TTL), then relisted successfully.
+	id2, _ := s.BeginSession(ctx, "k", "cluster", t0.Add(70*time.Minute), true)
+	_ = s.TouchSession(ctx, id2, t0.Add(2*time.Hour))
+
+	cov, err := s.Coverage(ctx, "k", time.Time{}, t0.Add(2*time.Hour), DefaultEventTTL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cov.Gaps) != 0 {
+		t.Fatalf("short pause should be backfilled, got gaps %+v", cov.Gaps)
+	}
+	// The first session's own backfill makes history start one TTL earlier.
+	if want := t0.Add(-time.Hour); !cov.Since.Equal(want) {
+		t.Fatalf("since = %v, want %v", cov.Since, want)
+	}
+}
+
+func TestCoverageBackfillLongPauseLeavesTTLShortGap(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	t0 := time.Date(2026, 10, 21, 9, 0, 0, 0, time.UTC)
+	id1, _ := s.BeginSession(ctx, "k", "cluster", t0, true)
+	_ = s.EndSession(ctx, id1, t0.Add(time.Hour), EndKlewClosed)
+	// Closed for 90 minutes; the relist recovers the last 60.
+	resume := t0.Add(150 * time.Minute)
+	id2, _ := s.BeginSession(ctx, "k", "cluster", resume, true)
+	_ = s.TouchSession(ctx, id2, resume.Add(time.Hour))
+
+	cov, _ := s.Coverage(ctx, "k", time.Time{}, resume.Add(time.Hour), DefaultEventTTL)
+	if len(cov.Gaps) != 1 {
+		t.Fatalf("want one gap, got %+v", cov.Gaps)
+	}
+	g := cov.Gaps[0]
+	if !g.From.Equal(t0.Add(time.Hour)) || !g.To.Equal(resume.Add(-time.Hour)) {
+		t.Fatalf("gap = %v–%v, want 30 minutes from %v", g.From, g.To, t0.Add(time.Hour))
+	}
+	if g.Reason != EndKlewClosed {
+		t.Fatalf("gap reason = %q", g.Reason)
+	}
+	// A cluster with a shorter --event-ttl backfills less.
+	cov, _ = s.Coverage(ctx, "k", time.Time{}, resume.Add(time.Hour), 15*time.Minute)
+	if got := cov.Gaps[0].To.Sub(cov.Gaps[0].From); got != 75*time.Minute {
+		t.Fatalf("gap with 15m TTL = %v, want 75m", got)
+	}
+}
+
+func TestCoverageWithoutBackfillGetsNoCredit(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	t0 := time.Date(2026, 10, 21, 9, 0, 0, 0, time.UTC)
+	id1, _ := s.BeginSession(ctx, "k", "cluster", t0, true)
+	_ = s.EndSession(ctx, id1, t0.Add(time.Hour), "")
+	// Initial list failed: the session started without capturing retained events.
+	id2, _ := s.BeginSession(ctx, "k", "cluster", t0.Add(70*time.Minute), false)
+	_ = s.TouchSession(ctx, id2, t0.Add(2*time.Hour))
+
+	cov, _ := s.Coverage(ctx, "k", time.Time{}, t0.Add(2*time.Hour), DefaultEventTTL)
+	if len(cov.Gaps) != 1 || cov.Gaps[0].To.Sub(cov.Gaps[0].From) != 10*time.Minute {
+		t.Fatalf("want the full 10m gap, got %+v", cov.Gaps)
+	}
+	if cov.Gaps[0].Reason != "" {
+		t.Fatalf("unknown end should have no reason, got %q", cov.Gaps[0].Reason)
+	}
+
+	// Credit arrives once the resync lists successfully.
+	_ = s.MarkBackfilled(ctx, id2)
+	cov, _ = s.Coverage(ctx, "k", time.Time{}, t0.Add(2*time.Hour), DefaultEventTTL)
+	if len(cov.Gaps) != 0 {
+		t.Fatalf("backfill credit not applied: %+v", cov.Gaps)
+	}
+}
+
+func TestTouchClearsProvisionalEndReason(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	t0 := time.Date(2026, 10, 21, 9, 0, 0, 0, time.UTC)
+	id, _ := s.BeginSession(ctx, "k", "cluster", t0, false)
+	_ = s.SetEndReason(ctx, id, EndUnreachable)
+	_ = s.TouchSession(ctx, id, t0.Add(time.Minute))
+	cov, _ := s.Coverage(ctx, "k", time.Time{}, t0.Add(time.Hour), 0)
+	if len(cov.Gaps) != 1 || cov.Gaps[0].Reason != "" {
+		t.Fatalf("touch should clear the provisional reason: %+v", cov.Gaps)
+	}
+}
+
+func TestMigratesV1CoverageTable(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "events.db")
+	old, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, stmt := range []string{
+		`CREATE TABLE coverage (id INTEGER PRIMARY KEY AUTOINCREMENT, cluster_key TEXT NOT NULL,
+			scope TEXT NOT NULL DEFAULT '', started_at INTEGER NOT NULL, ended_at INTEGER NOT NULL)`,
+		`INSERT INTO coverage (cluster_key, started_at, ended_at) VALUES ('k', 1000, 2000)`,
+	} {
+		if _, err := old.Exec(stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = old.Close()
+
+	s, err := Open(path)
+	if err != nil {
+		t.Fatalf("open v1 db: %v", err)
+	}
+	defer s.Close()
+	cov, err := s.Coverage(context.Background(), "k", time.Time{}, fromMS(3000), DefaultEventTTL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Old rows claim no backfill.
+	if len(cov.Sessions) != 1 || cov.Sessions[0].Backfilled || !cov.Since.Equal(fromMS(1000)) {
+		t.Fatalf("migrated coverage = %+v", cov)
 	}
 }

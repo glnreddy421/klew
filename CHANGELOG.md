@@ -4,6 +4,25 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 
 ## [Unreleased]
 
+### Event history
+
+- **Fewer false gaps** — after a pause, Klew relists or resumes its watch and recovers the events the cluster still holds, so a pause shorter than the cluster's event TTL leaves no gap; a longer one leaves only the part beyond the TTL. New setting: **Settings → Investigation → Event history → Cluster event TTL** (default 1 hour).
+- **Sleep-aware** — a late heartbeat (Mac asleep) now forces a resync instead of leaving a stale connection, so the recovered events are credited.
+- **No session churn on launch** — recorders restart only when the proxy or kubeconfig actually changes; the launch-time settings sync no longer splits history.
+- **Gaps explain themselves** — one compact line ("Includes recorded events · history since 09:09 · 2 gaps") with the gap list in a popover, each marked *Not recorded* with the reason when known, e.g. "Not recorded · Mac asleep" (sleep is confirmed with macOS's wake time), Klew closed, monitoring paused, cluster unreachable, recording off, RBAC denied, or context not recorded. Same treatment in the inspector and the top-bar recording dot.
+
+### Overview
+
+- **Current state vs. recent incidents** — when nothing fails now but Warnings occurred, the headline reads e.g. "Healthy now · 2 incidents in the last 6h (recovered)". Warnings are grouped into incidents (within 10 minutes of each other), each with its time range, leading reason, and status. An incident is *recovered* only when its objects are healthy now and no Warning arrived for 10 minutes; otherwise it is *ongoing*.
+- **What Klew connected** shows the time window it covers and is marked *recovered* when all of its steps predate recovery.
+- **Key findings by importance** — ranked by severity, then recency, then count. Routine lifecycle events (Pulled, Scheduled, Started, SuccessfulCreate, …) no longer lead the list; they stay in Patterns and Evidence. "No issues found in this window" when nothing remains.
+
+### Fixes
+
+- Internal identifiers such as `metrics_source` no longer appear in the chain or observations.
+- The inspector shows a Pod's namespace instead of "Cluster-scoped" wherever it is opened (Overview, Graph, signals, Resources, cross-links); scope comes from API discovery.
+- Overview scope bar reads `docker-desktop / ns: klew-lab`.
+
 ## [1.4.0] — 2026-10-20
 
 ### Event history
