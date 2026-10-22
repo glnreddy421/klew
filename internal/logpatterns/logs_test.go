@@ -28,7 +28,11 @@ func TestLogsFromSnapshotSpreadsTimestamps(t *testing.T) {
 }
 
 func TestMergeSnapshotLogsFeedsExtractWithoutLiveTail(t *testing.T) {
-	now := time.Now().UTC()
+	// Correlation compares activity per minute bucket. Anchor 30s into a
+	// minute that has already passed so every timestamp below (now-2m-1s …
+	// now) keeps the same bucket alignment; time.Now() alone made this test
+	// fail whenever it ran within seconds of a minute boundary.
+	now := time.Now().UTC().Truncate(time.Minute).Add(-time.Minute + 30*time.Second)
 	// Live ring has only k8s events — no log tail.
 	live := []model.EvidenceEvent{{
 		Timestamp: model.TimestampFrom(now), SourceType: model.SourceK8sEvent, SourceKind: "Pod", SourceName: "payment-api",
