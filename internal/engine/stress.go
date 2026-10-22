@@ -93,7 +93,10 @@ func RunStress(cfg StressConfig) StressResult {
 	elapsed := time.Since(start)
 	final := store.State()
 
-	p50, p99 := latencyPercentiles(lats)
+	latMu.Lock()
+	samples := append([]time.Duration(nil), lats...)
+	latMu.Unlock()
+	p50, p99 := latencyPercentiles(samples)
 	ingested := int64(final.Counters.EventsIngested)
 
 	out := StressResult{
@@ -162,11 +165,15 @@ func runStressBus(cfg StressConfig, store *StateStore, published *atomic.Int64, 
 	defer cancel()
 
 	bus := NewBus(cfg.BusSize)
-	go bus.RunConsumer(ctx, func(e model.EvidenceEvent) {
-		t0 := time.Now()
-		store.ApplyEvent(e)
-		recordLat(time.Since(t0))
-	})
+	consumerDone := make(chan struct{})
+	go func() {
+		defer close(consumerDone)
+		bus.RunConsumer(ctx, func(e model.EvidenceEvent) {
+			t0 := time.Now()
+			store.ApplyEvent(e)
+			recordLat(time.Since(t0))
+		})
+	}()
 
 	var wg sync.WaitGroup
 	stop := make(chan struct{})
@@ -218,6 +225,9 @@ func runStressBus(cfg StressConfig, store *StateStore, published *atomic.Int64, 
 
 	cancel()
 	bus.Close()
+	// The caller reads latency samples and store state next: wait until the
+	// consumer has stopped writing them.
+	<-consumerDone
 }
 
 func synthStressEvent(i int, mix StressMix) model.EvidenceEvent {
