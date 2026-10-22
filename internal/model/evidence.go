@@ -259,6 +259,8 @@ type EvidenceBundle struct {
 type TimeRange struct {
 	From Timestamp `json:"from"`
 	To   Timestamp `json:"to"`
+	// Reason explains a history gap (e.g. "klew_closed"); empty when unknown.
+	Reason string `json:"reason,omitempty"`
 }
 
 // EventHistoryQuery selects recorded events.

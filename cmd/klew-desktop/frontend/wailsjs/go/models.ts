@@ -886,6 +886,7 @@ export namespace main {
 	    enabled: boolean;
 	    retentionDays: number;
 	    maxMB: number;
+	    eventTTLMinutes: number;
 	    sizeBytes: number;
 	    path?: string;
 	    error?: string;
@@ -900,6 +901,7 @@ export namespace main {
 	        this.enabled = source["enabled"];
 	        this.retentionDays = source["retentionDays"];
 	        this.maxMB = source["maxMB"];
+	        this.eventTTLMinutes = source["eventTTLMinutes"];
 	        this.sizeBytes = source["sizeBytes"];
 	        this.path = source["path"];
 	        this.error = source["error"];
@@ -1715,6 +1717,7 @@ export namespace model {
 	export class TimeRange {
 	    from: string;
 	    to: string;
+	    reason?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new TimeRange(source);
@@ -1724,6 +1727,7 @@ export namespace model {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.from = source["from"];
 	        this.to = source["to"];
+	        this.reason = source["reason"];
 	    }
 	}
 	export class EventHistoryCoverage {
@@ -2600,6 +2604,50 @@ export namespace model {
 	        this.confDelta = source["confDelta"];
 	    }
 	}
+	export class Incident {
+	    start: string;
+	    end: string;
+	    leadingReason: string;
+	    severity: string;
+	    count: number;
+	    objects?: ObjectRef[];
+	    recovered: boolean;
+	    recorded?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Incident(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.start = source["start"];
+	        this.end = source["end"];
+	        this.leadingReason = source["leadingReason"];
+	        this.severity = source["severity"];
+	        this.count = source["count"];
+	        this.objects = this.convertValues(source["objects"], ObjectRef);
+	        this.recovered = source["recovered"];
+	        this.recorded = source["recorded"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	
 	export class LogPatternsWindow {
 	    lineCount: number;
@@ -3005,6 +3053,7 @@ export namespace model {
 	    hypothesisAlternatives?: Hypothesis[];
 	    confidenceTrend?: string;
 	    causalChain?: string[];
+	    incidents?: Incident[];
 	    nextChecks?: string[];
 	    fixActions?: string[];
 	    lastTransition?: HypothesisTransition;
@@ -3052,6 +3101,7 @@ export namespace model {
 	        this.hypothesisAlternatives = this.convertValues(source["hypothesisAlternatives"], Hypothesis);
 	        this.confidenceTrend = source["confidenceTrend"];
 	        this.causalChain = source["causalChain"];
+	        this.incidents = this.convertValues(source["incidents"], Incident);
 	        this.nextChecks = source["nextChecks"];
 	        this.fixActions = source["fixActions"];
 	        this.lastTransition = this.convertValues(source["lastTransition"], HypothesisTransition);

@@ -24,6 +24,8 @@ import {
   linkFindingsToChainNodes,
 } from './investigationOverviewVisuals.js'
 import { deriveMatchRows, getMatchedObjects, pickWorstRow } from './matches.js'
+import { findingSeverity, rankFindings, reasonOf, templateLastSeen } from './findingRanking.js'
+import { readableReason } from './readableReason.js'
 
 const STATUS_RANK = { critical: 3, degraded: 2, warning: 2, healthy: 0, unknown: 1 }
 
@@ -317,19 +319,16 @@ function selectFindings(view, rows, patterns, phase) {
     const id = sig.id || sig.label
     if (!id || seen.has(id)) continue
     seen.add(id)
+    const reason = reasonOf(sig.label) || reasonOf(sig.id)
     candidates.push({
       id,
       title: sig.label || sig.evidence || 'Signal detected',
       meta: formatSignalMeta(sig),
       chainSteps: extractChainFromSignal(sig),
-      severity: sig.severity,
+      reason,
+      severity: findingSeverity(reason, sig.severity),
       strength: sig.strength,
-      score: findingScore({
-        severity: sig.severity,
-        strength: sig.strength,
-        count: sig.count,
-        resourceCount: sig.objectRef?.name ? 1 : 0,
-      }),
+      count: sig.count || 1,
       nav: { tab: 'evidence', label: 'View evidence →' },
     })
   }
@@ -343,23 +342,31 @@ function selectFindings(view, rows, patterns, phase) {
       title: shortenTemplate(tpl.template),
       meta: formatPatternMeta(tpl, 'log'),
       chainSteps: templateToChain(tpl.template),
-      severity: tpl.severity === 'error' ? 'error' : tpl.severity === 'warn' ? 'warning' : 'info',
-      score: findingScore({ severity: tpl.severity, count: tpl.count, resourceCount: tpl.pods?.length || 0 }),
+      reason: '',
+      severity: tpl.severity === 'error' || tpl.severity === 'fatal' ? 'error' : tpl.severity === 'warn' ? 'warning' : 'info',
+      count: tpl.count || 0,
+      lastSeen: templateLastSeen(tpl),
       nav: { tab: 'patterns', label: 'View pattern →' },
     })
   }
 
-  for (const tpl of (patterns?.eventTemplates || []).slice(0, 3)) {
+  // Event templates: the severity comes from the event reason, not the
+  // template's volume — "[Pulled] … 37 occurrences" is routine, not a finding.
+  for (const tpl of (patterns?.eventTemplates || []).slice(0, 8)) {
     const id = `evt-${tpl.id || tpl.template}`
     if (seen.has(id)) continue
     seen.add(id)
+    const reason = reasonOf(tpl.template)
+    const fallback = tpl.severity === 'error' || tpl.severity === 'fatal' ? 'error' : tpl.severity === 'warn' ? 'warning' : 'info'
     candidates.push({
       id,
       title: shortenTemplate(tpl.template),
       meta: formatPatternMeta(tpl, 'event'),
       chainSteps: templateToChain(tpl.template),
-      severity: tpl.severity === 'error' ? 'error' : 'warning',
-      score: findingScore({ severity: tpl.severity, count: tpl.count }),
+      reason,
+      severity: findingSeverity(reason, fallback),
+      count: tpl.count || 0,
+      lastSeen: templateLastSeen(tpl),
       nav: { tab: 'patterns', label: 'View pattern →' },
     })
   }
@@ -374,27 +381,14 @@ function selectFindings(view, rows, patterns, phase) {
       title: `${row.kind}/${row.name} — ${row.signal || row.status}`,
       meta: formatRowMeta(row),
       chainSteps: row.signal ? [row.signal] : [],
+      reason: reasonOf(row.signal),
       severity: row.status === 'critical' ? 'critical' : 'warning',
-      score: findingScore({
-        severity: row.status,
-        count: row.restarts || 1,
-        resourceCount: 1,
-      }),
+      count: row.restarts || 1,
       nav: { tab: 'failures', label: 'View failure →' },
     })
   }
 
-  candidates.sort((a, b) => b.score - a.score || a.title.localeCompare(b.title))
-  return candidates.slice(0, 5).map((f, i) => ({ ...f, rank: i + 1 }))
-}
-
-function findingScore({ severity, strength, count = 1, resourceCount = 0 }) {
-  let score = severityRankTL(severity) * 100
-  if (strength === 'strong') score += 40
-  else if (strength === 'medium') score += 20
-  score += Math.min(count, 50) * 2
-  score += resourceCount * 8
-  return score
+  return rankFindings(candidates).slice(0, 5).map((f, i) => ({ ...f, rank: i + 1 }))
 }
 
 function formatSignalMeta(sig) {
@@ -699,7 +693,7 @@ function selectEvidencePreview(evidence) {
       id: e.id,
       timestamp: e.timestamp,
       type: evidenceTypeLabel(e.sourceType),
-      headline: e.reason || e.sourceKind || evidenceTypeLabel(e.sourceType),
+      headline: readableReason(e.reason) || e.sourceKind || evidenceTypeLabel(e.sourceType),
       detail: truncate(e.message || e.raw || '', 140),
       sourceName: e.sourceName || e.pod,
       severity: e.severity,

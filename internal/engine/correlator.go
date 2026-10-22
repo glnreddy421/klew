@@ -21,6 +21,11 @@ func buildCausalChain(tl []model.TimelineEvent) []string {
 	var steps []step
 	seen := map[string]bool{}
 	for _, e := range SortTimeline(tl) {
+		// Klew's own bookkeeping (metrics source, watch failures, hypothesis
+		// changes) is not part of the incident story.
+		if e.Type == string(model.SourceSystem) {
+			continue
+		}
 		if e.Severity == model.SeverityInfo && e.Type != "deploy" && e.Type != "rs" {
 			continue
 		}

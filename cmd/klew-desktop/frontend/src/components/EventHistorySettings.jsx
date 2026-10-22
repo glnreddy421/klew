@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useEventHistoryContext } from '../context/EventHistoryContext.jsx'
 import {
+  EVENT_TTL_MINUTE_OPTIONS,
   MAX_MB_OPTIONS,
   RETENTION_DAY_OPTIONS,
   formatBytes,
+  formatTTL,
   optionsWithValue,
   settingsContextRows,
 } from '../lib/eventHistory'
@@ -68,6 +70,15 @@ export function EventHistorySettings() {
           options={optionsWithValue(MAX_MB_OPTIONS, settings.maxMB)
             .map((mb) => ({ value: mb, label: mb >= 1000 ? `${mb / 1000} GB` : `${mb} MB` }))}
           onChange={(v) => saveSettings({ maxMB: Number(v) })}
+        />
+        <SelectRow
+          label="Cluster event TTL"
+          hint="How long your clusters keep Events (kube-apiserver --event-ttl, default 1 hour). After a pause, Klew recovers events this far back, so shorter pauses leave no gap."
+          value={settings.eventTTLMinutes}
+          disabled={disabled || off}
+          options={optionsWithValue(EVENT_TTL_MINUTE_OPTIONS, settings.eventTTLMinutes)
+            .map((m) => ({ value: m, label: formatTTL(m) }))}
+          onChange={(v) => saveSettings({ eventTTLMinutes: Number(v) })}
         />
         <SettingRow label="Stored on disk" hint={formatBytes(settings.sizeBytes)}>
           <button

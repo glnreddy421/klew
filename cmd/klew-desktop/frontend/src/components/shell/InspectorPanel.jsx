@@ -8,6 +8,7 @@ import { buildManifestTarget } from '../../lib/manifestTarget.js'
 import { resolvePodLogsTarget, podLogsTerminalEnabled } from '../../lib/podLogsTerminal.js'
 import { useResourcesWorkbench } from '../../views/ResourcesWorkbenchView.jsx'
 import { InspectorHeaderActions } from './InspectorHeaderActions.jsx'
+import { inspectScope } from '../../lib/inspectScope.js'
 import { ResourceManifestView } from './ResourceManifestView.jsx'
 
 function statusTone(inspect, inspectRow) {
@@ -35,6 +36,14 @@ export function InspectorPanel({
   const detailLoading = workbench?.detailLoading
   const kindGroup = browse?.nav?.selectedKindGroup || browse?.effectiveKindGroup
   const tone = statusTone(inspect, inspectRow)
+  const scope = inspectScope({
+    kind: inspectRow?.kind,
+    rowNamespace: inspectRow?.namespace,
+    detailNamespace: inspect?.ref?.namespace,
+    fallbackNamespace: cluster?.selectedNamespace,
+    tree: browse?.tree,
+    kindGroup,
+  })
   const statusLabel = inspect?.status?.label
     || (inspectRow?.status === 'healthy' ? 'Ready' : inspectRow?.signal)
     || null
@@ -79,17 +88,12 @@ export function InspectorPanel({
                 </h2>
                 <p className="inspector-header-meta">
                   <span>{inspectRow.kind}</span>
-                  {inspectRow.namespace ? (
+                  {scope.label ? (
                     <>
                       <span className="inspect-meta-sep">·</span>
-                      <span className="mono">{inspectRow.namespace}</span>
+                      <span className={scope.namespaced ? 'mono' : undefined}>{scope.label}</span>
                     </>
-                  ) : (
-                    <>
-                      <span className="inspect-meta-sep">·</span>
-                      <span>Cluster-scoped</span>
-                    </>
-                  )}
+                  ) : null}
                 </p>
               </div>
               {statusLabel && !detailLoading ? (

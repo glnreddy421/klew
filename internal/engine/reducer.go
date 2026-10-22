@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/glnreddy421/klew/internal/kube"
 	"github.com/glnreddy421/klew/internal/logpatterns"
 	"github.com/glnreddy421/klew/internal/model"
 )
@@ -189,6 +190,13 @@ func (r *StateStore) recompute() {
 	agg := SignalAggregator{Window: model.DurationFromMS(r.state.Window)}
 	evSignals := agg.Aggregate(events, now)
 	corr := r.corr.Correlate(r.state.Snapshot, evSignals, events)
+	r.state.Incidents = BuildIncidents(r.state.Snapshot, now)
+	if corr.HypothesisLabel == HealthyLabel {
+		// Current state is healthy; say so, and that earlier Warnings happened.
+		if lbl := HealthyNowLabel(r.state.Incidents, r.incidentWindow()); lbl != "" {
+			corr.HypothesisLabel = lbl
+		}
+	}
 
 	if len(r.state.WorkloadGraph.Nodes) == 0 {
 		r.state.WorkloadGraph = BuildGraph(r.state.Snapshot)
@@ -379,4 +387,16 @@ func ClassifyLogSeverity(line string) model.Severity {
 	default:
 		return model.SeverityInfo
 	}
+}
+
+// incidentWindow is how far back incidents can come from: the recorded-history
+// lookback when history was merged, otherwise the live evidence window.
+func (r *StateStore) incidentWindow() time.Duration {
+	if r.state.Snapshot.EventHistory != nil {
+		return kube.RecordedEventsLookback
+	}
+	if w := model.DurationFromMS(r.state.Window); w > 0 {
+		return w
+	}
+	return 15 * time.Minute
 }

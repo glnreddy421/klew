@@ -9,6 +9,7 @@ import {
   severityRankTL,
   asStringArray,
 } from './investigationViews.js'
+import { readableReason } from './readableReason.js'
 
 /** @typedef {'signal'|'failure'|'event'|'state'|'evidence'} NodeType */
 
@@ -511,7 +512,7 @@ function labelsMatch(a, b) {
 }
 
 function cleanChainLabel(label) {
-  return String(label || '')
+  return readableReason(String(label || '').trim())
     .replace(/\s+\+\d+[smhd](?:\d+[smhd])?$/i, '')
     .replace(/\s+\+\d+[smhd]$/i, '')
     .trim()

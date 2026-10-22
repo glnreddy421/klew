@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -470,5 +471,179 @@ func TestRecorderListAllowedWatchDeniedDoesNotSpin(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 	if after := atomic.LoadInt32(&lists); after != n {
 		t.Fatalf("recorder kept listing while watch is denied: %d → %d lists", n, after)
+	}
+}
+
+// fakeClock is a settable wall clock for coverage tests.
+type fakeClock struct {
+	mu  sync.Mutex
+	now time.Time
+}
+
+func (c *fakeClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+func (c *fakeClock) Advance(d time.Duration) {
+	c.mu.Lock()
+	c.now = c.now.Add(d)
+	c.mu.Unlock()
+}
+
+func sessions(t *testing.T, s *Store, key string) []Session {
+	t.Helper()
+	rows, err := s.db.Query(`SELECT started_at, ended_at, backfilled, end_reason FROM coverage WHERE cluster_key = ? ORDER BY id`, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var out []Session
+	for rows.Next() {
+		var st, en, bf int64
+		var sess Session
+		if err := rows.Scan(&st, &en, &bf, &sess.EndReason); err != nil {
+			t.Fatal(err)
+		}
+		sess.Start, sess.End, sess.Backfilled = fromMS(st), fromMS(en), bf != 0
+		out = append(out, sess)
+	}
+	return out
+}
+
+func TestRecorderFirstSessionIsBackfilled(t *testing.T) {
+	store := openTestStore(t)
+	clock := &fakeClock{now: time.Date(2026, 10, 21, 9, 0, 0, 0, time.UTC)}
+	cfg := fastRecorder()
+	cfg.ClusterKey, cfg.Client, cfg.Store, cfg.Now = "k", fake.NewSimpleClientset(), store, clock.Now
+	r, _, _ := startRecorder(t, cfg)
+	eventually(t, "recording", func() bool { return r.Status().State == StateRecording })
+	eventually(t, "session", func() bool { return len(sessions(t, store, "k")) == 1 })
+	if s := sessions(t, store, "k")[0]; !s.Backfilled {
+		t.Fatalf("session after a successful list should be backfilled: %+v", s)
+	}
+}
+
+// A sleep shows up as a late heartbeat. It must not leave a gap when the
+// resync relists within the event TTL, and watch reconnects alone must not
+// split sessions.
+func TestRecorderClockJumpResyncsAndBackfills(t *testing.T) {
+	store := openTestStore(t)
+	clock := &fakeClock{now: time.Date(2026, 10, 21, 9, 0, 0, 0, time.UTC)}
+	cs := fake.NewSimpleClientset()
+	var lists int32
+	cs.PrependReactor("list", "events", func(k8stesting.Action) (bool, runtime.Object, error) {
+		atomic.AddInt32(&lists, 1)
+		return false, nil, nil
+	})
+	cfg := fastRecorder()
+	cfg.ClusterKey, cfg.Client, cfg.Store, cfg.Now = "k", cs, store, clock.Now
+	cfg.SleptSince = func(time.Time) bool { return true } // OS confirms a wake
+	r, _, _ := startRecorder(t, cfg)
+	eventually(t, "recording", func() bool { return r.Status().State == StateRecording })
+	eventually(t, "first session", func() bool { return len(sessions(t, store, "k")) == 1 })
+	before := atomic.LoadInt32(&lists)
+
+	clock.Advance(20 * time.Minute) // Mac asleep
+	eventually(t, "resync relist", func() bool { return atomic.LoadInt32(&lists) > before })
+	eventually(t, "second session backfilled", func() bool {
+		ss := sessions(t, store, "k")
+		return len(ss) == 2 && ss[1].Backfilled
+	})
+	ss := sessions(t, store, "k")
+	if ss[0].EndReason != EndSystemSleep {
+		t.Fatalf("confirmed sleep should be recorded, got %q", ss[0].EndReason)
+	}
+	cov, _ := store.Coverage(context.Background(), "k", time.Time{}, clock.Now(), DefaultEventTTL)
+	if len(cov.Gaps) != 0 {
+		t.Fatalf("20-minute sleep within TTL should not leave a gap: %+v", cov.Gaps)
+	}
+
+	// No further sessions while the clock runs normally.
+	time.Sleep(100 * time.Millisecond)
+	if n := len(sessions(t, store, "k")); n != 2 {
+		t.Fatalf("sessions split without a clock jump: %d", n)
+	}
+}
+
+func TestCoverageTickMarksUnreachableAndRBAC(t *testing.T) {
+	for _, tc := range []struct {
+		state, want string
+	}{
+		{StateReconnecting, EndUnreachable},
+		{StateNotRecordable, EndRBACDenied},
+	} {
+		store := openTestStore(t)
+		clock := &fakeClock{now: time.Date(2026, 10, 21, 9, 0, 0, 0, time.UTC)}
+		cfg := fastRecorder()
+		cfg.ClusterKey, cfg.Store, cfg.Now = "k", store, clock.Now
+		r := NewRecorder(cfg)
+		ctx, cancel := storeCtx()
+		r.beginSession(ctx, ScopeCluster, clock.Now(), true)
+		cancel()
+		r.status.State = tc.state // streams down (live == 0)
+
+		clock.Advance(time.Minute)
+		r.coverageTick()
+		if r.sessionID == 0 {
+			t.Fatalf("%s: session ended inside the tolerance", tc.state)
+		}
+		clock.Advance(5 * time.Minute)
+		r.coverageTick()
+		if r.sessionID != 0 {
+			t.Fatalf("%s: stalled session still open", tc.state)
+		}
+		if got := sessions(t, store, "k")[0].EndReason; got != tc.want {
+			t.Fatalf("%s: end reason %q, want %q", tc.state, got, tc.want)
+		}
+	}
+}
+
+func TestManagerRecordsStopReasons(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "history")
+	m := newTestManager(t, dir, fake.NewSimpleClientset())
+	key := ClusterKey("c", "https://c:6443")
+
+	m.SetActiveContext("c")
+	eventually(t, "session", func() bool { return len(sessions(t, m.Store(), key)) == 1 })
+	m.SetPaused(true)
+	eventually(t, "paused reason", func() bool {
+		ss := sessions(t, m.Store(), key)
+		return len(ss) == 1 && ss[0].EndReason == EndMonitoringPaused
+	})
+
+	m.SetPaused(false)
+	eventually(t, "resumed", func() bool { return len(sessions(t, m.Store(), key)) == 2 })
+	m.SetActiveContext("other")
+	eventually(t, "inactive reason", func() bool {
+		ss := sessions(t, m.Store(), key)
+		return len(ss) >= 2 && ss[1].EndReason == EndContextInactive
+	})
+}
+
+// A late heartbeat without an OS-confirmed wake (throttled or stalled process)
+// stays an unknown gap — never claim sleep we cannot confirm.
+func TestRecorderLateHeartbeatWithoutWakeStaysUnknown(t *testing.T) {
+	store := openTestStore(t)
+	clock := &fakeClock{now: time.Date(2026, 10, 21, 9, 0, 0, 0, time.UTC)}
+	cfg := fastRecorder()
+	cfg.ClusterKey, cfg.Client, cfg.Store, cfg.Now = "k", fake.NewSimpleClientset(), store, clock.Now
+	cfg.SleptSince = func(time.Time) bool { return false }
+	r, _, _ := startRecorder(t, cfg)
+	eventually(t, "recording", func() bool { return r.Status().State == StateRecording })
+	eventually(t, "first session", func() bool { return len(sessions(t, store, "k")) == 1 })
+
+	clock.Advance(20 * time.Minute)
+	eventually(t, "second session", func() bool { return len(sessions(t, store, "k")) == 2 })
+	if got := sessions(t, store, "k")[0].EndReason; got != "" {
+		t.Fatalf("unconfirmed sleep must stay unknown, got %q", got)
+	}
+}
+
+func TestSystemSleptSinceIsSafe(t *testing.T) {
+	// Far future: no wake can be after it. Must not panic on any platform.
+	if systemSleptSince(time.Now().Add(24 * time.Hour)) {
+		t.Fatal("a wake cannot be in the future")
 	}
 }

@@ -25,7 +25,8 @@ import { isRbacForbiddenMessage } from '../../lib/rbacAccess.js'
 import { EntityRowsSkeleton, InlineLoading, LoadingBar } from '../LoadingSpinner.jsx'
 import { activeTabGuide, buildBrowseTabs, INSPECT_TAB_META } from '../../lib/inspectTabGuide.js'
 import { WorkloadTraceGraph } from '../workloads/WorkloadTraceGraph.jsx'
-import { historyGapLines, historySinceLine } from '../../lib/eventHistory'
+import { historySinceLine } from '../../lib/eventHistory'
+import { CoverageLine } from '../shell/HistoryGapsPopover.jsx'
 
 /**
  * Kind-aware object inspector.
@@ -934,15 +935,11 @@ export function DetailSection({ section, groupId, onInspect, inspectNamespace = 
         )}
       </div>
       {section.history?.since && (
-        <p className="inspect-history-line">
-          {historySinceLine(section.history)}
-          {historyGapLines(section.history).map((g) => (
-            <span key={g} className="inspect-history-gap">
-              <br />
-              {g}
-            </span>
-          ))}
-        </p>
+        <CoverageLine
+          history={section.history}
+          text={historySinceLine(section.history)}
+          className="inspect-history-line"
+        />
       )}
       {hasFields && (
         <dl className="inspect-prop-list">

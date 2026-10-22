@@ -29,6 +29,7 @@ import {
   listChromeForMode,
   loadLayoutMode,
 } from '../lib/incidentLayout'
+import { withInspectNamespace } from '../lib/investigationContext'
 
 const ResourcesWorkbenchContext = createContext(null)
 
@@ -474,11 +475,11 @@ function useResourcesWorkbenchState({
   const inspectRow = useMemo(() => {
     if (inspectKey) {
       const fromRows = findRowByKey(rows, inspectKey)
-      if (fromRows) return fromRows
+      if (fromRows) return withInspectNamespace(fromRows, view)
       const fromCatalog = findRowByKey(catalogEntities, inspectKey)
-      if (fromCatalog) return fromCatalog
+      if (fromCatalog) return withInspectNamespace(fromCatalog, view)
       const fromSnap = inspectRowForKey(inspectKey, view, allRows)
-      if (fromSnap) return fromSnap
+      if (fromSnap) return withInspectNamespace(fromSnap, view)
       return null
     }
     if (catalogBrowseActive) return null

@@ -19,7 +19,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = "1"
+const schemaVersion = "2"
 
 // Store is the SQLite-backed event history. Safe for concurrent use and for
 // several Klew processes sharing one file (WAL + busy_timeout).
@@ -137,10 +137,11 @@ func (s *Store) migrate() error {
 			cluster_key TEXT NOT NULL,
 			scope TEXT NOT NULL DEFAULT '',
 			started_at INTEGER NOT NULL,
-			ended_at INTEGER NOT NULL
+			ended_at INTEGER NOT NULL,
+			backfilled INTEGER NOT NULL DEFAULT 0,
+			end_reason TEXT NOT NULL DEFAULT ''
 		)`,
 		`CREATE INDEX IF NOT EXISTS coverage_key_start ON coverage (cluster_key, started_at)`,
-		`INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', '` + schemaVersion + `')`,
 	}
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
@@ -149,7 +150,45 @@ func (s *Store) migrate() error {
 			return err
 		}
 	}
-	return nil
+	// v1 → v2: coverage sessions record backfill and why they ended. Existing
+	// rows keep backfilled = 0 (no credit claimed for history we cannot vouch for).
+	for _, col := range []struct{ name, def string }{
+		{"backfilled", "INTEGER NOT NULL DEFAULT 0"},
+		{"end_reason", "TEXT NOT NULL DEFAULT ''"},
+	} {
+		has, err := s.hasColumn("coverage", col.name)
+		if err != nil {
+			return err
+		}
+		if !has {
+			if _, err := s.db.Exec(`ALTER TABLE coverage ADD COLUMN ` + col.name + ` ` + col.def); err != nil {
+				return err
+			}
+		}
+	}
+	_, err := s.db.Exec(`INSERT INTO meta (key, value) VALUES ('schema_version', ?)
+		ON CONFLICT (key) DO UPDATE SET value = excluded.value`, schemaVersion)
+	return err
+}
+
+func (s *Store) hasColumn(table, column string) (bool, error) {
+	rows, err := s.db.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid, notNull, pk int
+		var name, typ string
+		var dflt any
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &dflt, &pk); err != nil {
+			return false, err
+		}
+		if name == column {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
 }
 
 func ms(t time.Time) int64 {

@@ -1,4 +1,5 @@
 import { getNodeMarker, nodeTypeClass, formatTimeAxis } from '../../lib/investigationOverviewVisuals.js'
+import { chainRecovered, chainWindow } from '../../lib/incidents'
 
 export function InvestigationChainNode({
   node,
@@ -29,6 +30,7 @@ export function InvestigationChainNode({
 
 export function InvestigationChain({
   chain,
+  incidents,
   highlightedNodeIds,
   onNodeSelect,
   onNavigate,
@@ -73,11 +75,17 @@ export function InvestigationChain({
   }
 
   const isHorizontal = chain.nodes.length >= 2
+  const span = chainWindow(chain)
+  const recovered = chainRecovered(chain, incidents)
 
   return (
-    <section className="inv-visual-section inv-chain-section">
+    <section className={`inv-visual-section inv-chain-section ${recovered ? 'is-recovered' : ''}`}>
       <div className="inv-section-head">
-        <h2 className="inv-section-title">{chain.label}</h2>
+        <h2 className="inv-section-title">
+          {chain.label}
+          {span && <span className="inv-chain-window mono"> · {span}</span>}
+          {recovered && <span className="inv-chain-recovered tone-ok">recovered</span>}
+        </h2>
         {chain.hasMore && chain.moreNav && (
           <button
             type="button"

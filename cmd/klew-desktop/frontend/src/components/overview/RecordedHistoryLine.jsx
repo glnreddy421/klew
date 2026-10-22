@@ -1,17 +1,16 @@
 import { getSnapshot } from '../../lib/investigationViews'
 import { evidenceHistoryLine } from '../../lib/eventHistory'
+import { CoverageLine } from '../shell/HistoryGapsPopover.jsx'
 
-/** "Includes recorded events from the last 6h · gaps: …" — only when history was used. */
+/** "Includes recorded events · history since 09:09 · 2 gaps" — only when history was used. */
 export function RecordedHistoryLine({ view, className = '' }) {
-  const line = evidenceHistoryLine(getSnapshot(view).eventHistory)
-  if (!line) return null
+  const history = getSnapshot(view).eventHistory
   return (
-    <p
+    <CoverageLine
+      history={history}
+      text={evidenceHistoryLine(history)}
       className={['evidence-history-line', className].filter(Boolean).join(' ')}
-      title="Events Klew recorded locally while it was running. History is incomplete where Klew was not running."
-    >
-      {line}
-    </p>
+    />
   )
 }
 

@@ -1108,6 +1108,7 @@ func (a *App) OpenKubeconfigDir() {
 // Empty path clears the override so RefreshClusterState uses default resolution.
 func (a *App) SetKubeconfigPath(path string) kube.ClusterState {
 	a.mu.Lock()
+	pathChanged := a.cluster.KubeconfigPath != path
 	a.cluster.KubeconfigPath = path
 	prev := a.cluster
 	ctxName := prev.SelectedContext
@@ -1118,7 +1119,8 @@ func (a *App) SetKubeconfigPath(path string) kube.ClusterState {
 	a.mu.Lock()
 	a.cluster = st
 	a.mu.Unlock()
-	if m := a.historyManager(); m != nil {
+	// Restarting splits coverage sessions, so only do it when clients change.
+	if m := a.historyManager(); m != nil && pathChanged {
 		m.Restart()
 	}
 	a.emitCluster()
@@ -1142,9 +1144,12 @@ func (a *App) GetNetworkProxy() kube.NetworkProxyOptions {
 
 // SetNetworkProxy applies HTTP(S) proxy settings and refreshes cluster reachability caches.
 func (a *App) SetNetworkProxy(httpProxy, httpsProxy, noProxy string) kube.NetworkProxyOptions {
+	prev := kube.GetNetworkProxy()
 	opts := kube.SetNetworkProxy(httpProxy, httpsProxy, noProxy)
 	a.invalidateClusterStatusCache()
-	if m := a.historyManager(); m != nil {
+	// The UI re-applies saved proxy settings on every launch; restart recorders
+	// only when the proxy actually changes.
+	if m := a.historyManager(); m != nil && opts != prev {
 		m.Restart()
 	}
 	return opts
