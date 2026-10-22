@@ -4,6 +4,8 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 
 ## [Unreleased]
 
+## [1.4.1] — 2026-10-21
+
 ### Event history
 
 - **Fewer false gaps** — after a pause, Klew relists or resumes its watch and recovers the events the cluster still holds, so a pause shorter than the cluster's event TTL leaves no gap; a longer one leaves only the part beyond the TTL. New setting: **Settings → Investigation → Event history → Cluster event TTL** (default 1 hour).
