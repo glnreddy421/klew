@@ -27,6 +27,7 @@ export function normalizeObjectDetail(detail, row) {
 
   return {
     key: row?.key || buildInspectKey(kind, name, namespace),
+    generation: row?.generation || 0,
     kind,
     name,
     namespace,

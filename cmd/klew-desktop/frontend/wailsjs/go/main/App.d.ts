@@ -34,6 +34,8 @@ export function GetNetworkProxy():Promise<kube.NetworkProxyOptions>;
 
 export function GetObjectDetails(arg1:string,arg2:string,arg3:string):Promise<details.ObjectDetail>;
 
+export function GetPodRevision(arg1:string,arg2:string):Promise<model.PodRevision>;
+
 export function GetResourceCatalog(arg1:main.CatalogOptions):Promise<model.ResourceCatalog>;
 
 export function GetResourceManifest(arg1:main.ResourceManifestOptions):Promise<kube.ResourceManifest>;
@@ -41,6 +43,8 @@ export function GetResourceManifest(arg1:main.ResourceManifestOptions):Promise<k
 export function GetTerminalShellChoices():Promise<Array<main.TerminalShellChoice>>;
 
 export function GetView():Promise<api.View>;
+
+export function GetWorkloadChanges(arg1:string,arg2:string,arg3:string):Promise<model.WorkloadChanges>;
 
 export function ListCatalogEntities(arg1:main.ListCatalogEntitiesOptions):Promise<model.CatalogEntityList>;
 

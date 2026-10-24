@@ -134,6 +134,8 @@ type InvestigationState struct {
 	CausalChain       []string          `json:"causalChain,omitempty"`
 	// Incidents groups Warning events in the window; empty when there were none.
 	Incidents []Incident `json:"incidents,omitempty"`
+	// PinnedChange is a workload change that likely relates to the incident.
+	PinnedChange *PinnedChange `json:"pinnedChange,omitempty"`
 	NextChecks        []string          `json:"nextChecks,omitempty"`
 	FixActions        []string          `json:"fixActions,omitempty"`
 	LastTransition    *HypothesisTransition `json:"lastTransition,omitempty"`

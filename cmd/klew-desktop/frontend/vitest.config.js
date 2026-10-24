@@ -1,6 +1,8 @@
 import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
+  // Match the app build's automatic JSX runtime so component render tests work.
+  esbuild: { jsx: 'automatic' },
   test: {
     include: ['src/**/*.test.js'],
     exclude: [

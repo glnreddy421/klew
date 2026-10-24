@@ -178,8 +178,11 @@ export function AppShell({
     patch({ inspectorCollapsed: true })
   }, [patch, showInspector])
 
+  // Per-cluster cache scope for inspector data (changes the key on context switch).
+  const inspectorCacheScope = `${cluster?.kubeconfigPath || ''}|${cluster?.selectedContext || cluster?.currentContext || ''}`
   const shellInspector = useMemo(
     () => ({
+      inspectorCacheScope,
       expandInspector,
       toggleInspector,
       inspectorCollapsed: inspectorLayoutCollapsed,
@@ -191,6 +194,7 @@ export function AppShell({
       openInspectorExpanded,
     }),
     [
+      inspectorCacheScope,
       expandInspector,
       toggleInspector,
       inspectorLayoutCollapsed,

@@ -16,6 +16,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/glnreddy421/klew/internal/changes"
 	"github.com/glnreddy421/klew/internal/model"
 )
 
@@ -184,7 +185,16 @@ func collectHelmReleases(ctx context.Context, client *Client, scope CatalogEntit
 }
 
 func listHelmStorageObjects(ctx context.Context, client *Client, scope CatalogEntityScope) ([]helmStorageObject, model.ResourceAccessState, string, error) {
+	return listHelmStorageObjectsMatching(ctx, client, scope, "")
+}
+
+// listHelmStorageObjectsMatching lists Helm storage, optionally narrowed by an
+// extra label selector (e.g. "name=<release>" for one release's history).
+func listHelmStorageObjectsMatching(ctx context.Context, client *Client, scope CatalogEntityScope, extra string) ([]helmStorageObject, model.ResourceAccessState, string, error) {
 	labelSelector := helmOwnerLabel + "=" + helmOwnerValue
+	if extra != "" {
+		labelSelector += "," + extra
+	}
 	var out []helmStorageObject
 	allowed := 0
 	forbidden := 0
@@ -329,7 +339,10 @@ func helmRecordFromStorage(obj helmStorageObject) (HelmReleaseRecord, error) {
 	if err != nil {
 		return HelmReleaseRecord{}, err
 	}
+	return helmRecordFromPayload(obj, payload), nil
+}
 
+func helmRecordFromPayload(obj helmStorageObject, payload *helmReleasePayload) HelmReleaseRecord {
 	rec := HelmReleaseRecord{
 		Name:          strings.TrimSpace(payload.Name),
 		Namespace:     strings.TrimSpace(payload.Namespace),
@@ -369,7 +382,7 @@ func helmRecordFromStorage(obj helmStorageObject) (HelmReleaseRecord, error) {
 	if strings.TrimSpace(rec.UserValuesYAML) == "# (empty)\n" {
 		rec.UserValuesYAML = "# No user-supplied overrides\n"
 	}
-	return rec, nil
+	return rec
 }
 
 func helmReleaseToCatalogEntity(rec HelmReleaseRecord) model.CatalogEntity {
@@ -485,4 +498,46 @@ func containsString(list []string, target string) bool {
 		}
 	}
 	return false
+}
+
+// helmHistoryMax matches Helm's default --history-max: older revisions are
+// usually pruned by Helm itself, and each one is costly to decode.
+const helmHistoryMax = 10
+
+// ListHelmReleaseHistory decodes the stored revisions of one release, oldest
+// first (at most the newest helmHistoryMax). Read-only; call it lazily — each
+// revision is gzip'd and base64-encoded twice. Denied Secrets/ConfigMaps
+// return access != allowed and no error.
+func ListHelmReleaseHistory(ctx context.Context, client *Client, namespace, release string) ([]changes.HelmRevision, model.ResourceAccessState, error) {
+	if client == nil || client.Clientset == nil {
+		return nil, model.ResourceAccessUnknown, fmt.Errorf("kubernetes client is required")
+	}
+	objects, access, _, err := listHelmStorageObjectsMatching(ctx, client, CatalogEntityScope{Namespace: namespace}, "name="+release)
+	if err != nil || access != model.ResourceAccessAllowed {
+		return nil, access, err
+	}
+	sort.Slice(objects, func(i, j int) bool {
+		return helmRevisionFromLabels(objects[i].labels, objects[i].name) > helmRevisionFromLabels(objects[j].labels, objects[j].name)
+	})
+	if len(objects) > helmHistoryMax {
+		objects = objects[:helmHistoryMax]
+	}
+	var out []changes.HelmRevision
+	for _, obj := range objects {
+		payload, err := decodeHelmReleasePayload(obj.data)
+		if err != nil {
+			continue
+		}
+		rec := helmRecordFromPayload(obj, payload)
+		if rec.Name != release {
+			continue
+		}
+		out = append(out, changes.HelmRevision{
+			Revision: rec.Revision, Time: rec.Updated, Chart: rec.Chart, ChartVersion: rec.ChartVersion,
+			AppVersion: rec.AppVersion, Status: rec.Status, Description: rec.Description,
+			Values: helmUserSuppliedValues(payload.Config, payload.Chart.Values),
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Revision < out[j].Revision })
+	return out, model.ResourceAccessAllowed, nil
 }

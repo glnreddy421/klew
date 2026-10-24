@@ -4,6 +4,9 @@ import { KindIcon } from '../KindIcon'
 import { formatEntityAge } from '../../lib/entityTable'
 import { isRbacForbiddenMessage } from '../../lib/rbacAccess.js'
 import { InlineLoading, LoadingState } from '../LoadingSpinner.jsx'
+import { useShellInspector } from '../../context/ShellInspectorContext.jsx'
+import { useWorkloadChanges } from '../../hooks/useWorkloadChanges'
+import { ChangesTab } from '../inspect/WorkloadChanges.jsx'
 
 function findSection(inspect, id) {
   for (const group of inspect?.groups || []) {
@@ -53,6 +56,14 @@ export function HelmReleaseInspectView({
   const notesSection = useMemo(() => findSection(inspect, 'helm-notes'), [inspect])
 
   const [userValuesOnly, setUserValuesOnly] = useState(true)
+  const cacheScope = useShellInspector()?.inspectorCacheScope
+  const changesState = useWorkloadChanges({
+    scope: cacheScope,
+    kind: 'HelmRelease',
+    namespace: inspect?.namespace,
+    name: inspect?.name,
+    enabled: Boolean(inspect?.name),
+  })
 
   useEffect(() => {
     setUserValuesOnly(true)
@@ -144,6 +155,13 @@ export function HelmReleaseInspectView({
           <pre className="helm-values-readonly mono" aria-readonly="true">{displayedValues}</pre>
         </section>
       )}
+
+      <section className="helm-release-section helm-changes-section">
+        <div className="helm-section-head">
+          <h5>Changes</h5>
+        </div>
+        <ChangesTab state={changesState} />
+      </section>
 
       {notesSection?.notes?.length > 0 && (
         <section className="helm-release-section helm-notes-section">

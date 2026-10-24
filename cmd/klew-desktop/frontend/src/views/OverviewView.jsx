@@ -14,6 +14,7 @@ import { buildClusterContext } from '../lib/clusterContext'
 import { deriveMatchRows, getMatchedObjects } from '../lib/matches'
 import { buildInvestigationOverview } from '../lib/investigationOverview'
 import { InvestigationSurfaceGuide } from '../components/incident/InvestigationSurfaceGuide.jsx'
+import { PinnedChange } from '../components/overview/PinnedChange.jsx'
 
 /**
  * Overview — Investigation Brief with visual correlation graphics.
@@ -123,6 +124,7 @@ export function OverviewView({
         onNavigate={onNavigate}
         onChipAction={handleChipAction}
       />
+      <PinnedChange pinned={getState(view).pinnedChange} onInspectKeyChange={onInspectKeyChange} />
       <InvestigationHeader
         verdict={verdict}
         stats={stats}

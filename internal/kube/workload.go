@@ -94,6 +94,10 @@ func (col *Collector) Collect(ctx context.Context, opts CollectOptions) (model.E
 		}
 	}
 
+	if allowed(perms, "replicasets", "list") {
+		bundle.WorkloadChanges = col.collectChangeMarkers(ctx, bundle.Workloads)
+	}
+
 	var selectors []labels.Selector
 	if allowed(perms, "replicasets", "list") {
 		rss, err := col.Client.Clientset.AppsV1().ReplicaSets(ns).List(ctx, metav1.ListOptions{})

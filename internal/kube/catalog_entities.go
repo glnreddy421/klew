@@ -167,6 +167,7 @@ func listCatalogEntitiesOnce(ctx context.Context, client *Client, gvr schema.Gro
 			Namespace:       item.GetNamespace(),
 			UID:             string(item.GetUID()),
 			ResourceVersion: item.GetResourceVersion(),
+			Generation:      item.GetGeneration(),
 			Kind:            item.GetKind(),
 			APIVersion:      item.GetAPIVersion(),
 			StatusHint:      entityStatusHint(item.Object, resource),

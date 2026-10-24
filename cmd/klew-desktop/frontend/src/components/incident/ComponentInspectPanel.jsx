@@ -27,6 +27,10 @@ import { activeTabGuide, buildBrowseTabs, INSPECT_TAB_META } from '../../lib/ins
 import { WorkloadTraceGraph } from '../workloads/WorkloadTraceGraph.jsx'
 import { historySinceLine } from '../../lib/eventHistory'
 import { CoverageLine } from '../shell/HistoryGapsPopover.jsx'
+import { useWorkloadChanges, usePodRevision } from '../../hooks/useWorkloadChanges'
+import { changesTargetFor, withChangesTab } from '../../lib/workloadChanges'
+import { ChangesTab, PodRevisionLine, RecentChangeBadge, ReplicaSetRevision } from '../inspect/WorkloadChanges.jsx'
+import { consumeInspectorTab } from '../../lib/inspectorTabRequest'
 
 /**
  * Kind-aware object inspector.
@@ -498,7 +502,25 @@ function DetailTabsPanel({
     () => (browseMode ? buildBrowseTabs(groups, inspect, { loading }) : null),
     [browseMode, groups, inspect, loading],
   )
-  const tabs = browseTabs || groups
+  const baseTabs = browseTabs || groups
+  // Workloads get a Changes tab (revision history), loaded lazily from the cluster.
+  const tabs = useMemo(() => withChangesTab(baseTabs, inspect?.kind), [baseTabs, inspect?.kind])
+  const cacheScope = useShellInspector()?.inspectorCacheScope
+  const changesTarget = changesTargetFor(inspect)
+  const changesState = useWorkloadChanges({
+    scope: cacheScope,
+    kind: changesTarget?.kind,
+    namespace: inspect?.namespace,
+    name: changesTarget?.name,
+    generation: changesTarget?.generation || 0,
+    enabled: Boolean(changesTarget),
+  })
+  const podRevisionState = usePodRevision({
+    scope: cacheScope,
+    namespace: inspect?.namespace,
+    name: inspect?.name,
+    enabled: inspect?.kind === 'Pod',
+  })
   const [tab, setTab] = useState(tabs[0]?.id || 'summary')
   const showWorkloadPods = isWorkloadWithPods(inspect?.kind)
   const hasSummaryTab = tabs.some((g) => g.id === 'summary')
@@ -524,7 +546,9 @@ function DetailTabsPanel({
     lastInspectKeyRef.current = inspect.key
     const ids = new Set(tabs.map((g) => g.id))
 
+    const requested = objectChanged ? consumeInspectorTab(inspect.kind, inspect.name) : null
     setTab((current) => {
+      if (requested && ids.has(requested)) return requested
       if (objectChanged) return tabs[0]?.id || 'summary'
       if (ids.has(current)) return current
       return tabs[0]?.id || 'summary'
@@ -620,7 +644,15 @@ function DetailTabsPanel({
           </div>
           </div>
           <div className="inspect-tab-panel" role="tabpanel">
-            {browseMode && <InspectTabGuide guide={tabGuide} />}
+            {browseMode && active?.id !== 'changes' && <InspectTabGuide guide={tabGuide} />}
+            {active?.id === 'summary' && (
+              <>
+                <RecentChangeBadge state={changesState} onOpen={() => setTab('changes')} />
+                {inspect.kind === 'Pod' && <PodRevisionLine state={podRevisionState} />}
+                {inspect.kind === 'ReplicaSet' && <ReplicaSetRevision state={changesState} rsName={inspect.name} />}
+              </>
+            )}
+            {active?.id === 'changes' && <ChangesTab state={changesState} />}
             {active?.id === 'summary' && metrics.length > 0 && !active.sections.some((s) => s.fields?.length) && (
               <InspectSummaryMetrics
                 metrics={metrics}
@@ -663,7 +695,7 @@ function DetailTabsPanel({
                 inspectNamespace={inspect.namespace}
                 onInspect={onInspect}
               />
-            ) : active && active.id !== 'relationships' && (!browseMode || activeHasContent) ? (
+            ) : active && active.id !== 'relationships' && active.id !== 'changes' && (!browseMode || activeHasContent) ? (
               <GroupBody
                 group={active}
                 inspect={inspect}

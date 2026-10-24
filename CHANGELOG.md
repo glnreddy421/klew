@@ -4,6 +4,16 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 
 ## [Unreleased]
 
+### Workload Changes
+
+- **Changes tab** — Deployments, StatefulSets, and DaemonSets get a revision timeline from the history Kubernetes already keeps (ReplicaSets, ControllerRevisions), newest first: relative time, revision, source (rollout, rollback, restart), who changed it when that can be matched, and a one-line summary such as "image v2.3.1 → v2.4.0, env DB_POOL_SIZE 20 → 5". Expand a row for the field-level diff. Works in browse mode, no investigation needed, and reads only.
+- **Field-level diffs** — image, env, envFrom, resources, probes, command/args, ports, volumes and mounts, service account, scheduling, security context, init containers, and template labels/annotations. Secret and ConfigMap references are shown as references, never values; plain values that look like credentials are masked. `kubectl rollout restart` shows as "Restarted".
+- **Rollbacks** — labelled "Rollback to rev N template", dated when the rollback happened (not when the reused ReplicaSet was first created).
+- **Helm** — for Helm-managed workloads and in the Helm release inspector, user-supplied value changes and chart version changes per Helm revision, attached to the rollout they caused. Loaded only when you open the Changes view.
+- **Summary** — "Changed 12m ago (rev 14)" for workloads changed in the last day; Pods show which revision they run and are highlighted when behind ("Running rev 13 · current is rev 14 (image changed 12m ago)"); ReplicaSets show which revision they are and what it changed.
+- **Investigations** — Overview pins a recent change of an in-scope workload, e.g. "payment-api changed 12m before the incident started: rev 14 (image, env)", linking to its Changes tab. The change also appears in the timeline and in "What Klew connected".
+- **Permissions** — without access to ReplicaSets/ControllerRevisions the tab says so ("No permission to read revision history (replicasets list)"); without access to Secrets only the Helm part is left out.
+
 ## [1.4.1] — 2026-10-21
 
 ### Event history

@@ -253,6 +253,8 @@ type EvidenceBundle struct {
 	AdmissionPerimeter *AdmissionPerimeterSummary `json:"admissionPerimeter,omitempty"`
 	// EventHistory describes recorded events merged into Events (nil when none).
 	EventHistory *EventHistoryCoverage `json:"eventHistory,omitempty"`
+	// WorkloadChanges holds the latest revision change of each in-scope workload.
+	WorkloadChanges []WorkloadChangeMarker `json:"workloadChanges,omitempty"`
 }
 
 // TimeRange is a closed time interval.

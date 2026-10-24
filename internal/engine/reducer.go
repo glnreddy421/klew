@@ -191,6 +191,7 @@ func (r *StateStore) recompute() {
 	evSignals := agg.Aggregate(events, now)
 	corr := r.corr.Correlate(r.state.Snapshot, evSignals, events)
 	r.state.Incidents = BuildIncidents(r.state.Snapshot, now)
+	r.state.PinnedChange = PinChange(r.state.Snapshot.WorkloadChanges, r.state.Incidents, now, r.liveWindow())
 	if corr.HypothesisLabel == HealthyLabel {
 		// Current state is healthy; say so, and that earlier Warnings happened.
 		if lbl := HealthyNowLabel(r.state.Incidents, r.incidentWindow()); lbl != "" {
@@ -395,6 +396,14 @@ func (r *StateStore) incidentWindow() time.Duration {
 	if r.state.Snapshot.EventHistory != nil {
 		return kube.RecordedEventsLookback
 	}
+	if w := model.DurationFromMS(r.state.Window); w > 0 {
+		return w
+	}
+	return 15 * time.Minute
+}
+
+// liveWindow is the investigation's live evidence window.
+func (r *StateStore) liveWindow() time.Duration {
 	if w := model.DurationFromMS(r.state.Window); w > 0 {
 		return w
 	}

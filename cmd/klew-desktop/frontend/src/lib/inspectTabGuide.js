@@ -2,6 +2,13 @@ import { DETAIL_TAB_ORDER } from './objectDetails.js'
 
 /** Browse-mode copy for inspector detail tabs. */
 export const INSPECT_TAB_META = {
+  changes: {
+    description: 'Revision history from the cluster: what changed on this workload, when, and by whom.',
+    whenAvailable: 'Shown for Deployments, StatefulSets, and DaemonSets.',
+    emptyHint: 'No changes recorded by the cluster for this workload.',
+    scanFor: 'Image, env, and resource changes just before trouble started; rollbacks and restarts.',
+    kinds: ['Deployment', 'StatefulSet', 'DaemonSet'],
+  },
   summary: {
     description: 'Status, readiness, scheduling, and the first fields to check on this resource.',
     whenAvailable: 'Available for every resource once live details load from the cluster.',
