@@ -1444,6 +1444,7 @@ export namespace model {
 	    namespace?: string;
 	    uid?: string;
 	    resourceVersion?: string;
+	    generation?: number;
 	    kind: string;
 	    apiVersion: string;
 	    creationTimestamp?: string;
@@ -1531,6 +1532,7 @@ export namespace model {
 	        this.namespace = source["namespace"];
 	        this.uid = source["uid"];
 	        this.resourceVersion = source["resourceVersion"];
+	        this.generation = source["generation"];
 	        this.kind = source["kind"];
 	        this.apiVersion = source["apiVersion"];
 	        this.creationTimestamp = source["creationTimestamp"];
@@ -2004,6 +2006,34 @@ export namespace model {
 		    return a;
 		}
 	}
+	export class WorkloadChangeMarker {
+	    kind: string;
+	    namespace: string;
+	    name: string;
+	    revision: number;
+	    time: string;
+	    source: string;
+	    summary: string;
+	    areas?: string[];
+	    objectName?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new WorkloadChangeMarker(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.namespace = source["namespace"];
+	        this.name = source["name"];
+	        this.revision = source["revision"];
+	        this.time = source["time"];
+	        this.source = source["source"];
+	        this.summary = source["summary"];
+	        this.areas = source["areas"];
+	        this.objectName = source["objectName"];
+	    }
+	}
 	export class MetricsSummary {
 	    available: boolean;
 	    cpuRequestMillicores: number;
@@ -2412,6 +2442,7 @@ export namespace model {
 	    metrics: MetricsSummary;
 	    admissionPerimeter?: AdmissionPerimeterSummary;
 	    eventHistory?: EventHistoryCoverage;
+	    workloadChanges?: WorkloadChangeMarker[];
 	
 	    static createFrom(source: any = {}) {
 	        return new EvidenceBundle(source);
@@ -2444,6 +2475,7 @@ export namespace model {
 	        this.metrics = this.convertValues(source["metrics"], MetricsSummary);
 	        this.admissionPerimeter = this.convertValues(source["admissionPerimeter"], AdmissionPerimeterSummary);
 	        this.eventHistory = this.convertValues(source["eventHistory"], EventHistoryCoverage);
+	        this.workloadChanges = this.convertValues(source["workloadChanges"], WorkloadChangeMarker);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -2532,6 +2564,26 @@ export namespace model {
 		    }
 		    return a;
 		}
+	}
+	export class FieldDiff {
+	    path: string;
+	    before?: string;
+	    after?: string;
+	    kind: string;
+	    area?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new FieldDiff(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.before = source["before"];
+	        this.after = source["after"];
+	        this.kind = source["kind"];
+	        this.area = source["area"];
+	    }
 	}
 	export class GraphEdge {
 	    from: string;
@@ -2795,6 +2847,40 @@ export namespace model {
 	        this.lastEventAt = source["lastEventAt"];
 	    }
 	}
+	export class PinnedChange {
+	    change: WorkloadChangeMarker;
+	    text: string;
+	    beforeIncident?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new PinnedChange(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.change = this.convertValues(source["change"], WorkloadChangeMarker);
+	        this.text = source["text"];
+	        this.beforeIncident = source["beforeIncident"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class Signal {
 	    id: string;
 	    label: string;
@@ -3054,6 +3140,7 @@ export namespace model {
 	    confidenceTrend?: string;
 	    causalChain?: string[];
 	    incidents?: Incident[];
+	    pinnedChange?: PinnedChange;
 	    nextChecks?: string[];
 	    fixActions?: string[];
 	    lastTransition?: HypothesisTransition;
@@ -3102,6 +3189,7 @@ export namespace model {
 	        this.confidenceTrend = source["confidenceTrend"];
 	        this.causalChain = source["causalChain"];
 	        this.incidents = this.convertValues(source["incidents"], Incident);
+	        this.pinnedChange = this.convertValues(source["pinnedChange"], PinnedChange);
 	        this.nextChecks = source["nextChecks"];
 	        this.fixActions = source["fixActions"];
 	        this.lastTransition = this.convertValues(source["lastTransition"], HypothesisTransition);
@@ -3244,6 +3332,35 @@ export namespace model {
 	
 	
 	
+	export class PodRevision {
+	    ownerKind?: string;
+	    ownerName?: string;
+	    revision?: number;
+	    currentRevision?: number;
+	    behind?: boolean;
+	    behindSummary?: string;
+	    currentSince?: string;
+	    accessState: string;
+	    accessMessage?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PodRevision(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ownerKind = source["ownerKind"];
+	        this.ownerName = source["ownerName"];
+	        this.revision = source["revision"];
+	        this.currentRevision = source["currentRevision"];
+	        this.behind = source["behind"];
+	        this.behindSummary = source["behindSummary"];
+	        this.currentSince = source["currentSince"];
+	        this.accessState = source["accessState"];
+	        this.accessMessage = source["accessMessage"];
+	    }
+	}
+	
 	
 	
 	export class ResourceCatalog {
@@ -3310,6 +3427,111 @@ export namespace model {
 	
 	
 	
+	export class WorkloadChange {
+	    revision: number;
+	    time: string;
+	    source: string;
+	    actor?: string;
+	    changeCause?: string;
+	    summary: string;
+	    diffs?: FieldDiff[];
+	    rollbackTo?: number;
+	    helmRevision?: number;
+	    current?: boolean;
+	    objectName?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new WorkloadChange(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.revision = source["revision"];
+	        this.time = source["time"];
+	        this.source = source["source"];
+	        this.actor = source["actor"];
+	        this.changeCause = source["changeCause"];
+	        this.summary = source["summary"];
+	        this.diffs = this.convertValues(source["diffs"], FieldDiff);
+	        this.rollbackTo = source["rollbackTo"];
+	        this.helmRevision = source["helmRevision"];
+	        this.current = source["current"];
+	        this.objectName = source["objectName"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class WorkloadChanges {
+	    kind: string;
+	    namespace: string;
+	    name: string;
+	    uid?: string;
+	    generation?: number;
+	    changes: WorkloadChange[];
+	    currentRevision?: number;
+	    lastChangedAt?: string;
+	    historyLimit?: number;
+	    helmRelease?: string;
+	    accessState: string;
+	    accessMessage?: string;
+	    helmNote?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new WorkloadChanges(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.namespace = source["namespace"];
+	        this.name = source["name"];
+	        this.uid = source["uid"];
+	        this.generation = source["generation"];
+	        this.changes = this.convertValues(source["changes"], WorkloadChange);
+	        this.currentRevision = source["currentRevision"];
+	        this.lastChangedAt = source["lastChangedAt"];
+	        this.historyLimit = source["historyLimit"];
+	        this.helmRelease = source["helmRelease"];
+	        this.accessState = source["accessState"];
+	        this.accessMessage = source["accessMessage"];
+	        this.helmNote = source["helmNote"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	
 
 }

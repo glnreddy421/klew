@@ -661,6 +661,7 @@ export function catalogEntityToRow(entity, fallbackKind) {
     key,
     kind,
     name: entity.name,
+    generation: entity.generation || 0,
     namespace: ns,
     resourceId: entity.resourceId,
     uid: entity.uid,

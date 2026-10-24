@@ -68,6 +68,9 @@ type CatalogEntity struct {
 	Namespace         string   `json:"namespace,omitempty"`
 	UID               string   `json:"uid,omitempty"`
 	ResourceVersion   string   `json:"resourceVersion,omitempty"`
+	// Generation changes only when the spec changes (unlike resourceVersion),
+	// so the UI can key per-object caches such as revision history on it.
+	Generation int64 `json:"generation,omitempty"`
 	Kind              string   `json:"kind"`
 	APIVersion        string   `json:"apiVersion"`
 	CreationTimestamp string   `json:"creationTimestamp,omitempty"`

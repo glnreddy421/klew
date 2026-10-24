@@ -63,8 +63,14 @@ func BuildTimeline(b model.EvidenceBundle) []model.TimelineEvent {
 		}
 	}
 
+	changeByObject := map[string]model.WorkloadChangeMarker{}
+	for _, m := range b.WorkloadChanges {
+		if m.ObjectName != "" {
+			changeByObject[m.Namespace+"/"+m.ObjectName] = m
+		}
+	}
 	for _, rs := range b.ReplicaSets {
-		events = append(events, model.TimelineEvent{
+		ev := model.TimelineEvent{
 			Timestamp:  rs.CreatedAt,
 			Type:       "rollout",
 			Severity:   model.SeverityInfo,
@@ -74,7 +80,15 @@ func BuildTimeline(b model.EvidenceBundle) []model.TimelineEvent {
 			Message:    fmt.Sprintf("ReplicaSet replicas=%d ready=%d owner=%s", rs.Replicas, rs.Ready, rs.DeploymentOwner),
 			Confidence: 0.8,
 			InvolvedObject: model.ObjectRef{Kind: "ReplicaSet", Name: rs.Name, Namespace: rs.Namespace},
-		})
+		}
+		// The revision a workload changed to: say what changed and when (a
+		// rollback's time is when it happened, not the old ReplicaSet's birth).
+		if m, ok := changeByObject[rs.Namespace+"/"+rs.Name]; ok {
+			ev.Timestamp = m.Time
+			ev.Reason = changeReason(m)
+			ev.Message = fmt.Sprintf("%s rev %d: %s", m.Name, m.Revision, m.Summary)
+		}
+		events = append(events, ev)
 	}
 
 	for _, svc := range b.Services {

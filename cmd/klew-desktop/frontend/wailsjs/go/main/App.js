@@ -54,6 +54,10 @@ export function GetObjectDetails(arg1, arg2, arg3) {
   return window['go']['main']['App']['GetObjectDetails'](arg1, arg2, arg3);
 }
 
+export function GetPodRevision(arg1, arg2) {
+  return window['go']['main']['App']['GetPodRevision'](arg1, arg2);
+}
+
 export function GetResourceCatalog(arg1) {
   return window['go']['main']['App']['GetResourceCatalog'](arg1);
 }
@@ -68,6 +72,10 @@ export function GetTerminalShellChoices() {
 
 export function GetView() {
   return window['go']['main']['App']['GetView']();
+}
+
+export function GetWorkloadChanges(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GetWorkloadChanges'](arg1, arg2, arg3);
 }
 
 export function ListCatalogEntities(arg1) {
