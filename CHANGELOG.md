@@ -4,6 +4,8 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 
 ## [Unreleased]
 
+## [1.5.0] — 2026-10-24
+
 ### Workload Changes
 
 - **Changes tab** — Deployments, StatefulSets, and DaemonSets get a revision timeline from the history Kubernetes already keeps (ReplicaSets, ControllerRevisions), newest first: relative time, revision, source (rollout, rollback, restart), who changed it when that can be matched, and a one-line summary such as "image v2.3.1 → v2.4.0, env DB_POOL_SIZE 20 → 5". Expand a row for the field-level diff. Works in browse mode, no investigation needed, and reads only.
