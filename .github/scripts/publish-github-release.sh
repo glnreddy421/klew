@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Create/update a GitHub release and upload dist artifacts with retries.
-# Verifies assets are publicly downloadable before the workflow continues.
+# Verifies assets are public (via the API, without downloading them) before the workflow continues.
 set -euo pipefail
 
 TAG="${GITHUB_REF_NAME:?GITHUB_REF_NAME is required}"
@@ -96,25 +96,6 @@ upload_file() {
   done
 }
 
-verify_public_asset() {
-  local name="$1"
-  local url="https://github.com/${REPO}/releases/download/${TAG}/${name}"
-  local attempt=1
-  while (( attempt <= 10 )); do
-    local code
-    code="$(curl -sL -o /dev/null -w '%{http_code}' "$url")"
-    if [[ "$code" == "200" || "$code" == "302" ]]; then
-      echo "Verified public download: ${name} (HTTP ${code})"
-      return 0
-    fi
-    echo "Asset not public yet: ${name} (HTTP ${code}), waiting…"
-    sleep 15
-    ((attempt++))
-  done
-  echo "::error::Public asset unavailable: ${url}"
-  return 1
-}
-
 verify_release() {
   local count
   count="$(release_asset_count)"
@@ -124,10 +105,12 @@ verify_release() {
     return 1
   fi
 
-  verify_public_asset "Klew-${VERSION}-macos-arm64.zip"
-  verify_public_asset "Klew-${VERSION}-macos-amd64.zip"
-  verify_public_asset "Klew-${VERSION}-macos-arm64.dmg"
-  verify_public_asset "Klew-${VERSION}-macos-amd64.dmg"
+  # Checks via the API — downloading the files would inflate download counts.
+  "$(dirname "$0")/verify-release-assets.sh" "$TAG" "$REPO" \
+    "Klew-${VERSION}-macos-arm64.zip" \
+    "Klew-${VERSION}-macos-amd64.zip" \
+    "Klew-${VERSION}-macos-arm64.dmg" \
+    "Klew-${VERSION}-macos-amd64.dmg"
 }
 
 ensure_release
