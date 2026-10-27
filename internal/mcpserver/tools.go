@@ -63,12 +63,10 @@ func enum(values ...string) func(*jsonschema.Schema) {
 	}
 }
 
-func clamp(v, min, max, def int) int {
+// clamp returns def for unset (<= 0) values and caps v at max.
+func clamp(v, max, def int) int {
 	if v <= 0 {
 		v = def
-	}
-	if v < min {
-		v = min
 	}
 	if v > max {
 		v = max
@@ -233,7 +231,7 @@ func (s *Server) investigate(ctx context.Context, _ *mcp.CallToolRequest, in inv
 	if err != nil {
 		return nil, investigateOut{}, err
 	}
-	observe := time.Duration(clamp(in.ObserveSeconds, 1, maxObserveSeconds, defaultObserveSeconds)) * time.Second
+	observe := time.Duration(clamp(in.ObserveSeconds, maxObserveSeconds, defaultObserveSeconds)) * time.Second
 	ctx, cancel := context.WithTimeout(ctx, collectTimeout+observe)
 	defer cancel()
 
@@ -314,7 +312,7 @@ func (s *Server) investigationDetails(_ context.Context, _ *mcp.CallToolRequest,
 	if err != nil {
 		return nil, detailsOut{}, err
 	}
-	limit := clamp(in.Limit, 1, 200, 25)
+	limit := clamp(in.Limit, 200, 25)
 	offset := in.Offset
 	if offset < 0 {
 		offset = 0
@@ -403,7 +401,7 @@ func (s *Server) eventHistory(ctx context.Context, _ *mcp.CallToolRequest, in ev
 	ctx, cancel := context.WithTimeout(ctx, eventsTimeout)
 	defer cancel()
 
-	since := time.Now().UTC().Add(-time.Duration(clamp(in.SinceMinutes, 1, 43200, 1440)) * time.Minute)
+	since := time.Now().UTC().Add(-time.Duration(clamp(in.SinceMinutes, 43200, 1440)) * time.Minute)
 	name := strings.TrimSpace(in.ObjectName)
 	prefix := name != "" && !in.ExactName
 
@@ -445,11 +443,8 @@ func (s *Server) eventHistory(ctx context.Context, _ *mcp.CallToolRequest, in ev
 		if in.WarningsOnly && e.Type != "Warning" {
 			continue
 		}
-		if name != "" {
-			n := e.InvolvedObject.Name
-			if n != name && !(prefix && strings.HasPrefix(n, name+"-")) {
-				continue
-			}
+		if name != "" && !nameMatches(e.InvolvedObject.Name, name, prefix) {
+			continue
 		}
 		matched = append(matched, e)
 		if e.Recorded {
@@ -459,11 +454,16 @@ func (s *Server) eventHistory(ctx context.Context, _ *mcp.CallToolRequest, in ev
 		}
 	}
 	newestEventsFirst(matched)
-	limit := clamp(in.Limit, 1, 500, 100)
+	limit := clamp(in.Limit, 500, 100)
 	out.Total = len(matched)
 	out.Truncated = len(matched) > limit
 	out.Events = mapSlice(capSlice(matched, limit), briefEvent)
 	return nil, out, nil
+}
+
+// nameMatches reports whether obj is name, or with prefix one of its <name>-* children.
+func nameMatches(obj, name string, prefix bool) bool {
+	return obj == name || (prefix && strings.HasPrefix(obj, name+"-"))
 }
 
 // ---- klew_workload_changes
@@ -507,7 +507,7 @@ func (s *Server) workloadChanges(ctx context.Context, _ *mcp.CallToolRequest, in
 		return nil, workloadChangesOut{}, err
 	}
 	out := workloadChangesOut{WorkloadChanges: wc, TotalRevisions: len(wc.Changes)}
-	out.Changes = append([]model.WorkloadChange(nil), capSlice(wc.Changes, clamp(in.MaxRevisions, 1, 50, 5))...)
+	out.Changes = append([]model.WorkloadChange(nil), capSlice(wc.Changes, clamp(in.MaxRevisions, 50, 5))...)
 	if in.SummaryOnly {
 		for i := range out.Changes {
 			out.Changes[i].Diffs = nil

@@ -97,7 +97,7 @@ Recorded event history stays on your Mac in `~/Library/Application Support/Klew/
 
 ## Build from source
 
-Requires Go 1.25+, Node 24, and [Wails v2](https://wails.io).
+Requires Go 1.26+, Node 24, and [Wails v2](https://wails.io).
 
 ```bash
 git clone https://github.com/glnreddy421/klew.git

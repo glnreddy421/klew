@@ -1,0 +1,241 @@
+name: Checks
+
+# Gate for pull requests into main: tests, lint, vulnerability and secret
+# scans, and workflow linting. Every job must pass before merging (set them as
+# required checks under Settings → Branches). Third-party actions are pinned
+# to commit SHAs; Dependabot keeps them current.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    name: Go tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS builds everything, including the Wails desktop app.
+          - os: macos-latest
+            packages: ./...
+          # Linux covers the engine and klew-mcp (the desktop app is macOS-only).
+          - os: ubuntu-latest
+            packages: ./internal/... ./cmd/klew-mcp/... ./cmd/klew-stress/...
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Placeholder frontend bundle
+        # cmd/klew-desktop embeds frontend/dist; the frontend job builds the real one.
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p cmd/klew-desktop/frontend/dist
+          [ -e cmd/klew-desktop/frontend/dist/index.html ] || echo '<!doctype html>' > cmd/klew-desktop/frontend/dist/index.html
+
+      - name: go.mod is tidy
+        run: go mod tidy -diff
+
+      - name: gofmt (changed files)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          files=$(git diff --name-only --diff-filter=ACMR "$BASE"...HEAD -- '*.go')
+          [ -z "$files" ] && exit 0
+          # shellcheck disable=SC2086 # word splitting is intended
+          bad=$(gofmt -l $files)
+          if [ -n "$bad" ]; then
+            echo "::error::Run gofmt -w on: $bad"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ${{ matrix.packages }}
+
+      - name: Test (race detector, coverage)
+        run: go test -race -count=1 -covermode=atomic -coverprofile=coverage.out ${{ matrix.packages }}
+
+      - name: Coverage summary
+        if: always() && hashFiles('coverage.out') != ''
+        run: |
+          {
+            echo "### Coverage (${{ matrix.os }})"
+            echo '```'
+            go tool cover -func=coverage.out | tail -1
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: tools/k8s-log-engine (separate module)
+        if: runner.os == 'Linux'
+        working-directory: tools/k8s-log-engine
+        run: |
+          go mod tidy -diff
+          go vet ./...
+          go test -race -count=1 ./...
+
+      - name: Build klew-mcp
+        run: go build -trimpath -o "$RUNNER_TEMP/klew-mcp" ./cmd/klew-mcp
+
+      - name: klew-mcp stdio smoke test
+        run: python3 .github/scripts/mcp-smoke.py "$RUNNER_TEMP/klew-mcp"
+
+  lint:
+    name: Go lint (new issues)
+    if: github.event_name == 'pull_request'
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Placeholder frontend bundle
+        run: |
+          mkdir -p cmd/klew-desktop/frontend/dist
+          [ -e cmd/klew-desktop/frontend/dist/index.html ] || echo '<!doctype html>' > cmd/klew-desktop/frontend/dist/index.html
+
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.15.0
+          # Existing findings are tracked separately; a PR must not add new ones.
+          only-new-issues: true
+
+  govulncheck:
+    name: govulncheck
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Placeholder frontend bundle
+        run: |
+          mkdir -p cmd/klew-desktop/frontend/dist
+          [ -e cmd/klew-desktop/frontend/dist/index.html ] || echo '<!doctype html>' > cmd/klew-desktop/frontend/dist/index.html
+
+      - name: Reachable vulnerabilities (Go modules and standard library)
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+
+  frontend:
+    name: Frontend tests and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: cmd/klew-desktop/frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: cmd/klew-desktop/frontend/package-lock.json
+
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - name: npm audit (high and critical)
+        run: npm audit --audit-level=high
+
+  trivy:
+    name: Trivy (vulnerabilities, secrets, misconfig)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Scan (blocking)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          trivyignores: .trivyignore
+
+      - name: Scan (report for code scanning)
+        if: always()
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          format: sarif
+          output: trivy.sarif
+          trivyignores: .trivyignore
+          skip-setup-trivy: true
+
+      - name: Upload to code scanning
+        # Forked PRs get a read-only token and cannot upload.
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          sarif_file: trivy.sarif
+          category: trivy
+
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure
+
+  workflows:
+    name: Workflow and script lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: actionlint (runs shellcheck on run blocks)
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color
+
+      - name: shellcheck scripts
+        run: shellcheck --severity=error .github/scripts/*.sh

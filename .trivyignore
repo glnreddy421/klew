@@ -1,0 +1,3 @@
+# Trivy findings accepted after review, one CVE/AVD ID per line with a reason.
+# Example:
+# CVE-2026-00000  # not reachable: only used in tests; revisit when fixed upstream

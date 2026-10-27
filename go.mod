@@ -2,6 +2,8 @@ module github.com/glnreddy421/klew
 
 go 1.26.0
 
+toolchain go1.26.10
+
 require (
 	github.com/charmbracelet/lipgloss v1.0.0
 	github.com/creack/pty v1.1.24

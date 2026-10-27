@@ -44,21 +44,27 @@ func main() {
 	if *noHistory {
 		*historyDir = ""
 	}
-	srv, err := mcpserver.New(mcpserver.Options{
+	if err := run(mcpserver.Options{
 		Kubeconfig: *kubeconfig, Context: *contextName, HistoryDir: *historyDir, Version: version.Version,
-	})
-	if err != nil {
+	}); err != nil {
 		fmt.Fprintf(os.Stderr, "klew-mcp: %v\n", err)
 		os.Exit(1)
+	}
+}
+
+func run(opts mcpserver.Options) error {
+	srv, err := mcpserver.New(opts)
+	if err != nil {
+		return err
 	}
 	defer srv.Close()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if err := srv.MCP().Run(ctx, &mcp.StdioTransport{}); err != nil && ctx.Err() == nil {
-		fmt.Fprintf(os.Stderr, "klew-mcp: %v\n", err)
-		os.Exit(1)
+		return err
 	}
+	return nil
 }
 
 func defaultHistoryDir() string {

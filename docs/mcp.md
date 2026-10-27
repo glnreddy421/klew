@@ -6,7 +6,7 @@ It does not need the desktop app. When the app is installed, `klew-mcp` also rea
 
 ## Install
 
-Build from source (Go 1.25+):
+Build from source (Go 1.26+):
 
 ```bash
 go install github.com/glnreddy421/klew/cmd/klew-mcp@latest

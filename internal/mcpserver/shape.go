@@ -117,12 +117,13 @@ func briefCoverage(c *model.EventHistoryCoverage) *coverageBrief {
 	return &coverageBrief{Since: c.Since, RecordedEvents: c.RecordedEvents, Gaps: gaps, GapsTotal: len(c.Gaps)}
 }
 
-func truncate(s string, n int) string {
+// truncate caps s at maxTextLen runes.
+func truncate(s string) string {
 	r := []rune(s)
-	if len(r) <= n {
+	if len(r) <= maxTextLen {
 		return s
 	}
-	return string(r[:n]) + "…"
+	return string(r[:maxTextLen]) + "…"
 }
 
 func refString(r model.ObjectRef) string {
@@ -146,7 +147,7 @@ func briefPod(p model.PodSummary) podBrief {
 	for _, c := range p.Containers {
 		out.Containers = append(out.Containers, containerBrief{
 			Name: c.Name, Image: c.Image, Ready: c.Ready, Restarts: c.RestartCount,
-			State: c.State, Reason: c.Reason, Message: truncate(c.Message, maxTextLen), ExitCode: c.ExitCode,
+			State: c.State, Reason: c.Reason, Message: truncate(c.Message), ExitCode: c.ExitCode,
 			LastState: c.LastState, LastReason: c.LastReason, LastExitCode: c.LastExitCode,
 			RequestsCPU: c.RequestsCPU, RequestsMem: c.RequestsMem, LimitsCPU: c.LimitsCPU, LimitsMem: c.LimitsMem,
 		})
@@ -196,13 +197,13 @@ func allSignals(v model.Verdict) []model.Signal {
 func briefSignal(s model.Signal) signalBrief {
 	return signalBrief{
 		Label: s.Label, Severity: s.Severity, Strength: s.Strength, Source: s.Source, Count: s.Count,
-		Evidence: truncate(s.Evidence, maxTextLen), Object: refString(s.ObjectRef),
+		Evidence: truncate(s.Evidence), Object: refString(s.ObjectRef),
 	}
 }
 
 func briefPattern(t model.LogTemplate, samples int) patternBrief {
 	out := patternBrief{
-		Template: truncate(t.Template, maxTextLen), Count: t.Count, Pct: t.Pct, Trend: t.Trend,
+		Template: truncate(t.Template), Count: t.Count, Pct: t.Pct, Trend: t.Trend,
 		TrendPct: t.TrendPct, Severity: t.Severity,
 	}
 	out.Pods = t.Pods
@@ -213,7 +214,7 @@ func briefPattern(t model.LogTemplate, samples int) patternBrief {
 		if i >= samples {
 			break
 		}
-		out.Samples = append(out.Samples, sampleBrief{Pod: smp.Pod, Time: smp.Timestamp, Message: truncate(smp.Message, maxTextLen)})
+		out.Samples = append(out.Samples, sampleBrief{Pod: smp.Pod, Time: smp.Timestamp, Message: truncate(smp.Message)})
 	}
 	return out
 }
@@ -225,7 +226,7 @@ func briefEvent(e model.EventRecord) eventBrief {
 	}
 	return eventBrief{
 		Time: t, FirstSeen: e.FirstSeen, Type: e.Type, Reason: e.Reason, Object: refString(e.InvolvedObject),
-		Namespace: e.InvolvedObject.Namespace, Message: truncate(e.Message, maxTextLen), Count: e.Count,
+		Namespace: e.InvolvedObject.Namespace, Message: truncate(e.Message), Count: e.Count,
 		Source: e.Source, Recorded: e.Recorded,
 	}
 }
@@ -237,7 +238,7 @@ func briefEvidence(e model.EvidenceEvent) evidenceBrief {
 	}
 	return evidenceBrief{
 		Time: e.Timestamp, Source: e.SourceType, Object: obj, Pod: e.Pod, Severity: e.Severity,
-		Reason: e.Reason, Message: truncate(e.Message, maxTextLen), Count: e.Count, Recorded: e.Recorded,
+		Reason: e.Reason, Message: truncate(e.Message), Count: e.Count, Recorded: e.Recorded,
 	}
 }
 
