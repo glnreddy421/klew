@@ -9,9 +9,13 @@ import (
 )
 
 // failingPod picks the pod/container most likely responsible for the incident.
+// Only unready or restarting pods qualify; with none, it returns empty names.
 func failingPod(b model.EvidenceBundle) (pod, container string) {
 	best := -1
 	for _, p := range b.Pods {
+		if !PodCountsAsUnready(p) && !podHasRestarts(p) {
+			continue
+		}
 		for _, c := range p.Containers {
 			score := int(c.RestartCount)
 			reason := strings.ToLower(c.Reason + " " + c.LastReason + " " + c.State)
@@ -363,4 +367,16 @@ func fixActionsFor(cat string, b model.EvidenceBundle) []string {
 		}
 	}
 	return out
+}
+
+func podHasRestarts(p model.PodSummary) bool {
+	if p.RestartCount > 0 {
+		return true
+	}
+	for _, c := range p.Containers {
+		if c.RestartCount > 0 {
+			return true
+		}
+	}
+	return false
 }
