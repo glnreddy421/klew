@@ -3,6 +3,7 @@ package kube
 import (
 	"encoding/base64"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 
@@ -57,7 +58,7 @@ func catalogMapKeyCount(obj map[string]interface{}, fields ...string) int32 {
 	if !found || err != nil || len(val) == 0 {
 		return 0
 	}
-	return int32(len(val))
+	return clampInt32(int64(len(val)))
 }
 
 func formatAccessModes(modes []string) string {
@@ -77,15 +78,15 @@ func catalogConfigMapDataEntries(obj map[string]interface{}) []model.CatalogData
 			out = append(out, model.CatalogDataEntry{
 				Key:       k,
 				Value:     v,
-				SizeBytes: int32(len(v)),
+				SizeBytes: clampInt32(int64(len(v))),
 			})
 		}
 	}
 	if bin, found, _ := unstructured.NestedStringMap(obj, "binaryData"); found {
 		for k, v := range bin {
-			size := int32(len(v))
+			size := clampInt32(int64(len(v)))
 			if decoded, err := base64.StdEncoding.DecodeString(v); err == nil {
-				size = int32(len(decoded))
+				size = clampInt32(int64(len(decoded)))
 			}
 			out = append(out, model.CatalogDataEntry{
 				Key:       k + " (binary)",
@@ -96,4 +97,15 @@ func catalogConfigMapDataEntries(obj map[string]interface{}) []model.CatalogData
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
 	return out
+}
+
+// clampInt32 narrows n to int32, saturating instead of wrapping on overflow.
+func clampInt32(n int64) int32 {
+	switch {
+	case n > math.MaxInt32:
+		return math.MaxInt32
+	case n < math.MinInt32:
+		return math.MinInt32
+	}
+	return int32(n)
 }

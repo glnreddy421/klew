@@ -28,8 +28,8 @@ func (secretProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, e
 		Status:   StatusBadge{Tone: "healthy", Label: string(sec.Type)},
 		Summary: fields(
 			"Type", string(sec.Type),
-			"Keys", fmtInt32(int32(len(keys))),
-			"Consumers", fmtInt32(int32(len(consumers))),
+			"Keys", fmtInt(len(keys)),
+			"Consumers", fmtInt(len(consumers)),
 		),
 	}
 	var sections []Section

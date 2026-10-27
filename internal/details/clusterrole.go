@@ -17,11 +17,11 @@ func (clusterRoleProvider) Build(ctx context.Context, req *Request) (*ObjectDeta
 		Title:    "ClusterRole/" + cr.Name,
 		Category: "access",
 		Status:   StatusBadge{Tone: "healthy", Label: "Active"},
-		Summary:  fields("Rules", fmtInt32(int32(len(cr.Rules)))),
+		Summary:  fields("Rules", fmtInt(len(cr.Rules))),
 	}
 	var sections []Section
 	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields(
-		"Rules", fmtInt32(int32(len(cr.Rules))),
+		"Rules", fmtInt(len(cr.Rules)),
 		"Aggregation", boolStr(cr.AggregationRule != nil),
 	)))
 	if rows := policyRuleRows(cr.Rules); len(rows) > 0 {

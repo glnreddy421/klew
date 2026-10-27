@@ -28,7 +28,7 @@ func Write(path string, b model.EvidenceBundle) error {
 
 // WriteState persists snapshot plus optional live investigation artifacts.
 func WriteState(path string, st model.InvestigationState) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil && filepath.Dir(path) != "." {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil && filepath.Dir(path) != "." {
 		return fmt.Errorf("create bundle dir: %w", err)
 	}
 	f, err := os.Create(path)

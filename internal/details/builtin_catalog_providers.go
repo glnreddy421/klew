@@ -204,7 +204,7 @@ func (resourceQuotaProvider) Build(ctx context.Context, req *Request) (*ObjectDe
 		Title:    "ResourceQuota/" + rq.Name,
 		Category: "cluster",
 		Status:   StatusBadge{Tone: "healthy", Label: "Active"},
-		Summary:  fields("Hard Limits", fmtInt32(int32(len(rq.Spec.Hard)))),
+		Summary:  fields("Hard Limits", fmtInt(len(rq.Spec.Hard))),
 	}
 	var sections []Section
 	if len(rq.Spec.Hard) > 0 {
@@ -250,7 +250,7 @@ func (limitRangeProvider) Build(ctx context.Context, req *Request) (*ObjectDetai
 		Title:    "LimitRange/" + lr.Name,
 		Category: "cluster",
 		Status:   StatusBadge{Tone: "healthy", Label: fmt.Sprintf("%d limits", len(lr.Spec.Limits))},
-		Summary:  fields("Limits", fmtInt32(int32(len(lr.Spec.Limits)))),
+		Summary:  fields("Limits", fmtInt(len(lr.Spec.Limits))),
 	}
 	var sections []Section
 	if len(lr.Spec.Limits) > 0 {

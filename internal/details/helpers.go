@@ -2,6 +2,7 @@ package details
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 
@@ -95,6 +96,8 @@ func joinNonEmpty(parts ...string) string {
 	return strings.Join(b, ", ")
 }
 
+func fmtInt(n int) string { return fmt.Sprintf("%d", n) }
+
 func fmtInt32(n int32) string { return fmt.Sprintf("%d", n) }
 
 func fmtInt64(n int64) string { return fmt.Sprintf("%d", n) }
@@ -175,4 +178,15 @@ func statusFromPhase(phase string, ready bool) StatusBadge {
 		}
 		return StatusBadge{Tone: "unknown", Label: "Unknown"}
 	}
+}
+
+// clampInt32 narrows n to int32, saturating instead of wrapping on overflow.
+func clampInt32(n int64) int32 {
+	switch {
+	case n > math.MaxInt32:
+		return math.MaxInt32
+	case n < math.MinInt32:
+		return math.MinInt32
+	}
+	return int32(n)
 }

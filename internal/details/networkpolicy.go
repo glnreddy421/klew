@@ -30,7 +30,7 @@ func (networkPolicyProvider) Build(ctx context.Context, req *Request) (*ObjectDe
 		Summary: fields(
 			"Pod Selector", sel,
 			"Policy Types", strings.Join(types, ", "),
-			"Affected Pods", fmtInt32(int32(len(pods))),
+			"Affected Pods", fmtInt(len(pods)),
 		),
 	}
 	var sections []Section

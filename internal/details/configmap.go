@@ -31,8 +31,8 @@ func (configMapProvider) Build(ctx context.Context, req *Request) (*ObjectDetail
 		Category: "config",
 		Status:   StatusBadge{Tone: "healthy", Label: fmt.Sprintf("%d keys", len(keys))},
 		Summary: fields(
-			"Keys", fmtInt32(int32(len(keys))),
-			"Consumers", fmtInt32(int32(len(consumers))),
+			"Keys", fmtInt(len(keys)),
+			"Consumers", fmtInt(len(consumers)),
 		),
 	}
 	var sections []Section

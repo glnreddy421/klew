@@ -213,13 +213,13 @@ func attachTemplateKeywords(rows []model.LogTemplate, templates []string, maxKey
 			scored = scored[:maxKeywords]
 		}
 		if len(scored) == 0 {
-			rows[i].Keywords = nil
+			rows[i].Keywords = nil //nolint:gosec // G602: i comes from range rows
 			continue
 		}
 		for r := range scored {
 			scored[r].Rank = r + 1
 		}
-		rows[i].Keywords = scored
+		rows[i].Keywords = scored //nolint:gosec // G602: i comes from range rows
 	}
 }
 

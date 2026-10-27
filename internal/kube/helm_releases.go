@@ -25,7 +25,7 @@ const (
 	helmOwnerValue           = "helm"
 	helmReleaseNameLabel     = "name"
 	helmReleaseVersionLabel  = "version"
-	helmReleaseSecretType    = "helm.sh/release.v1"
+	helmReleaseSecretType    = "helm.sh/release.v1" //nolint:gosec // G101: Kubernetes Secret type name, not a credential
 	helmReleaseDataKey       = "release"
 	helmReleaseNamePrefix    = "sh.helm.release.v1."
 	helmMetaReleaseName      = "meta.helm.sh/release-name"

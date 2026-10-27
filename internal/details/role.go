@@ -20,12 +20,12 @@ func (roleProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, err
 		Title:    "Role/" + role.Name,
 		Category: "access",
 		Status:   StatusBadge{Tone: "healthy", Label: "Active"},
-		Summary:  fields("Rules", fmtInt32(int32(len(role.Rules)))),
+		Summary:  fields("Rules", fmtInt(len(role.Rules))),
 	}
 	var sections []Section
 	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields(
 		"Namespace", role.Namespace,
-		"Rules", fmtInt32(int32(len(role.Rules))),
+		"Rules", fmtInt(len(role.Rules)),
 	)))
 	if rows := policyRuleRows(role.Rules); len(rows) > 0 {
 		sections = append(sections, sectionTable("rules", "Rules", GroupSpec,

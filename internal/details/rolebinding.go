@@ -21,13 +21,13 @@ func (roleBindingProvider) Build(ctx context.Context, req *Request) (*ObjectDeta
 		Status:   StatusBadge{Tone: "healthy", Label: "Bound"},
 		Summary: fields(
 			"Role", rb.RoleRef.Kind+"/"+rb.RoleRef.Name,
-			"Subjects", fmtInt32(int32(len(rb.Subjects))),
+			"Subjects", fmtInt(len(rb.Subjects)),
 		),
 	}
 	var sections []Section
 	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields(
 		"Namespace", rb.Namespace,
-		"Subjects", fmtInt32(int32(len(rb.Subjects))),
+		"Subjects", fmtInt(len(rb.Subjects)),
 	)))
 	sections = append(sections, sectionFields("roleRef", "RoleRef", GroupRelationships, fields(
 		"Kind", rb.RoleRef.Kind,

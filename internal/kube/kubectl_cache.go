@@ -77,7 +77,7 @@ func EnsureClusterKubectl(ctx context.Context, gitVersion string) (string, error
 		return "", fmt.Errorf("cluster kubectl download not supported on %s yet", goos)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dest), 0o750); err != nil {
 		return "", err
 	}
 
@@ -87,7 +87,7 @@ func EnsureClusterKubectl(ctx context.Context, gitVersion string) (string, error
 		_ = os.Remove(tmp)
 		return "", err
 	}
-	if err := os.Chmod(tmp, 0o755); err != nil {
+	if err := os.Chmod(tmp, 0o700); err != nil { //nolint:gosec // G302: kubectl binary needs the owner execute bit
 		_ = os.Remove(tmp)
 		return "", err
 	}
@@ -95,7 +95,7 @@ func EnsureClusterKubectl(ctx context.Context, gitVersion string) (string, error
 		_ = os.Remove(tmp)
 		return "", err
 	}
-	_ = os.WriteFile(filepath.Join(filepath.Dir(dest), "version.txt"), []byte(release), 0o644)
+	_ = os.WriteFile(filepath.Join(filepath.Dir(dest), "version.txt"), []byte(release), 0o600)
 	return dest, nil
 }
 

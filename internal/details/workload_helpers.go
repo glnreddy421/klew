@@ -111,7 +111,7 @@ func envRowsDetailed(containers []corev1.Container, resolver envValueResolver) [
 	return rows
 }
 
-const secretEnvPlaceholder = "(secret — reveal below if permitted)"
+const secretEnvPlaceholder = "(secret — reveal below if permitted)" //nolint:gosec // G101: UI placeholder text, not a credential
 
 type envValueResolver func(sourceKind, name, key string) (string, bool)
 

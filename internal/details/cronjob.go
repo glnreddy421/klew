@@ -28,7 +28,7 @@ func (cronJobProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, 
 		"Schedule", cj.Spec.Schedule,
 		"Suspend", boolStr(suspended),
 		"Last Schedule", last,
-		"Active Jobs", fmtInt32(int32(len(cj.Status.Active))),
+		"Active Jobs", fmtInt(len(cj.Status.Active)),
 	}, podRows), cj.Spec.JobTemplate.Spec.Template.Spec)
 
 	detail := &ObjectDetail{
@@ -41,7 +41,7 @@ func (cronJobProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, 
 	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields(
 		"Last Schedule", last,
 		"Last Successful", fmtTime(cj.Status.LastSuccessfulTime),
-		"Active Jobs", fmtInt32(int32(len(cj.Status.Active))),
+		"Active Jobs", fmtInt(len(cj.Status.Active)),
 	)))
 	tz := ""
 	if cj.Spec.TimeZone != nil {

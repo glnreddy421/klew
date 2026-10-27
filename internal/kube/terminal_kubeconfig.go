@@ -213,7 +213,7 @@ func ensurePrivateDir(dir string) error {
 		return fmt.Errorf("%s is owned by another user", dir)
 	}
 	if runtime.GOOS != "windows" && info.Mode().Perm()&0o077 != 0 {
-		if err := os.Chmod(dir, 0o700); err != nil {
+		if err := os.Chmod(dir, 0o700); err != nil { //nolint:gosec // G302: directory needs the owner execute bit to be traversable
 			return fmt.Errorf("restrict %s: %w", dir, err)
 		}
 	}
