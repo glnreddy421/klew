@@ -435,14 +435,14 @@ func (a *App) DiscoverMatches(opts DiscoverOptions) ([]model.MatchedObject, erro
 
 // CatalogOptions configures dynamic resource catalog discovery.
 type CatalogOptions struct {
-	Namespace          string   `json:"namespace"`
-	AllNamespaces      bool     `json:"allNamespaces"`
-	Namespaces         []string `json:"namespaces"`
-	Kubeconfig         string   `json:"kubeconfig"`
-	Context            string   `json:"context"`
-	IncludeCounts      bool     `json:"includeCounts"`
-	CountResourceIds   []string `json:"countResourceIds"`
-	Refresh            bool     `json:"refresh"`
+	Namespace        string   `json:"namespace"`
+	AllNamespaces    bool     `json:"allNamespaces"`
+	Namespaces       []string `json:"namespaces"`
+	Kubeconfig       string   `json:"kubeconfig"`
+	Context          string   `json:"context"`
+	IncludeCounts    bool     `json:"includeCounts"`
+	CountResourceIds []string `json:"countResourceIds"`
+	Refresh          bool     `json:"refresh"`
 }
 
 func (a *App) resolveCatalogClient(opts CatalogOptions) (*kube.Client, string, error) {
@@ -513,13 +513,13 @@ func (a *App) RefreshResourceCatalog(opts CatalogOptions) (model.ResourceCatalog
 
 // ListCatalogEntitiesOptions configures lazy entity listing for a resource GVR.
 type ListCatalogEntitiesOptions struct {
-	ResourceID     string   `json:"resourceId"`
-	Namespace      string   `json:"namespace"`
-	AllNamespaces  bool     `json:"allNamespaces"`
-	Namespaces     []string `json:"namespaces"`
-	ClusterScoped  bool     `json:"clusterScoped"`
-	Kubeconfig     string   `json:"kubeconfig"`
-	Context        string   `json:"context"`
+	ResourceID    string   `json:"resourceId"`
+	Namespace     string   `json:"namespace"`
+	AllNamespaces bool     `json:"allNamespaces"`
+	Namespaces    []string `json:"namespaces"`
+	ClusterScoped bool     `json:"clusterScoped"`
+	Kubeconfig    string   `json:"kubeconfig"`
+	Context       string   `json:"context"`
 }
 
 // ListCatalogEntities returns lightweight entities for a selected catalog resource.
@@ -705,10 +705,10 @@ func (a *App) emitCatalogEntitiesNow(payload CatalogEntityWatchPayload) {
 // GetBrowseMetricsOptions configures scope-level CPU/memory usage from metrics-server.
 type GetBrowseMetricsOptions struct {
 	Namespace     string   `json:"namespace"`
-	AllNamespaces  bool     `json:"allNamespaces"`
-	Namespaces     []string `json:"namespaces"`
-	Kubeconfig     string   `json:"kubeconfig"`
-	Context        string   `json:"context"`
+	AllNamespaces bool     `json:"allNamespaces"`
+	Namespaces    []string `json:"namespaces"`
+	Kubeconfig    string   `json:"kubeconfig"`
+	Context       string   `json:"context"`
 }
 
 // GetBrowseMetrics returns aggregated live pod usage for the browse scope.
@@ -794,17 +794,17 @@ func (a *App) GetResourceManifest(opts ResourceManifestOptions) (kube.ResourceMa
 
 // StartOptions configures a live investigation from the desktop UI.
 type StartOptions struct {
-	Query            string `json:"query"`
-	Namespace        string `json:"namespace"`
-	Kubeconfig       string `json:"kubeconfig"`
-	Context          string `json:"context"`
-	Tail             int    `json:"tail"`
-	RefreshSec       int    `json:"refreshSec"`
-	WindowSec        int    `json:"windowSec"`
-	MaxLogRequests   int    `json:"maxLogRequests"`
-	AutoRefresh      *bool  `json:"autoRefresh"`
-	UseMetricsServer         *bool `json:"useMetricsServer"`
-	CheckAdmissionPerimeter  *bool `json:"checkAdmissionPerimeter"`
+	Query                   string `json:"query"`
+	Namespace               string `json:"namespace"`
+	Kubeconfig              string `json:"kubeconfig"`
+	Context                 string `json:"context"`
+	Tail                    int    `json:"tail"`
+	RefreshSec              int    `json:"refreshSec"`
+	WindowSec               int    `json:"windowSec"`
+	MaxLogRequests          int    `json:"maxLogRequests"`
+	AutoRefresh             *bool  `json:"autoRefresh"`
+	UseMetricsServer        *bool  `json:"useMetricsServer"`
+	CheckAdmissionPerimeter *bool  `json:"checkAdmissionPerimeter"`
 }
 
 // StartInvestigation begins live cluster collection.

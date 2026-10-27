@@ -11,12 +11,12 @@ type LogPatterns struct {
 	Window     LogPatternsWindow `json:"window"`
 
 	// Event* fields are patterns mined from Pod/Node/PVC Kubernetes events.
-	EventTemplates  []LogTemplate     `json:"eventTemplates,omitempty"`
-	EventWords      []LogWord         `json:"eventWords,omitempty"`
-	EventReasons    []LogAttribute    `json:"eventReasons,omitempty"`
-	EventSeverity   LogSeverityHist   `json:"eventSeverity,omitempty"`
-	EventHistogram  []int             `json:"eventHistogram,omitempty"`
-	EventWindow     LogPatternsWindow `json:"eventWindow,omitempty"`
+	EventTemplates []LogTemplate     `json:"eventTemplates,omitempty"`
+	EventWords     []LogWord         `json:"eventWords,omitempty"`
+	EventReasons   []LogAttribute    `json:"eventReasons,omitempty"`
+	EventSeverity  LogSeverityHist   `json:"eventSeverity,omitempty"`
+	EventHistogram []int             `json:"eventHistogram,omitempty"`
+	EventWindow    LogPatternsWindow `json:"eventWindow,omitempty"`
 
 	// EvidenceBoard is log↔infra event chains ranked by time-series Jaccard confidence.
 	EvidenceBoard *EvidenceBoardPayload `json:"evidenceBoard,omitempty"`
@@ -98,12 +98,12 @@ type LogSeverityHist struct {
 }
 
 type LogPatternsWindow struct {
-	LineCount     int    `json:"lineCount"`
-	TotalLogs     int    `json:"totalLogs"`
-	PatternCount  int    `json:"patternCount"`
-	PodCount      int    `json:"podCount"`
-	Scope         string `json:"scope"`
-	HistMax int    `json:"histMax"`
+	LineCount    int    `json:"lineCount"`
+	TotalLogs    int    `json:"totalLogs"`
+	PatternCount int    `json:"patternCount"`
+	PodCount     int    `json:"podCount"`
+	Scope        string `json:"scope"`
+	HistMax      int    `json:"histMax"`
 	// Deprecated optional internals — omit from product UI; kept for older clients.
 	WordModel     string `json:"wordModel,omitempty"`
 	TemplateModel string `json:"templateModel,omitempty"`

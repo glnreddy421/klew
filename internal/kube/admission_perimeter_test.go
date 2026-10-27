@@ -20,7 +20,7 @@ func TestWorkloadMissingPods(t *testing.T) {
 		t.Fatal("expected missing pods")
 	}
 	b.Pods = []model.PodSummary{{
-		Name: "api-abc-xyz",
+		Name:      "api-abc-xyz",
 		OwnerRefs: []model.ObjectRef{{Kind: "ReplicaSet", Name: "api-abc"}},
 	}}
 	if WorkloadMissingPods(b) {

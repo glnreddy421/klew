@@ -32,7 +32,7 @@ type ClusterState struct {
 	User              string          `json:"user"`
 	Contexts          []ContextOption `json:"contexts"`
 	Namespaces        []string        `json:"namespaces"`
-	SyncedAt          model.Timestamp       `json:"syncedAt"`
+	SyncedAt          model.Timestamp `json:"syncedAt"`
 	SyncError         string          `json:"syncError,omitempty"`
 	SyncWarning       string          `json:"syncWarning,omitempty"`
 }

@@ -320,13 +320,6 @@ func stringPtr(p *string) string {
 	return *p
 }
 
-func fmtInt64Ptr(p *int64) string {
-	if p == nil {
-		return ""
-	}
-	return fmtInt64(*p)
-}
-
 func formatMicroTime(t *metav1.MicroTime) string {
 	if t == nil || t.IsZero() {
 		return ""

@@ -72,4 +72,3 @@ func TestOwnerRefsRelationshipSectionEmpty(t *testing.T) {
 		t.Fatal("expected empty section")
 	}
 }
-

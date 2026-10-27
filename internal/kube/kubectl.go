@@ -11,16 +11,16 @@ import (
 
 // KubectlInfo describes which kubectl binary Klew uses.
 type KubectlInfo struct {
-	ActivePath            string `json:"activePath"`
-	BundledPath           string `json:"bundledPath"`
-	SystemPath            string `json:"systemPath"`
-	ClusterMatchedPath    string `json:"clusterMatchedPath,omitempty"`
-	Source                string `json:"source"` // bundled, cluster-matched, system, custom
-	Version               string `json:"version,omitempty"`
-	ClusterVersion        string `json:"clusterVersion,omitempty"`
-	MatchClusterKubectl   bool   `json:"matchClusterKubectl"`
-	ClusterSkewDetected   bool   `json:"clusterSkewDetected"`
-	Available             bool   `json:"available"`
+	ActivePath          string `json:"activePath"`
+	BundledPath         string `json:"bundledPath"`
+	SystemPath          string `json:"systemPath"`
+	ClusterMatchedPath  string `json:"clusterMatchedPath,omitempty"`
+	Source              string `json:"source"` // bundled, cluster-matched, system, custom
+	Version             string `json:"version,omitempty"`
+	ClusterVersion      string `json:"clusterVersion,omitempty"`
+	MatchClusterKubectl bool   `json:"matchClusterKubectl"`
+	ClusterSkewDetected bool   `json:"clusterSkewDetected"`
+	Available           bool   `json:"available"`
 }
 
 var kubectlConfig struct {

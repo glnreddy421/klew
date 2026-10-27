@@ -3,7 +3,10 @@ package render
 import "fmt"
 
 // RestartMatrix renders pod restart counts as a compact row.
-func RestartMatrix(pods []struct{ Name string; Restarts int32 }) string {
+func RestartMatrix(pods []struct {
+	Name     string
+	Restarts int32
+}) string {
 	if len(pods) == 0 {
 		return "  (no pods)"
 	}

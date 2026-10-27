@@ -217,7 +217,7 @@ func webhookRulesSummary(h map[string]interface{}) string {
 		ops, _, _ := unstructured.NestedStringSlice(rule, "operations")
 		groups, _, _ := unstructured.NestedStringSlice(rule, "apiGroups")
 		versions, _, _ := unstructured.NestedStringSlice(rule, "apiVersions")
-	 chunk := strings.Join(resources, ",")
+		chunk := strings.Join(resources, ",")
 		if len(ops) > 0 {
 			chunk += " (" + strings.Join(ops, ",") + ")"
 		}

@@ -36,25 +36,6 @@ func failingPod(b model.EvidenceBundle) (pod, container string) {
 	return pod, container
 }
 
-func workloadSelector(b model.EvidenceBundle) string {
-	if len(b.Workloads) > 0 && b.Workloads[0].Selector != "" {
-		return b.Workloads[0].Selector
-	}
-	for _, p := range b.Pods {
-		if len(p.Labels) == 0 {
-			continue
-		}
-		parts := make([]string, 0, len(p.Labels))
-		for k, v := range p.Labels {
-			parts = append(parts, k+"="+v)
-		}
-		if len(parts) > 0 {
-			return strings.Join(parts, ",")
-		}
-	}
-	return ""
-}
-
 func appendUniqueCheck(dst []string, s string) []string {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -253,59 +234,6 @@ func hasRecentRollout(b model.EvidenceBundle) bool {
 		}
 	}
 	return readyOld > 0 && readyNew > 0
-}
-
-// kubectlChecksFor returns copy-pasteable verification commands scoped to the bundle.
-func kubectlChecksFor(b model.EvidenceBundle, cat string) []string {
-	ns := b.Namespace
-	if ns == "" || ns == "*" {
-		ns = "<namespace>"
-	}
-	var out []string
-	pod, container := failingPod(b)
-	selector := workloadSelector(b)
-
-	add := func(s string) { out = appendUniqueCheck(out, s) }
-
-	add(fmt.Sprintf("kubectl -n %s get deploy,rs,pod,svc,events", ns))
-
-	if pod != "" {
-		add(fmt.Sprintf("kubectl -n %s describe pod %s", ns, pod))
-		if container != "" {
-			add(fmt.Sprintf("kubectl -n %s logs %s -c %s --tail=200", ns, pod, container))
-			add(fmt.Sprintf("kubectl -n %s logs %s -c %s --previous --tail=200", ns, pod, container))
-		} else {
-			add(fmt.Sprintf("kubectl -n %s logs %s --all-containers --tail=200", ns, pod))
-			add(fmt.Sprintf("kubectl -n %s logs %s --all-containers --previous --tail=200", ns, pod))
-		}
-	} else if selector != "" {
-		add(fmt.Sprintf("kubectl -n %s get pods -l %s", ns, selector))
-		add(fmt.Sprintf("kubectl -n %s describe pod -l %s", ns, selector))
-	}
-
-	if len(b.Workloads) > 0 {
-		w := b.Workloads[0]
-		switch w.Kind {
-		case "Deployment":
-			add(fmt.Sprintf("kubectl -n %s rollout history deploy/%s", ns, w.Name))
-			add(fmt.Sprintf("kubectl -n %s logs deploy/%s --all-containers --tail=200", ns, w.Name))
-		case "StatefulSet":
-			add(fmt.Sprintf("kubectl -n %s logs sts/%s --all-containers --tail=200", ns, w.Name))
-		}
-	}
-
-	switch cat {
-	case "ImagePullBackOff":
-		if pod != "" && container != "" {
-			add(fmt.Sprintf("kubectl -n %s get pod %s -o jsonpath='{.status.containerStatuses[?(@.name==%q)].state.waiting.message}'", ns, pod, container))
-		}
-	case "Mount/config":
-		if pod != "" {
-			add(fmt.Sprintf("kubectl -n %s get pod %s -o yaml | grep -E 'configMap|secret'", ns, pod))
-		}
-	}
-
-	return out
 }
 
 // fixActionsFor returns remediation steps to restore service health (read-only guidance).

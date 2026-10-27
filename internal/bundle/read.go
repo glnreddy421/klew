@@ -13,12 +13,12 @@ const formatVersion = "klew.bundle.v1"
 const legacyFormatVersion = "solid.bundle.v1"
 
 type envelope struct {
-	Format       string                    `json:"format"`
-	Bundle       model.EvidenceBundle      `json:"bundle"`
-	LiveEvidence []model.EvidenceEvent     `json:"liveEvidence,omitempty"`
-	Timeline     []model.TimelineEvent     `json:"timeline,omitempty"`
-	Graph        model.WorkloadGraph       `json:"graph,omitempty"`
-	Verdict      model.Verdict             `json:"verdict,omitempty"`
+	Format       string                `json:"format"`
+	Bundle       model.EvidenceBundle  `json:"bundle"`
+	LiveEvidence []model.EvidenceEvent `json:"liveEvidence,omitempty"`
+	Timeline     []model.TimelineEvent `json:"timeline,omitempty"`
+	Graph        model.WorkloadGraph   `json:"graph,omitempty"`
+	Verdict      model.Verdict         `json:"verdict,omitempty"`
 }
 
 // Write serializes an evidence bundle to a JSON file.

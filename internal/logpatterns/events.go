@@ -165,6 +165,7 @@ func mergeInfraEvents(live []model.EvidenceEvent, snap []model.EventRecord) []mo
 	}
 	return out
 }
+
 // Returns newest-first, capped at max.
 func filterInfraEvents(events []model.EvidenceEvent, max int) []model.EvidenceEvent {
 	if max <= 0 {

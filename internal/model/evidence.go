@@ -178,18 +178,18 @@ type LogRecord struct {
 
 // NodeSummary is node pressure context for scheduled pods.
 type NodeSummary struct {
-	Name              string   `json:"name"`
-	Ready             bool     `json:"ready"`
-	MemoryPressure    bool     `json:"memoryPressure"`
-	DiskPressure      bool     `json:"diskPressure"`
-	PIDPressure       bool     `json:"pidPressure"`
-	Unschedulable     bool     `json:"unschedulable"`
-	KubeletVersion    string   `json:"kubeletVersion,omitempty"`
-	Conditions        []string `json:"conditions,omitempty"`
-	AllocatableCPUM   int64    `json:"allocatableCpuMillicores,omitempty"`
-	AllocatableMemMi  int64    `json:"allocatableMemMi,omitempty"`
-	CapacityCPUM      int64    `json:"capacityCpuMillicores,omitempty"`
-	CapacityMemMi     int64    `json:"capacityMemMi,omitempty"`
+	Name             string   `json:"name"`
+	Ready            bool     `json:"ready"`
+	MemoryPressure   bool     `json:"memoryPressure"`
+	DiskPressure     bool     `json:"diskPressure"`
+	PIDPressure      bool     `json:"pidPressure"`
+	Unschedulable    bool     `json:"unschedulable"`
+	KubeletVersion   string   `json:"kubeletVersion,omitempty"`
+	Conditions       []string `json:"conditions,omitempty"`
+	AllocatableCPUM  int64    `json:"allocatableCpuMillicores,omitempty"`
+	AllocatableMemMi int64    `json:"allocatableMemMi,omitempty"`
+	CapacityCPUM     int64    `json:"capacityCpuMillicores,omitempty"`
+	CapacityMemMi    int64    `json:"capacityMemMi,omitempty"`
 }
 
 // HPASummary horizontal pod autoscaler state.
@@ -227,28 +227,28 @@ type MetricsSummary struct {
 
 // EvidenceBundle is the collected read-only investigation snapshot.
 type EvidenceBundle struct {
-	CollectedAt      Timestamp           `json:"collectedAt"`
-	KubeContext      KubeContext         `json:"kubeContext"`
-	Namespace        string              `json:"namespace"`
-	Query            string              `json:"query"`
-	MatchedObjects   []MatchedObject     `json:"matchedObjects"`
-	Workloads        []WorkloadSummary   `json:"workloads"`
-	Pods             []PodSummary        `json:"pods"`
-	ReplicaSets      []ReplicaSetSummary `json:"replicaSets"`
-	Services         []ServiceSummary    `json:"services"`
-	Ingresses        []IngressSummary    `json:"ingresses"`
-	Events           []EventRecord       `json:"events"`
-	Logs             []LogRecord         `json:"logs"`
-	PreviousLogs     []LogRecord         `json:"previousLogs"`
-	Nodes            []NodeSummary       `json:"nodes"`
-	NodePods         []PodSummary        `json:"nodePods,omitempty"` // co-located pods on investigation node(s)
-	HPAs             []HPASummary        `json:"hpas"`
-	ConfigRefs       []ResourceRef       `json:"configRefs"`
-	SecretRefs       []ResourceRef       `json:"secretRefs"`
-	PVCRefs          []ResourceRef       `json:"pvcRefs"`
-	Permissions      []PermissionCheck   `json:"permissions"`
-	Warnings         []string            `json:"warnings"`
-	DetectedCRDKinds []string            `json:"detectedCRDKinds,omitempty"`
+	CollectedAt        Timestamp                  `json:"collectedAt"`
+	KubeContext        KubeContext                `json:"kubeContext"`
+	Namespace          string                     `json:"namespace"`
+	Query              string                     `json:"query"`
+	MatchedObjects     []MatchedObject            `json:"matchedObjects"`
+	Workloads          []WorkloadSummary          `json:"workloads"`
+	Pods               []PodSummary               `json:"pods"`
+	ReplicaSets        []ReplicaSetSummary        `json:"replicaSets"`
+	Services           []ServiceSummary           `json:"services"`
+	Ingresses          []IngressSummary           `json:"ingresses"`
+	Events             []EventRecord              `json:"events"`
+	Logs               []LogRecord                `json:"logs"`
+	PreviousLogs       []LogRecord                `json:"previousLogs"`
+	Nodes              []NodeSummary              `json:"nodes"`
+	NodePods           []PodSummary               `json:"nodePods,omitempty"` // co-located pods on investigation node(s)
+	HPAs               []HPASummary               `json:"hpas"`
+	ConfigRefs         []ResourceRef              `json:"configRefs"`
+	SecretRefs         []ResourceRef              `json:"secretRefs"`
+	PVCRefs            []ResourceRef              `json:"pvcRefs"`
+	Permissions        []PermissionCheck          `json:"permissions"`
+	Warnings           []string                   `json:"warnings"`
+	DetectedCRDKinds   []string                   `json:"detectedCRDKinds,omitempty"`
 	Metrics            MetricsSummary             `json:"metrics"`
 	AdmissionPerimeter *AdmissionPerimeterSummary `json:"admissionPerimeter,omitempty"`
 	// EventHistory describes recorded events merged into Events (nil when none).

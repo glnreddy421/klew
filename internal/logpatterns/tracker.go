@@ -24,12 +24,12 @@ type Tracker struct {
 
 // TrackerConfig tunes Drain3 + sparkline window + GC cadence.
 type TrackerConfig struct {
-	DrainDepth      int
-	DrainSim        float64
-	MaxClusters     int
-	SparklineMins   int
-	MaxSamples      int
-	GCInterval      time.Duration
+	DrainDepth    int
+	DrainSim      float64
+	MaxClusters   int
+	SparklineMins int
+	MaxSamples    int
+	GCInterval    time.Duration
 }
 
 // NewTracker constructs a miner + metadata store. Call StartGC for eviction.

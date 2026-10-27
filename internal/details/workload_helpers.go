@@ -8,14 +8,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func conditionRows(conds []metav1.Condition) [][]string {
-	var rows [][]string
-	for _, c := range conds {
-		rows = append(rows, []string{c.Type, string(c.Status), c.Reason, truncate(c.Message, 120)})
-	}
-	return rows
-}
-
 func podConditionRows(conds []corev1.PodCondition) [][]string {
 	var rows [][]string
 	for _, c := range conds {
@@ -98,10 +90,6 @@ func volumeSource(v corev1.Volume) string {
 	}
 }
 
-func envRows(containers []corev1.Container) [][]string {
-	return envRowsDetailed(containers, nil)
-}
-
 // envRowsDetailed emits Container, Name, Source, Value.
 // Optional resolver may fill ConfigMap values only; secret refs stay masked in this table.
 func envRowsDetailed(containers []corev1.Container, resolver envValueResolver) [][]string {
@@ -178,24 +166,6 @@ func envFromSourceValue(ef corev1.EnvFromSource, resolver envValueResolver) (sou
 		return source, secretEnvPlaceholder
 	default:
 		return "envFrom", ""
-	}
-}
-
-func envFromRef(vf *corev1.EnvVarSource) string {
-	if vf == nil {
-		return ""
-	}
-	switch {
-	case vf.ConfigMapKeyRef != nil:
-		return "configMap:" + vf.ConfigMapKeyRef.Name + "/" + vf.ConfigMapKeyRef.Key
-	case vf.SecretKeyRef != nil:
-		return "secret:" + vf.SecretKeyRef.Name + "/" + vf.SecretKeyRef.Key
-	case vf.FieldRef != nil:
-		return "field:" + vf.FieldRef.FieldPath
-	case vf.ResourceFieldRef != nil:
-		return "resource:" + vf.ResourceFieldRef.Resource
-	default:
-		return "valueFrom"
 	}
 }
 

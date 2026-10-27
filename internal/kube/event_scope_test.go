@@ -7,7 +7,7 @@ func TestEventInInvestigationScope(t *testing.T) {
 
 	cases := []struct {
 		kind, name, query string
-		want            bool
+		want              bool
 	}{
 		{"Pod", "redis-0", "payment", true},
 		{"Pod", "other-pod", "payment", false},

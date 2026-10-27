@@ -125,10 +125,9 @@ type Recorder struct {
 	// stopReason is recorded as the session's end reason when Run exits.
 	stopReason string
 	// resync asks runPlan to drop and re-establish every stream.
-	resync     chan struct{}
-	writes     chan writeItem
-	volume     volumeGuard
-	streamErrs map[string]error
+	resync chan struct{}
+	writes chan writeItem
+	volume volumeGuard
 }
 
 type writeItem struct {

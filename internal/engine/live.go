@@ -47,7 +47,7 @@ type LiveSession struct {
 	lastStructRefresh time.Time
 	client            *kube.Client
 	refreshNS         string
-	refreshQuery        string
+	refreshQuery      string
 
 	logMu         sync.Mutex
 	stopLogTail   func()
@@ -87,9 +87,9 @@ func StartLive(ctx context.Context, client *kube.Client, opts LiveOptions) (*Liv
 
 	bundle, _, err := CollectSnapshot(ctx, client, SnapshotOptions{
 		Namespace:               ns,
-		Query:                     opts.Query,
-		Tail:                      opts.Tail,
-		CheckAdmissionPerimeter:   opts.CheckAdmissionPerimeter,
+		Query:                   opts.Query,
+		Tail:                    opts.Tail,
+		CheckAdmissionPerimeter: opts.CheckAdmissionPerimeter,
 	})
 	if err != nil {
 		cancel()
@@ -101,17 +101,17 @@ func StartLive(ctx context.Context, client *kube.Client, opts LiveOptions) (*Liv
 	reducer := NewReducer(state)
 
 	session := &LiveSession{
-		Reducer:      reducer,
-		Bus:          bus,
-		ctx:          ctx,
-		cancel:       cancel,
-		autoRefresh:  opts.AutoRefresh,
-		pollEvery:    opts.PollEvery,
-		client:       client,
-		refreshNS:    ns,
-		refreshQuery: opts.Query,
-		tail:         opts.Tail,
-		window:       opts.Window,
+		Reducer:                 reducer,
+		Bus:                     bus,
+		ctx:                     ctx,
+		cancel:                  cancel,
+		autoRefresh:             opts.AutoRefresh,
+		pollEvery:               opts.PollEvery,
+		client:                  client,
+		refreshNS:               ns,
+		refreshQuery:            opts.Query,
+		tail:                    opts.Tail,
+		window:                  opts.Window,
 		maxLogReq:               opts.MaxLogRequests,
 		logNS:                   ns,
 		checkAdmissionPerimeter: opts.CheckAdmissionPerimeter,
@@ -289,9 +289,9 @@ func (s *LiveSession) snapshotCollectOptions() SnapshotOptions {
 	defer s.refreshMu.Unlock()
 	return SnapshotOptions{
 		Namespace:               s.refreshNS,
-		Query:                     s.refreshQuery,
-		Tail:                      s.tail,
-		CheckAdmissionPerimeter:   s.checkAdmissionPerimeter,
+		Query:                   s.refreshQuery,
+		Tail:                    s.tail,
+		CheckAdmissionPerimeter: s.checkAdmissionPerimeter,
 	}
 }
 
