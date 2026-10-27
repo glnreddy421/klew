@@ -132,6 +132,26 @@ func (col *Collector) listEventsV1(ctx context.Context, namespace, query string,
 	return out, nil
 }
 
+// ListEvents returns every Event in namespace ("" = all namespaces) from
+// core/v1 and events.k8s.io/v1, deduplicated. The core/v1 error is returned
+// so callers can tell a permission denial from an empty list.
+func ListEvents(ctx context.Context, c *Client, namespace string) ([]model.EventRecord, error) {
+	core, err := c.Clientset.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]model.EventRecord, 0, len(core.Items))
+	for _, e := range core.Items {
+		out = append(out, coreEventToRecord(e))
+	}
+	if v1, err := c.Clientset.EventsV1().Events(namespace).List(ctx, metav1.ListOptions{}); err == nil {
+		for _, e := range v1.Items {
+			out = append(out, eventV1ToRecord(e))
+		}
+	}
+	return dedupeEventRecords(out), nil
+}
+
 type investigationPods map[string]struct{}
 
 func newInvestigationPods(names []string) investigationPods {

@@ -545,23 +545,27 @@ func (m *Manager) RecordedEvents(ctx context.Context, contextName, serverURL str
 	if m == nil {
 		return nil, model.EventHistoryCoverage{}, nil
 	}
+	return recordedEvents(ctx, m.store, m.Settings(), m.cfg.Now(), contextName, serverURL, q)
+}
+
+func recordedEvents(ctx context.Context, store *Store, settings Settings, now time.Time, contextName, serverURL string, q model.EventHistoryQuery) ([]model.EventRecord, model.EventHistoryCoverage, error) {
 	key := ClusterKey(contextName, serverURL)
 	since := q.Since
 	if since.IsZero() {
-		since = m.cfg.Now().Add(-time.Duration(m.Settings().RetentionDays) * 24 * time.Hour)
+		since = now.Add(-time.Duration(settings.RetentionDays) * 24 * time.Hour)
 	}
 	limit := q.Limit
 	if limit <= 0 {
 		limit = 500
 	}
-	rows, err := m.store.Events(ctx, EventQuery{
+	rows, err := store.Events(ctx, EventQuery{
 		ClusterKey: key, Namespace: q.Namespace, Since: since,
 		RegardingName: q.RegardingName, NamePrefix: q.NamePrefix, Limit: limit,
 	})
 	if err != nil {
 		return nil, model.EventHistoryCoverage{}, err
 	}
-	cov, err := m.store.Coverage(ctx, key, since, m.cfg.Now(), m.Settings().EventTTL())
+	cov, err := store.Coverage(ctx, key, since, now, settings.EventTTL())
 	if err != nil {
 		return nil, model.EventHistoryCoverage{}, err
 	}

@@ -4,6 +4,10 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 
 ## [Unreleased]
 
+### MCP server
+
+- **`klew-mcp`** — a new read-only MCP server that gives AI assistants Klew's analysis over stdio. Tools: `klew_list_contexts`, `klew_investigate` (verdict, causal chain, failing pods, patterns, incidents, related change, next checks), `klew_investigation_details` (paged sections of an investigation), `klew_event_history` (live plus recorded events with coverage), and `klew_workload_changes` (revisions with field-level diffs). Runs without the desktop app, on macOS and Linux; reads the desktop app's recorded events when present. See [docs/mcp.md](docs/mcp.md).
+
 ## [1.5.0] — 2026-10-24
 
 ### Workload Changes

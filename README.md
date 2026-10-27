@@ -78,6 +78,17 @@ Grab the DMG from [Releases](https://github.com/glnreddy421/klew/releases) — `
 | ⌘⇧L | Live logs |
 | ⌘⇧\` | Split terminal and logs |
 
+## MCP server
+
+`klew-mcp` gives AI assistants (Claude Code, Claude Desktop, Cursor, …) Klew's verdicts, failure triage, patterns, event history and workload changes over the Model Context Protocol. It is read-only, runs without the desktop app, and works on macOS and Linux.
+
+```bash
+go install github.com/glnreddy421/klew/cmd/klew-mcp@latest
+claude mcp add klew -- klew-mcp
+```
+
+See [docs/mcp.md](docs/mcp.md) for tools, client setup, and what data the assistant sees.
+
 ## Privacy
 
 No telemetry and no account. Klew connects to the Kubernetes API servers in your kubeconfig (through your proxy settings, if any). Other network use is limited to downloading a version-matched `kubectl` from `dl.k8s.io` when your cluster needs one, and fetching UI fonts from Google Fonts (cached locally).
