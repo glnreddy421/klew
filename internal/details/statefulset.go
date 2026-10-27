@@ -31,20 +31,22 @@ func (statefulSetProvider) Build(ctx context.Context, req *Request) (*ObjectDeta
 		Summary:  fields(summaryPairs...),
 	}
 	var sections []Section
-	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields(
-		"Replicas", fmtInt32(sts.Status.Replicas),
-		"Ready", fmtInt32(sts.Status.ReadyReplicas),
-		"Current", fmtInt32(sts.Status.CurrentReplicas),
-		"Updated", fmtInt32(sts.Status.UpdatedReplicas),
-		"Available", fmtInt32(sts.Status.AvailableReplicas),
-		"Current Revision", sts.Status.CurrentRevision,
-		"Update Revision", sts.Status.UpdateRevision,
-	)))
-	sections = append(sections, sectionFields("strategy", "Strategy", GroupSpec, fields(
-		"Type", string(sts.Spec.UpdateStrategy.Type),
-		"Pod Management", string(sts.Spec.PodManagementPolicy),
-		"Service Name", sts.Spec.ServiceName,
-	)))
+	sections = append(sections,
+		sectionFields("status", "Status", GroupSummary, fields(
+			"Replicas", fmtInt32(sts.Status.Replicas),
+			"Ready", fmtInt32(sts.Status.ReadyReplicas),
+			"Current", fmtInt32(sts.Status.CurrentReplicas),
+			"Updated", fmtInt32(sts.Status.UpdatedReplicas),
+			"Available", fmtInt32(sts.Status.AvailableReplicas),
+			"Current Revision", sts.Status.CurrentRevision,
+			"Update Revision", sts.Status.UpdateRevision,
+		)),
+		sectionFields("strategy", "Strategy", GroupSpec, fields(
+			"Type", string(sts.Spec.UpdateStrategy.Type),
+			"Pod Management", string(sts.Spec.PodManagementPolicy),
+			"Service Name", sts.Spec.ServiceName,
+		)),
+	)
 	if sts.Spec.Selector != nil {
 		if sel := selectorString(sts.Spec.Selector.MatchLabels); sel != "" {
 			sections = append(sections, sectionFields("selector", "Selector", GroupRelationships, fields("Match Labels", sel)))

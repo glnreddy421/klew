@@ -58,17 +58,18 @@ func (cronJobProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, 
 	if ownerSec := ownerRefsRelationshipSection(cj.OwnerReferences, cj.Namespace); !ownerSec.Empty() {
 		sections = append(sections, ownerSec)
 	}
-	if len(jobRows) > 0 {
+	switch {
+	case len(jobRows) > 0:
 		sections = append(sections, sectionTable("jobs", "Jobs", GroupRelationships,
 			[]string{"Name", "Active", "Succeeded", "Failed", "Start Time"}, jobRows))
-	} else if len(cj.Status.Active) > 0 {
+	case len(cj.Status.Active) > 0:
 		var rows [][]string
 		for _, a := range cj.Status.Active {
 			rows = append(rows, []string{a.Kind, a.Name, a.Namespace})
 		}
 		sections = append(sections, sectionTable("activeJobs", "Active Jobs", GroupRelationships,
 			[]string{"Kind", "Name", "Namespace"}, rows))
-	} else {
+	default:
 		note := "No Jobs found yet — they appear here after the next scheduled run."
 		if last != "" {
 			note = "No active Jobs. Last schedule: " + last + ". Completed Jobs appear here after each run."

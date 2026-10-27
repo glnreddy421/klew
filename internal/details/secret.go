@@ -52,10 +52,12 @@ func (secretProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, e
 		for _, n := range consumers {
 			rows = append(rows, []string{n})
 		}
-		sections = append(sections, sectionTable("mountedBy", "Mounted By", GroupRelationships,
-			[]string{"Pod"}, rows))
-		sections = append(sections, sectionTable("consumers", "Consumers", GroupRelationships,
-			[]string{"Pod"}, rows))
+		sections = append(sections,
+			sectionTable("mountedBy", "Mounted By", GroupRelationships,
+				[]string{"Pod"}, rows),
+			sectionTable("consumers", "Consumers", GroupRelationships,
+				[]string{"Pod"}, rows),
+		)
 	}
 	sections = append(sections, metaSections(sec.Labels, sec.Annotations, ownerRefsFromMeta(sec.OwnerReferences, sec.Namespace))...)
 	if mf := managedFieldsSection(sec.ManagedFields); !mf.Empty() {

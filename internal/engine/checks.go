@@ -61,11 +61,12 @@ func investigationStepsFor(cat string, b model.EvidenceBundle) []string {
 	case "OOMKilled":
 		oomN := oomPodCount(b)
 		limit := podMemoryLimitMi(b, pod)
-		if oomN > 0 && limit > 0 {
+		switch {
+		case oomN > 0 && limit > 0:
 			add(fmt.Sprintf("Confirm %d pod(s) exceeded the %s memory limit (OOMKilled, exit 137)", oomN, formatMemMi(limit)))
-		} else if oomN > 0 {
+		case oomN > 0:
 			add(fmt.Sprintf("Confirm all %d failing pod(s) were OOMKilled (exit 137)", oomN))
-		} else {
+		default:
 			add("Confirm containers were killed for exceeding their memory limit")
 		}
 		if m := b.Metrics; m.Available && m.MemLimitMi > 0 && m.MemUsageMi > 0 {
@@ -88,11 +89,12 @@ func investigationStepsFor(cat string, b model.EvidenceBundle) []string {
 		if oomN := oomPodCount(b); oomN > 0 {
 			add(fmt.Sprintf("Determine whether restarts on %d pod(s) are OOMKilled vs application exit errors", oomN))
 		}
-		if pod != "" && container != "" {
+		switch {
+		case pod != "" && container != "":
 			add(fmt.Sprintf("Inspect last termination state on %s/%s (exit code and reason)", pod, container))
-		} else if pod != "" {
+		case pod != "":
 			add(fmt.Sprintf("Inspect last termination state on pod %s", pod))
-		} else {
+		default:
 			add("Inspect container exit reason and last termination state")
 		}
 		if pod != "" && container != "" {

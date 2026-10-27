@@ -31,17 +31,19 @@ func (daemonSetProvider) Build(ctx context.Context, req *Request) (*ObjectDetail
 		Summary:  fields(summaryPairs...),
 	}
 	var sections []Section
-	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields(
-		"Desired", fmtInt32(ds.Status.DesiredNumberScheduled),
-		"Current", fmtInt32(ds.Status.CurrentNumberScheduled),
-		"Ready", fmtInt32(ds.Status.NumberReady),
-		"Updated", fmtInt32(ds.Status.UpdatedNumberScheduled),
-		"Available", fmtInt32(ds.Status.NumberAvailable),
-		"Misscheduled", fmtInt32(ds.Status.NumberMisscheduled),
-	)))
-	sections = append(sections, sectionFields("strategy", "Strategy", GroupSpec, fields(
-		"Type", string(ds.Spec.UpdateStrategy.Type),
-	)))
+	sections = append(sections,
+		sectionFields("status", "Status", GroupSummary, fields(
+			"Desired", fmtInt32(ds.Status.DesiredNumberScheduled),
+			"Current", fmtInt32(ds.Status.CurrentNumberScheduled),
+			"Ready", fmtInt32(ds.Status.NumberReady),
+			"Updated", fmtInt32(ds.Status.UpdatedNumberScheduled),
+			"Available", fmtInt32(ds.Status.NumberAvailable),
+			"Misscheduled", fmtInt32(ds.Status.NumberMisscheduled),
+		)),
+		sectionFields("strategy", "Strategy", GroupSpec, fields(
+			"Type", string(ds.Spec.UpdateStrategy.Type),
+		)),
+	)
 	if ds.Spec.Selector != nil {
 		if sel := selectorString(ds.Spec.Selector.MatchLabels); sel != "" {
 			sections = append(sections, sectionFields("selector", "Selector", GroupRelationships, fields("Match Labels", sel)))

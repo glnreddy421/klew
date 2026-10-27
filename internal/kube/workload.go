@@ -358,14 +358,15 @@ func containerFromStatus(podName string, cs corev1.ContainerStatus, pod corev1.P
 			break
 		}
 	}
-	if cs.State.Running != nil {
+	switch {
+	case cs.State.Running != nil:
 		out.State = "running"
 		out.StartedAt = model.TimestampPtrFrom(&cs.State.Running.StartedAt.Time)
-	} else if cs.State.Waiting != nil {
+	case cs.State.Waiting != nil:
 		out.State = "waiting"
 		out.Reason = cs.State.Waiting.Reason
 		out.Message = cs.State.Waiting.Message
-	} else if cs.State.Terminated != nil {
+	case cs.State.Terminated != nil:
 		out.State = "terminated"
 		out.Reason = cs.State.Terminated.Reason
 		out.Message = cs.State.Terminated.Message
@@ -704,11 +705,4 @@ func deref32(p *int32) int32 {
 		return 0
 	}
 	return *p
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

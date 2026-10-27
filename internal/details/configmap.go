@@ -58,10 +58,12 @@ func (configMapProvider) Build(ctx context.Context, req *Request) (*ObjectDetail
 		for _, n := range consumers {
 			rows = append(rows, []string{n})
 		}
-		sections = append(sections, sectionTable("mountedBy", "Mounted By", GroupRelationships,
-			[]string{"Pod"}, rows))
-		sections = append(sections, sectionTable("consumers", "Consumers", GroupRelationships,
-			[]string{"Pod"}, rows))
+		sections = append(sections,
+			sectionTable("mountedBy", "Mounted By", GroupRelationships,
+				[]string{"Pod"}, rows),
+			sectionTable("consumers", "Consumers", GroupRelationships,
+				[]string{"Pod"}, rows),
+		)
 	}
 	sections = append(sections, metaSections(cm.Labels, cm.Annotations, ownerRefsFromMeta(cm.OwnerReferences, cm.Namespace))...)
 	if mf := managedFieldsSection(cm.ManagedFields); !mf.Empty() {

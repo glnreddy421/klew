@@ -40,8 +40,7 @@ func ListCatalogEntities(ctx context.Context, client *Client, resourceID string,
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	switch resourceID {
-	case VirtualHelmReleasesResourceID:
+	if resourceID == VirtualHelmReleasesResourceID {
 		return ListHelmReleaseEntities(ctx, client, scope)
 	}
 	group, version, resource, err := ParseResourceID(resourceID)

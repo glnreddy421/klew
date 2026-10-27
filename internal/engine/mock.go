@@ -70,8 +70,10 @@ func fixturePermissions() []model.PermissionCheck {
 			out = append(out, allow(res, verb, true))
 		}
 	}
-	out = append(out, allow("pods/log", "get", true))
-	out = append(out, allow("nodes", "get", false))
+	out = append(out,
+		allow("pods/log", "get", true),
+		allow("nodes", "get", false),
+	)
 	return out
 }
 

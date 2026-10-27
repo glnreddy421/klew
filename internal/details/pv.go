@@ -46,32 +46,36 @@ func (pvProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, error
 		),
 	}
 	var sections []Section
-	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields(
-		"Phase", phase,
-		"Message", pv.Status.Message,
-		"Reason", pv.Status.Reason,
-	)))
-	sections = append(sections, sectionFields("claim", "Claim", GroupRelationships, fields(
-		"Claim Ref", claim,
-	)))
-	sections = append(sections, sectionFields("storageClass", "StorageClass", GroupRelationships, fields(
-		"Name", pv.Spec.StorageClassName,
-	)))
-	sections = append(sections, sectionFields("capacity", "Capacity", GroupRuntime, fields("Storage", cap)))
+	sections = append(sections,
+		sectionFields("status", "Status", GroupSummary, fields(
+			"Phase", phase,
+			"Message", pv.Status.Message,
+			"Reason", pv.Status.Reason,
+		)),
+		sectionFields("claim", "Claim", GroupRelationships, fields(
+			"Claim Ref", claim,
+		)),
+		sectionFields("storageClass", "StorageClass", GroupRelationships, fields(
+			"Name", pv.Spec.StorageClassName,
+		)),
+		sectionFields("capacity", "Capacity", GroupRuntime, fields("Storage", cap)),
+	)
 	if na := nodeAffinityString(pv.Spec.NodeAffinity); na != "" {
 		sections = append(sections, sectionFields("nodeAffinity", "Node Affinity", GroupSpec, fields("Rules", na)))
 	}
-	sections = append(sections, sectionFields("csiDriver", "CSI Driver", GroupSpec, fields(
-		"Driver", csi,
-		"Volume Handle", csiVolumeHandle(pv),
-	)))
-	sections = append(sections, sectionFields("reclaimPolicy", "Reclaim Policy", GroupSpec, fields(
-		"Policy", string(pv.Spec.PersistentVolumeReclaimPolicy),
-		"Access Modes", joinAccessModes(pv.Spec.AccessModes),
-		"Volume Mode", volumeModeString(pv.Spec.VolumeMode),
-		"Mount Options", strings.Join(pv.Spec.MountOptions, ", "),
-		"Volume Source", pvSourceSummary(pv),
-	)))
+	sections = append(sections,
+		sectionFields("csiDriver", "CSI Driver", GroupSpec, fields(
+			"Driver", csi,
+			"Volume Handle", csiVolumeHandle(pv),
+		)),
+		sectionFields("reclaimPolicy", "Reclaim Policy", GroupSpec, fields(
+			"Policy", string(pv.Spec.PersistentVolumeReclaimPolicy),
+			"Access Modes", joinAccessModes(pv.Spec.AccessModes),
+			"Volume Mode", volumeModeString(pv.Spec.VolumeMode),
+			"Mount Options", strings.Join(pv.Spec.MountOptions, ", "),
+			"Volume Source", pvSourceSummary(pv),
+		)),
+	)
 	sections = append(sections, metaSections(pv.Labels, pv.Annotations, ownerRefsFromMeta(pv.OwnerReferences, ""))...)
 	if mf := managedFieldsSection(pv.ManagedFields); !mf.Empty() {
 		sections = append(sections, mf)

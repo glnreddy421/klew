@@ -491,11 +491,12 @@ func (a *App) GetResourceCatalog(opts CatalogOptions) (model.ResourceCatalog, er
 		ctx = context.Background()
 	}
 	catalogNS := ns
-	if opts.AllNamespaces {
+	switch {
+	case opts.AllNamespaces:
 		catalogNS = ""
-	} else if len(opts.Namespaces) == 1 {
+	case len(opts.Namespaces) == 1:
 		catalogNS = opts.Namespaces[0]
-	} else if len(opts.Namespaces) > 1 {
+	case len(opts.Namespaces) > 1:
 		catalogNS = ""
 	}
 	countIDs := opts.CountResourceIds
@@ -542,11 +543,12 @@ func (a *App) ListCatalogEntities(opts ListCatalogEntitiesOptions) (model.Catalo
 		ctx = context.Background()
 	}
 	listNS := ns
-	if opts.Namespace != "" {
+	switch {
+	case opts.Namespace != "":
 		listNS = opts.Namespace
-	} else if len(opts.Namespaces) == 1 {
+	case len(opts.Namespaces) == 1:
 		listNS = opts.Namespaces[0]
-	} else if opts.AllNamespaces || len(opts.Namespaces) > 1 {
+	case opts.AllNamespaces || len(opts.Namespaces) > 1:
 		listNS = ""
 	}
 	if opts.ClusterScoped {
@@ -598,11 +600,12 @@ func (a *App) StartCatalogEntityWatch(opts StartCatalogEntityWatchOptions) error
 	}
 
 	listNS := ns
-	if opts.Namespace != "" {
+	switch {
+	case opts.Namespace != "":
 		listNS = opts.Namespace
-	} else if len(opts.Namespaces) == 1 {
+	case len(opts.Namespaces) == 1:
 		listNS = opts.Namespaces[0]
-	} else if opts.AllNamespaces || len(opts.Namespaces) > 1 {
+	case opts.AllNamespaces || len(opts.Namespaces) > 1:
 		listNS = ""
 	}
 	if opts.ClusterScoped {
@@ -728,11 +731,12 @@ func (a *App) GetBrowseMetrics(opts GetBrowseMetricsOptions) (kube.BrowseMetrics
 		ctx = context.Background()
 	}
 	listNS := ns
-	if opts.Namespace != "" {
+	switch {
+	case opts.Namespace != "":
 		listNS = opts.Namespace
-	} else if len(opts.Namespaces) == 1 {
+	case len(opts.Namespaces) == 1:
 		listNS = opts.Namespaces[0]
-	} else if opts.AllNamespaces || len(opts.Namespaces) > 1 {
+	case opts.AllNamespaces || len(opts.Namespaces) > 1:
 		listNS = ""
 	}
 	return kube.CollectBrowseMetrics(ctx, client, kube.CatalogEntityScope{

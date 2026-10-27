@@ -32,17 +32,19 @@ func (replicationControllerProvider) Build(ctx context.Context, req *Request) (*
 		),
 	}
 	var sections []Section
-	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields(
-		"Replicas", fmtInt32(rc.Status.Replicas),
-		"Ready", fmtInt32(rc.Status.ReadyReplicas),
-		"Available", fmtInt32(rc.Status.AvailableReplicas),
-		"Fully Labeled", fmtInt32(rc.Status.FullyLabeledReplicas),
-		"Observed Generation", fmtInt64(rc.Status.ObservedGeneration),
-	)))
-	sections = append(sections, sectionFields("spec", "Spec", GroupSpec, fields(
-		"Min Ready Seconds", fmtInt32(rc.Spec.MinReadySeconds),
-		"Replicas", fmtInt32(int32Or(rc.Spec.Replicas, 1)),
-	)))
+	sections = append(sections,
+		sectionFields("status", "Status", GroupSummary, fields(
+			"Replicas", fmtInt32(rc.Status.Replicas),
+			"Ready", fmtInt32(rc.Status.ReadyReplicas),
+			"Available", fmtInt32(rc.Status.AvailableReplicas),
+			"Fully Labeled", fmtInt32(rc.Status.FullyLabeledReplicas),
+			"Observed Generation", fmtInt64(rc.Status.ObservedGeneration),
+		)),
+		sectionFields("spec", "Spec", GroupSpec, fields(
+			"Min Ready Seconds", fmtInt32(rc.Spec.MinReadySeconds),
+			"Replicas", fmtInt32(int32Or(rc.Spec.Replicas, 1)),
+		)),
+	)
 	if rc.Spec.Selector != nil {
 		if sel := selectorString(rc.Spec.Selector); sel != "" {
 			sections = append(sections, sectionFields("selector", "Selector", GroupSpec, fields("Match Labels", sel)))
@@ -127,19 +129,21 @@ func (pdbProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, erro
 	if pdb.Spec.UnhealthyPodEvictionPolicy != nil {
 		evictionPolicy = string(*pdb.Spec.UnhealthyPodEvictionPolicy)
 	}
-	sections = append(sections, sectionFields("spec", "Spec", GroupSpec, fields(
-		"Min Available", minAvail,
-		"Max Unavailable", maxUnavail,
-		"Selector", labelSelectorSummary(pdb.Spec.Selector),
-		"Unhealthy Pod Eviction Policy", evictionPolicy,
-	)))
-	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields(
-		"Disruptions Allowed", fmtInt32(pdb.Status.DisruptionsAllowed),
-		"Current Healthy", fmtInt32(pdb.Status.CurrentHealthy),
-		"Desired Healthy", fmtInt32(pdb.Status.DesiredHealthy),
-		"Expected Pods", fmtInt32(pdb.Status.ExpectedPods),
-		"Observed Generation", fmtInt64(pdb.Status.ObservedGeneration),
-	)))
+	sections = append(sections,
+		sectionFields("spec", "Spec", GroupSpec, fields(
+			"Min Available", minAvail,
+			"Max Unavailable", maxUnavail,
+			"Selector", labelSelectorSummary(pdb.Spec.Selector),
+			"Unhealthy Pod Eviction Policy", evictionPolicy,
+		)),
+		sectionFields("status", "Status", GroupSummary, fields(
+			"Disruptions Allowed", fmtInt32(pdb.Status.DisruptionsAllowed),
+			"Current Healthy", fmtInt32(pdb.Status.CurrentHealthy),
+			"Desired Healthy", fmtInt32(pdb.Status.DesiredHealthy),
+			"Expected Pods", fmtInt32(pdb.Status.ExpectedPods),
+			"Observed Generation", fmtInt64(pdb.Status.ObservedGeneration),
+		)),
+	)
 	if len(pdb.Status.Conditions) > 0 {
 		var rows [][]string
 		for _, c := range pdb.Status.Conditions {

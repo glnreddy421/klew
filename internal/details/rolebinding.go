@@ -25,15 +25,17 @@ func (roleBindingProvider) Build(ctx context.Context, req *Request) (*ObjectDeta
 		),
 	}
 	var sections []Section
-	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields(
-		"Namespace", rb.Namespace,
-		"Subjects", fmtInt(len(rb.Subjects)),
-	)))
-	sections = append(sections, sectionFields("roleRef", "RoleRef", GroupRelationships, fields(
-		"Kind", rb.RoleRef.Kind,
-		"Name", rb.RoleRef.Name,
-		"API Group", rb.RoleRef.APIGroup,
-	)))
+	sections = append(sections,
+		sectionFields("status", "Status", GroupSummary, fields(
+			"Namespace", rb.Namespace,
+			"Subjects", fmtInt(len(rb.Subjects)),
+		)),
+		sectionFields("roleRef", "RoleRef", GroupRelationships, fields(
+			"Kind", rb.RoleRef.Kind,
+			"Name", rb.RoleRef.Name,
+			"API Group", rb.RoleRef.APIGroup,
+		)),
+	)
 	if rows := subjectRows(rb.Subjects); len(rows) > 0 {
 		sections = append(sections, sectionTable("subjects", "Subjects", GroupRelationships,
 			[]string{"Kind", "Name", "Namespace", "API Group"}, rows))
