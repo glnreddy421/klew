@@ -50,7 +50,7 @@ func (daemonSetProvider) Build(ctx context.Context, req *Request) (*ObjectDetail
 	if sec := podsRelationshipSection(ctx, req, matchLabels, podRows); !sec.Empty() {
 		sections = append(sections, sec)
 	}
-	sections = append(sections, podTemplateSections(&ds.Spec.Template, GroupSpec)...)
+	sections = append(sections, podTemplateSections(&ds.Spec.Template)...)
 	sections = append(sections, metaSections(ds.Labels, ds.Annotations, ownerRefsFromMeta(ds.OwnerReferences, ds.Namespace))...)
 	if mf := managedFieldsSection(ds.ManagedFields); !mf.Empty() {
 		sections = append(sections, mf)

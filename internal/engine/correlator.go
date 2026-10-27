@@ -28,7 +28,7 @@ func buildCausalChain(tl []model.TimelineEvent) []string {
 		}
 		// Info entries are skipped, except rollouts — and a rollout enriched
 		// with what changed (Reason set), so the change takes its place in the story.
-		if e.Severity == model.SeverityInfo && e.Type != "deploy" && e.Type != "rs" && !(e.Type == "rollout" && e.Reason != "") {
+		if e.Severity == model.SeverityInfo && e.Type != "deploy" && e.Type != "rs" && (e.Type != "rollout" || e.Reason == "") {
 			continue
 		}
 		lbl := chainLabel(e)

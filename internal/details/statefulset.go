@@ -53,7 +53,7 @@ func (statefulSetProvider) Build(ctx context.Context, req *Request) (*ObjectDeta
 	if sec := podsRelationshipSection(ctx, req, matchLabels, podRows); !sec.Empty() {
 		sections = append(sections, sec)
 	}
-	sections = append(sections, podTemplateSections(&sts.Spec.Template, GroupSpec)...)
+	sections = append(sections, podTemplateSections(&sts.Spec.Template)...)
 	if len(sts.Spec.VolumeClaimTemplates) > 0 {
 		var rows [][]string
 		for _, pvc := range sts.Spec.VolumeClaimTemplates {

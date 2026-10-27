@@ -2,6 +2,7 @@ package history
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"sync"
@@ -403,7 +404,7 @@ func TestLockIsExclusive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := AcquireLock(dir, "ctx|abc"); err != ErrLocked {
+	if _, err := AcquireLock(dir, "ctx|abc"); !errors.Is(err, ErrLocked) {
 		t.Fatalf("second lock err = %v, want ErrLocked", err)
 	}
 	l1.Release()

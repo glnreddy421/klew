@@ -108,7 +108,7 @@ func loadTerminalKubeconfig(sourcePath, contextName, namespace string) (terminal
 	cfg := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, &clientcmd.ConfigOverrides{})
 	r, err := cfg.RawConfig()
 	if err != nil {
-		return terminalKubeconfig{}, fmt.Errorf("%w: read kubeconfig: %v", ErrKubeconfigUnavailable, err)
+		return terminalKubeconfig{}, fmt.Errorf("%w: read kubeconfig: %w", ErrKubeconfigUnavailable, err)
 	}
 
 	out := terminalKubeconfig{
@@ -150,8 +150,8 @@ func contextNamespace(cfg clientcmdapi.Config, name string) string {
 }
 
 func resolvedKubeconfigPath(sourcePath string) string {
-	_, path, err := configLoader(sourcePath)
-	if err == nil && strings.TrimSpace(path) != "" {
+	_, path := configLoader(sourcePath)
+	if strings.TrimSpace(path) != "" {
 		return path
 	}
 	if p := strings.TrimSpace(sourcePath); p != "" {
@@ -290,7 +290,7 @@ func processAlive(pid int) bool {
 	if err != nil {
 		return false
 	}
-	defer p.Release()
+	defer func() { _ = p.Release() }()
 	if runtime.GOOS == "windows" {
 		// FindProcess opens a handle on Windows and fails for missing PIDs.
 		return true

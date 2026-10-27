@@ -72,7 +72,7 @@ func (deploymentProvider) Build(ctx context.Context, req *Request) (*ObjectDetai
 		sections = append(sections, sectionTable("replicaSets", "Replica Sets", GroupRelationships,
 			[]string{"Name", "Ready", "Replicas", "Created"}, rows))
 	}
-	sections = append(sections, podTemplateSections(&d.Spec.Template, GroupSpec)...)
+	sections = append(sections, podTemplateSections(&d.Spec.Template)...)
 	sections = append(sections, metaSections(d.Labels, d.Annotations, ownerRefsFromMeta(d.OwnerReferences, d.Namespace))...)
 	if mf := managedFieldsSection(d.ManagedFields); !mf.Empty() {
 		sections = append(sections, mf)

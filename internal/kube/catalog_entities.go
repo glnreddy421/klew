@@ -45,7 +45,7 @@ func ListCatalogEntities(ctx context.Context, client *Client, resourceID string,
 	}
 	group, version, resource, err := ParseResourceID(resourceID)
 	if err != nil {
-		return model.CatalogEntityList{AccessState: model.ResourceAccessError, Error: err.Error()}, nil
+		return model.CatalogEntityList{AccessState: model.ResourceAccessError, Error: err.Error()}, nil //nolint:nilerr // the parse error is reported in the list's Error field
 	}
 	gvr := schema.GroupVersionResource{Group: group, Version: version, Resource: resource}
 

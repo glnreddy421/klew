@@ -48,7 +48,7 @@ func (replicationControllerProvider) Build(ctx context.Context, req *Request) (*
 			sections = append(sections, sectionFields("selector", "Selector", GroupSpec, fields("Match Labels", sel)))
 		}
 	}
-	sections = append(sections, podTemplateSections(rc.Spec.Template, GroupSpec)...)
+	sections = append(sections, podTemplateSections(rc.Spec.Template)...)
 	sections = append(sections, metaSections(rc.Labels, rc.Annotations, ownerRefsFromMeta(rc.OwnerReferences, rc.Namespace))...)
 	if mf := managedFieldsSection(rc.ManagedFields); !mf.Empty() {
 		sections = append(sections, mf)
@@ -143,7 +143,7 @@ func (pdbProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, erro
 	if len(pdb.Status.Conditions) > 0 {
 		var rows [][]string
 		for _, c := range pdb.Status.Conditions {
-			rows = append(rows, []string{string(c.Type), string(c.Status), c.Reason, truncate(c.Message, 120)})
+			rows = append(rows, []string{c.Type, string(c.Status), c.Reason, truncate(c.Message, 120)})
 		}
 		sections = append(sections, sectionTable("conditions", "Conditions", GroupSummary,
 			[]string{"Type", "Status", "Reason", "Message"}, rows))
@@ -324,5 +324,5 @@ func formatMicroTime(t *metav1.MicroTime) string {
 	if t == nil || t.IsZero() {
 		return ""
 	}
-	return t.Time.Format("2006-01-02 15:04:05 MST")
+	return t.Format("2006-01-02 15:04:05 MST")
 }

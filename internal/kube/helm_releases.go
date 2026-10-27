@@ -247,7 +247,7 @@ func listHelmStorageObjectsMatching(ctx context.Context, client *Client, scope C
 			if !isHelmReleaseConfigMap(cm) {
 				continue
 			}
-			raw := []byte(cm.BinaryData[helmReleaseDataKey])
+			raw := cm.BinaryData[helmReleaseDataKey]
 			if len(raw) == 0 {
 				raw = []byte(cm.Data[helmReleaseDataKey])
 			}

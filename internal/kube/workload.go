@@ -105,7 +105,7 @@ func (col *Collector) Collect(ctx context.Context, opts CollectOptions) (model.E
 			bundle.Warnings = append(bundle.Warnings, fmt.Sprintf("list replicasets: %v", err))
 		} else {
 			for _, rs := range rss.Items {
-				if !matchesWorkload(deployNames, rs.Name, rs.Labels, rs.OwnerReferences) {
+				if !matchesWorkload(deployNames, rs.Name, rs.OwnerReferences) {
 					continue
 				}
 				bundle.ReplicaSets = append(bundle.ReplicaSets, summarizeRS(rs))
@@ -617,7 +617,7 @@ func podPVCRefs(pod corev1.Pod) []model.ResourceRef {
 	return refs
 }
 
-func matchesWorkload(deployNames []string, rsName string, labels map[string]string, owners []metav1.OwnerReference) bool {
+func matchesWorkload(deployNames []string, rsName string, owners []metav1.OwnerReference) bool {
 	if len(deployNames) == 0 {
 		return true
 	}

@@ -91,7 +91,7 @@ func (cronJobProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, 
 			Notes: []string{"Pods for CronJob Jobs could not be listed — check RBAC for pods/list in this namespace."},
 		})
 	}
-	sections = append(sections, podTemplateSections(&cj.Spec.JobTemplate.Spec.Template, GroupSpec)...)
+	sections = append(sections, podTemplateSections(&cj.Spec.JobTemplate.Spec.Template)...)
 	sections = append(sections, labelsAnnotationsSections(cj.Labels, cj.Annotations)...)
 	if mf := managedFieldsSection(cj.ManagedFields); !mf.Empty() {
 		sections = append(sections, mf)

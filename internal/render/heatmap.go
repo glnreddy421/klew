@@ -14,7 +14,7 @@ func ReadinessMatrix(pods []struct {
 	}
 	var lines []string
 	for _, p := range pods {
-		cell := "░"
+		var cell string
 		if p.Ready {
 			cell = BarFill.Render("█")
 		} else {

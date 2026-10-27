@@ -83,7 +83,7 @@ func (jobProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, erro
 			Notes: []string{"No Pods have been created for this Job yet."},
 		})
 	}
-	sections = append(sections, podTemplateSections(&job.Spec.Template, GroupSpec)...)
+	sections = append(sections, podTemplateSections(&job.Spec.Template)...)
 	sections = append(sections, labelsAnnotationsSections(job.Labels, job.Annotations)...)
 	if mf := managedFieldsSection(job.ManagedFields); !mf.Empty() {
 		sections = append(sections, mf)

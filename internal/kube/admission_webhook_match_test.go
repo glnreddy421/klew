@@ -37,7 +37,7 @@ func TestWebhookRulesMatchWorkloads(t *testing.T) {
 	if !WebhookRulesMatchWorkloads(rules) {
 		t.Fatal("expected pods create to match")
 	}
-	rules[0].Rule.Resources = []string{"configmaps"}
+	rules[0].Resources = []string{"configmaps"}
 	if WebhookRulesMatchWorkloads(rules) {
 		t.Fatal("configmaps only should not match workload perimeter")
 	}

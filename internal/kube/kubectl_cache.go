@@ -27,7 +27,7 @@ func klewDataDir() string {
 	}
 }
 
-func kubectlPlatform() (goos, goarch string) {
+func kubectlPlatform() (goos, goarch string) { //nolint:unparam // runtime.GOOS is constant per build, so the linter sees a single value
 	goos = runtime.GOOS
 	goarch = runtime.GOARCH
 	if goos == "darwin" && goarch == "arm64" {

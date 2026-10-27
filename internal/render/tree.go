@@ -26,7 +26,7 @@ func WorkloadTree(g model.WorkloadGraph, maxEdges int) string {
 	}
 	for i := 0; i < limit; i++ {
 		e := g.Edges[i]
-		b.WriteString(fmt.Sprintf("  %s\n    │ %s\n    ▼\n  %s\n", e.From, e.Annotation, e.To))
+		fmt.Fprintf(&b, "  %s\n    │ %s\n    ▼\n  %s\n", e.From, e.Annotation, e.To)
 		if i < limit-1 {
 			b.WriteString("\n")
 		}

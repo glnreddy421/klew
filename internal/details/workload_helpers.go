@@ -340,13 +340,13 @@ func resolvedSecretEnvRows(containers []corev1.Container, resolver secretEnvReso
 	return rows, notes
 }
 
-func podTemplateSections(tpl *corev1.PodTemplateSpec, group string) []Section {
+func podTemplateSections(tpl *corev1.PodTemplateSpec) []Section {
 	if tpl == nil {
 		return nil
 	}
 	var out []Section
 	spec := tpl.Spec
-	out = append(out, sectionFields("podTemplate", "Pod Template", group, fields(
+	out = append(out, sectionFields("podTemplate", "Pod Template", GroupSpec, fields(
 		"Service Account", spec.ServiceAccountName,
 		"Restart Policy", string(spec.RestartPolicy),
 		"DNS Policy", string(spec.DNSPolicy),
@@ -355,7 +355,7 @@ func podTemplateSections(tpl *corev1.PodTemplateSpec, group string) []Section {
 	)))
 	out = append(out, schedulingSections(spec)...)
 	if rows := containerRows(spec.Containers); len(rows) > 0 {
-		out = append(out, sectionTable("templateContainers", "Template Containers", group,
+		out = append(out, sectionTable("templateContainers", "Template Containers", GroupSpec,
 			[]string{"Name", "Image", "Req CPU", "Req Mem", "Lim CPU", "Lim Mem", "Ports"}, rows))
 	}
 	if rows := containerRows(spec.InitContainers); len(rows) > 0 {
@@ -363,25 +363,25 @@ func podTemplateSections(tpl *corev1.PodTemplateSpec, group string) []Section {
 			[]string{"Name", "Image", "Req CPU", "Req Mem", "Lim CPU", "Lim Mem", "Ports"}, rows))
 	}
 	if rows := volumeRows(spec.Volumes); len(rows) > 0 {
-		out = append(out, sectionTable("volumes", "Volumes", group,
+		out = append(out, sectionTable("volumes", "Volumes", GroupSpec,
 			[]string{"Name", "Source"}, rows))
 	}
 	if rows := volumeMountRows(append(spec.InitContainers, spec.Containers...)); len(rows) > 0 {
-		out = append(out, sectionTable("volumeMounts", "Volume Mounts", group,
+		out = append(out, sectionTable("volumeMounts", "Volume Mounts", GroupSpec,
 			[]string{"Container", "Volume", "Mount Path", "Sub Path", "Read Only"}, rows))
 	}
 	if rows := probeRows(append(spec.InitContainers, spec.Containers...)); len(rows) > 0 {
-		out = append(out, sectionTable("probes", "Probes", group,
+		out = append(out, sectionTable("probes", "Probes", GroupSpec,
 			[]string{"Container", "Probe", "Type", "Target", "Initial Delay", "Period", "Timeout", "Failures"}, rows))
 	}
 	if rows := envRowsDetailed(spec.Containers, nil); len(rows) > 0 {
-		out = append(out, sectionTable("environment", "Environment", group,
+		out = append(out, sectionTable("environment", "Environment", GroupSpec,
 			[]string{"Container", "Name", "Source", "Value"}, rows))
 	}
 	return out
 }
 
-func int32Or(p *int32, def int32) int32 {
+func int32Or(p *int32, def int32) int32 { //nolint:unparam // generic nil-pointer default; callers pass the API default of 1 today
 	if p == nil {
 		return def
 	}
@@ -394,7 +394,7 @@ func managedFieldsSection(mf []metav1.ManagedFieldsEntry) Section {
 	}
 	var rows [][]string
 	for _, m := range mf {
-		rows = append(rows, []string{m.Manager, string(m.Operation), m.APIVersion, string(m.FieldsType)})
+		rows = append(rows, []string{m.Manager, string(m.Operation), m.APIVersion, m.FieldsType})
 	}
 	return sectionTable("managedFields", "Managed Fields", GroupMetadata,
 		[]string{"Manager", "Operation", "API Version", "Fields Type"}, rows)
