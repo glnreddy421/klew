@@ -164,11 +164,7 @@ func resolveManifestResource(ctx context.Context, req ResourceManifestRequest) (
 	if client == nil || client.Clientset == nil {
 		return "", "", false, fmt.Errorf("kubernetes client is required")
 	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
-	g, r, namespaced, resolveErr := resolveResourceTypeForKind(ctx, client, kind)
+	g, r, namespaced, resolveErr := resolveResourceTypeForKind(client, kind)
 	if resolveErr != nil {
 		return "", "", false, resolveErr
 	}
@@ -226,7 +222,7 @@ type kindResourceMatch struct {
 	namespaced bool
 }
 
-func resolveResourceTypeForKind(ctx context.Context, client *Client, kind string) (group, resource string, namespaced bool, err error) {
+func resolveResourceTypeForKind(client *Client, kind string) (group, resource string, namespaced bool, err error) {
 	lists, err := client.Clientset.Discovery().ServerPreferredResources()
 	if err != nil {
 		return "", "", false, err

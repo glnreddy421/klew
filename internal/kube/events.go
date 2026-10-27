@@ -303,10 +303,6 @@ func eventNameMatchesDeploy(name string, deployNames []string) bool {
 	return len(deployNames) == 0
 }
 
-func eventMatchesDeploy(e corev1.Event, deployNames []string) bool {
-	return eventNameMatchesDeploy(e.InvolvedObject.Name, deployNames)
-}
-
 func contains(hay, needle string) bool {
 	return len(needle) > 0 && (hay == needle || len(hay) >= len(needle) && indexContains(hay, needle))
 }

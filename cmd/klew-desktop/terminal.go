@@ -210,7 +210,7 @@ func (m *terminalManager) write(id, data string) error {
 	if sess == nil || sess.pty == nil {
 		return fmt.Errorf("terminal not found")
 	}
-	_, err := sess.pty.Write([]byte(data))
+	_, err := sess.pty.WriteString(data)
 	return err
 }
 

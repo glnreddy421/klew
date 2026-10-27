@@ -11,8 +11,8 @@ import (
 const (
 	defaultSparklineMinutes = 15
 	defaultGCInterval       = time.Minute
-	maxPodsPerPattern       = 48  // cap InvolvedObject / pod cardinality per cluster
-	maxBucketSlack          = 4   // allow a few out-of-window keys before force-trim
+	maxPodsPerPattern       = 48 // cap InvolvedObject / pod cardinality per cluster
+	maxBucketSlack          = 4  // allow a few out-of-window keys before force-trim
 )
 
 // PatternMeta tracks side-car stats for one Drain3 cluster.
@@ -38,10 +38,10 @@ type PatternMetaSnap struct {
 
 // MetaStore is a concurrency-safe registry of PatternMeta keyed by Drain3 cluster ID.
 type MetaStore struct {
-	mu             sync.RWMutex
-	byCluster      map[int]*PatternMeta
-	sparklineMins  int
-	maxSamples     int
+	mu            sync.RWMutex
+	byCluster     map[int]*PatternMeta
+	sparklineMins int
+	maxSamples    int
 }
 
 // NewMetaStore creates an empty store. sparklineMins ≤ 0 → 15.

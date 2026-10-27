@@ -3,6 +3,7 @@ package kube
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"regexp"
@@ -489,7 +490,7 @@ func (ls *LogStreamer) streamContainer(ctx context.Context, ns, pod, container s
 			return
 		}
 		attempt++
-		if err != nil && err != io.EOF && ls.Sink != nil && attempt == 1 {
+		if err != nil && !errors.Is(err, io.EOF) && ls.Sink != nil && attempt == 1 {
 			// One soft notice; reconnects stay quiet to avoid noise.
 			ls.Sink(systemEvent(
 				"log_stream_retry",

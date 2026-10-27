@@ -109,53 +109,53 @@ type HypothesisTransition struct {
 
 // InvestigationState is the central mutable investigation snapshot.
 type InvestigationState struct {
-	CollectedAt       Timestamp         `json:"collectedAt"`
-	LastUpdatedAt     Timestamp         `json:"lastUpdatedAt"`
-	Mode              Mode              `json:"mode"`
-	KubeContext       KubeContext       `json:"kubeContext"`
-	NamespaceScope    NamespaceScope    `json:"namespaceScope"`
-	Query             string            `json:"query"`
-	Window            int64             `json:"window"` // milliseconds
-	TailLines         int               `json:"tailLines"`
-	MatchedObjects    []MatchedObject   `json:"matchedObjects"`
+	CollectedAt       Timestamp                         `json:"collectedAt"`
+	LastUpdatedAt     Timestamp                         `json:"lastUpdatedAt"`
+	Mode              Mode                              `json:"mode"`
+	KubeContext       KubeContext                       `json:"kubeContext"`
+	NamespaceScope    NamespaceScope                    `json:"namespaceScope"`
+	Query             string                            `json:"query"`
+	Window            int64                             `json:"window"` // milliseconds
+	TailLines         int                               `json:"tailLines"`
+	MatchedObjects    []MatchedObject                   `json:"matchedObjects"`
 	Scope             *investigation.InvestigationScope `json:"scope,omitempty"`
-	RecentChange      *RecentChange     `json:"recentChange,omitempty"`
-	Snapshot          EvidenceBundle    `json:"snapshot"`
-	WorkloadGraph     WorkloadGraph     `json:"workloadGraph"`
-	Timeline          []TimelineEvent   `json:"timeline"`
-	LiveEvidence      []EvidenceEvent   `json:"liveEvidence"`
-	Verdict           Verdict           `json:"verdict"`
-	Hypothesis        string            `json:"hypothesis"`
-	HypothesisLabel   string            `json:"hypothesisLabel"`
-	HypothesisReasons []string          `json:"hypothesisReasons"`
-	HypothesisStatus  string            `json:"hypothesisStatus,omitempty"`
-	HypothesisAlts    []Hypothesis      `json:"hypothesisAlternatives,omitempty"`
-	ConfidenceTrend   string            `json:"confidenceTrend,omitempty"` // up | down | flat
-	CausalChain       []string          `json:"causalChain,omitempty"`
+	RecentChange      *RecentChange                     `json:"recentChange,omitempty"`
+	Snapshot          EvidenceBundle                    `json:"snapshot"`
+	WorkloadGraph     WorkloadGraph                     `json:"workloadGraph"`
+	Timeline          []TimelineEvent                   `json:"timeline"`
+	LiveEvidence      []EvidenceEvent                   `json:"liveEvidence"`
+	Verdict           Verdict                           `json:"verdict"`
+	Hypothesis        string                            `json:"hypothesis"`
+	HypothesisLabel   string                            `json:"hypothesisLabel"`
+	HypothesisReasons []string                          `json:"hypothesisReasons"`
+	HypothesisStatus  string                            `json:"hypothesisStatus,omitempty"`
+	HypothesisAlts    []Hypothesis                      `json:"hypothesisAlternatives,omitempty"`
+	ConfidenceTrend   string                            `json:"confidenceTrend,omitempty"` // up | down | flat
+	CausalChain       []string                          `json:"causalChain,omitempty"`
 	// Incidents groups Warning events in the window; empty when there were none.
 	Incidents []Incident `json:"incidents,omitempty"`
 	// PinnedChange is a workload change that likely relates to the incident.
-	PinnedChange *PinnedChange `json:"pinnedChange,omitempty"`
-	NextChecks        []string          `json:"nextChecks,omitempty"`
-	FixActions        []string          `json:"fixActions,omitempty"`
-	LastTransition    *HypothesisTransition `json:"lastTransition,omitempty"`
-	Correlation       []string          `json:"correlation"`
-	Permissions       []PermissionCheck `json:"permissions"`
-	Warnings          []string          `json:"warnings"`
-	ActiveWatches     []ActiveWatch     `json:"activeWatches"`
-	ExpectedWatches   int               `json:"expectedWatches"`
-	WatchNote         string            `json:"watchNote,omitempty"`
-	Counters          StreamCounters    `json:"counters"`
-	DroppedEvidence   int64             `json:"droppedEvidence"`
-	HypothesisChanges int               `json:"hypothesisChanges"`
-	Paused            bool              `json:"paused"`
-	LogPatterns         *LogPatterns               `json:"logPatterns,omitempty"`
-	AdmissionPerimeter  *AdmissionPerimeterSummary `json:"admissionPerimeter,omitempty"`
+	PinnedChange       *PinnedChange              `json:"pinnedChange,omitempty"`
+	NextChecks         []string                   `json:"nextChecks,omitempty"`
+	FixActions         []string                   `json:"fixActions,omitempty"`
+	LastTransition     *HypothesisTransition      `json:"lastTransition,omitempty"`
+	Correlation        []string                   `json:"correlation"`
+	Permissions        []PermissionCheck          `json:"permissions"`
+	Warnings           []string                   `json:"warnings"`
+	ActiveWatches      []ActiveWatch              `json:"activeWatches"`
+	ExpectedWatches    int                        `json:"expectedWatches"`
+	WatchNote          string                     `json:"watchNote,omitempty"`
+	Counters           StreamCounters             `json:"counters"`
+	DroppedEvidence    int64                      `json:"droppedEvidence"`
+	HypothesisChanges  int                        `json:"hypothesisChanges"`
+	Paused             bool                       `json:"paused"`
+	LogPatterns        *LogPatterns               `json:"logPatterns,omitempty"`
+	AdmissionPerimeter *AdmissionPerimeterSummary `json:"admissionPerimeter,omitempty"`
 	// LogTailPods is the active log-gather allowlist; empty = not tailing logs.
-	LogTailPods       []string          `json:"logTailPods,omitempty"`
+	LogTailPods []string `json:"logTailPods,omitempty"`
 	// LogTailPaused is true when log follows are stopped but the gather session
 	// (pod selection) is retained for resume.
-	LogTailPaused     bool              `json:"logTailPaused,omitempty"`
+	LogTailPaused bool `json:"logTailPaused,omitempty"`
 }
 
 // Clone returns a shallow copy safe for TUI rendering.

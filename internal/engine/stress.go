@@ -97,12 +97,12 @@ func RunStress(cfg StressConfig) StressResult {
 	samples := append([]time.Duration(nil), lats...)
 	latMu.Unlock()
 	p50, p99 := latencyPercentiles(samples)
-	ingested := int64(final.Counters.EventsIngested)
+	ingested := final.Counters.EventsIngested
 
 	out := StressResult{
 		EventsRequested: published.Load(),
 		EventsIngested:  ingested,
-		RingDropped:     int64(final.DroppedEvidence),
+		RingDropped:     final.DroppedEvidence,
 		Elapsed:         elapsed,
 		TimelineLen:     len(final.Timeline),
 		LiveEvidenceLen: len(final.LiveEvidence),

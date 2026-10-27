@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 )
@@ -136,10 +135,6 @@ func replicaSetsForSelector(ctx context.Context, req *Request, matchLabels map[s
 	return rows
 }
 
-func podsForCronJob(ctx context.Context, req *Request, cronJobName string) [][]string {
-	return podsForCronJobFromJobs(ctx, req, jobsForCronJob(ctx, req, cronJobName))
-}
-
 func podsForCronJobFromJobs(ctx context.Context, req *Request, jobRows [][]string) [][]string {
 	if len(jobRows) == 0 {
 		return nil
@@ -177,25 +172,4 @@ func workloadMatchLabels(sel *metav1.LabelSelector) map[string]string {
 		return nil
 	}
 	return sel.MatchLabels
-}
-
-func podRowsFromItems(pods []corev1.Pod) [][]string {
-	if len(pods) == 0 {
-		return nil
-	}
-	rows := make([][]string, 0, len(pods))
-	for _, pod := range pods {
-		node := pod.Spec.NodeName
-		if node == "" {
-			node = "—"
-		}
-		rows = append(rows, []string{
-			pod.Name,
-			string(pod.Status.Phase),
-			podReadyLabel(pod),
-			node,
-		})
-	}
-	sort.Slice(rows, func(i, j int) bool { return rows[i][0] < rows[j][0] })
-	return rows
 }

@@ -176,9 +176,9 @@ func legacyEndpointDetailSections(ep *corev1.Endpoints) []Section {
 		}
 	}
 	sections = append(sections, sectionFields("legacyEndpoints", "Legacy Endpoints", GroupSummary, fields(
-		"Ready Addresses", fmtInt32(int32(ready)),
-		"Total Addresses", fmtInt32(int32(total)),
-		"Subsets", fmtInt32(int32(len(ep.Subsets))),
+		"Ready Addresses", fmtInt(ready),
+		"Total Addresses", fmtInt(total),
+		"Subsets", fmtInt(len(ep.Subsets)),
 	)))
 	if len(addrRows) > 0 {
 		sections = append(sections, sectionTable("legacyAddresses", "Addresses", GroupRelationships,

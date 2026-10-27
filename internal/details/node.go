@@ -80,7 +80,7 @@ func (nodeProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, err
 		"Operating System", node.Status.NodeInfo.OperatingSystem,
 		"Kernel", node.Status.NodeInfo.KernelVersion,
 		"Kubelet", node.Status.NodeInfo.KubeletVersion,
-		"Kube-Proxy", node.Status.NodeInfo.KubeProxyVersion,
+		"Kube-Proxy", node.Status.NodeInfo.KubeProxyVersion, //nolint:staticcheck // still reported by older clusters; blank on newer ones
 		"Container Runtime", node.Status.NodeInfo.ContainerRuntimeVersion,
 		"Machine ID", node.Status.NodeInfo.MachineID,
 		"System UUID", node.Status.NodeInfo.SystemUUID,

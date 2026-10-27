@@ -125,10 +125,9 @@ type Recorder struct {
 	// stopReason is recorded as the session's end reason when Run exits.
 	stopReason string
 	// resync asks runPlan to drop and re-establish every stream.
-	resync     chan struct{}
-	writes     chan writeItem
-	volume     volumeGuard
-	streamErrs map[string]error
+	resync chan struct{}
+	writes chan writeItem
+	volume volumeGuard
 }
 
 type writeItem struct {
@@ -174,7 +173,7 @@ func (r *Recorder) Run(ctx context.Context) {
 	r.writes = make(chan writeItem, 4096)
 	var wg sync.WaitGroup
 	wg.Add(2)
-	go func() { defer wg.Done(); r.writer(ctx) }()
+	go func() { defer wg.Done(); r.writer() }()
 	go func() { defer wg.Done(); r.coverageLoop(ctx) }()
 
 	backoff := r.cfg.MinBackoff
@@ -374,7 +373,7 @@ func (r *Recorder) stream(ctx context.Context, api, ns string) error {
 			established, rv, err = r.watch(ctx, api, ns, rv)
 		}
 		if ctx.Err() != nil {
-			return nil
+			return nil //nolint:nilerr // cancellation is a clean stop; the watch error is a side effect of it
 		}
 		if isExpired(err) {
 			// Resume point compacted away: relist (idempotent upsert) and rewatch.
@@ -531,7 +530,7 @@ const maxPendingRows = 50000
 // past those events, so dropping them would lose them for good. Rows and the
 // resume point are written in one transaction, so the saved resourceVersion
 // never runs ahead of stored events.
-func (r *Recorder) writer(ctx context.Context) {
+func (r *Recorder) writer() {
 	ticker := time.NewTicker(r.cfg.FlushInterval)
 	defer ticker.Stop()
 	rows := map[string]EventRow{}

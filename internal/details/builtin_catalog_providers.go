@@ -32,23 +32,25 @@ func (replicationControllerProvider) Build(ctx context.Context, req *Request) (*
 		),
 	}
 	var sections []Section
-	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields(
-		"Replicas", fmtInt32(rc.Status.Replicas),
-		"Ready", fmtInt32(rc.Status.ReadyReplicas),
-		"Available", fmtInt32(rc.Status.AvailableReplicas),
-		"Fully Labeled", fmtInt32(rc.Status.FullyLabeledReplicas),
-		"Observed Generation", fmtInt64(rc.Status.ObservedGeneration),
-	)))
-	sections = append(sections, sectionFields("spec", "Spec", GroupSpec, fields(
-		"Min Ready Seconds", fmtInt32(rc.Spec.MinReadySeconds),
-		"Replicas", fmtInt32(int32Or(rc.Spec.Replicas, 1)),
-	)))
+	sections = append(sections,
+		sectionFields("status", "Status", GroupSummary, fields(
+			"Replicas", fmtInt32(rc.Status.Replicas),
+			"Ready", fmtInt32(rc.Status.ReadyReplicas),
+			"Available", fmtInt32(rc.Status.AvailableReplicas),
+			"Fully Labeled", fmtInt32(rc.Status.FullyLabeledReplicas),
+			"Observed Generation", fmtInt64(rc.Status.ObservedGeneration),
+		)),
+		sectionFields("spec", "Spec", GroupSpec, fields(
+			"Min Ready Seconds", fmtInt32(rc.Spec.MinReadySeconds),
+			"Replicas", fmtInt32(int32Or(rc.Spec.Replicas, 1)),
+		)),
+	)
 	if rc.Spec.Selector != nil {
 		if sel := selectorString(rc.Spec.Selector); sel != "" {
 			sections = append(sections, sectionFields("selector", "Selector", GroupSpec, fields("Match Labels", sel)))
 		}
 	}
-	sections = append(sections, podTemplateSections(rc.Spec.Template, GroupSpec)...)
+	sections = append(sections, podTemplateSections(rc.Spec.Template)...)
 	sections = append(sections, metaSections(rc.Labels, rc.Annotations, ownerRefsFromMeta(rc.OwnerReferences, rc.Namespace))...)
 	if mf := managedFieldsSection(rc.ManagedFields); !mf.Empty() {
 		sections = append(sections, mf)
@@ -127,23 +129,25 @@ func (pdbProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, erro
 	if pdb.Spec.UnhealthyPodEvictionPolicy != nil {
 		evictionPolicy = string(*pdb.Spec.UnhealthyPodEvictionPolicy)
 	}
-	sections = append(sections, sectionFields("spec", "Spec", GroupSpec, fields(
-		"Min Available", minAvail,
-		"Max Unavailable", maxUnavail,
-		"Selector", labelSelectorSummary(pdb.Spec.Selector),
-		"Unhealthy Pod Eviction Policy", evictionPolicy,
-	)))
-	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields(
-		"Disruptions Allowed", fmtInt32(pdb.Status.DisruptionsAllowed),
-		"Current Healthy", fmtInt32(pdb.Status.CurrentHealthy),
-		"Desired Healthy", fmtInt32(pdb.Status.DesiredHealthy),
-		"Expected Pods", fmtInt32(pdb.Status.ExpectedPods),
-		"Observed Generation", fmtInt64(pdb.Status.ObservedGeneration),
-	)))
+	sections = append(sections,
+		sectionFields("spec", "Spec", GroupSpec, fields(
+			"Min Available", minAvail,
+			"Max Unavailable", maxUnavail,
+			"Selector", labelSelectorSummary(pdb.Spec.Selector),
+			"Unhealthy Pod Eviction Policy", evictionPolicy,
+		)),
+		sectionFields("status", "Status", GroupSummary, fields(
+			"Disruptions Allowed", fmtInt32(pdb.Status.DisruptionsAllowed),
+			"Current Healthy", fmtInt32(pdb.Status.CurrentHealthy),
+			"Desired Healthy", fmtInt32(pdb.Status.DesiredHealthy),
+			"Expected Pods", fmtInt32(pdb.Status.ExpectedPods),
+			"Observed Generation", fmtInt64(pdb.Status.ObservedGeneration),
+		)),
+	)
 	if len(pdb.Status.Conditions) > 0 {
 		var rows [][]string
 		for _, c := range pdb.Status.Conditions {
-			rows = append(rows, []string{string(c.Type), string(c.Status), c.Reason, truncate(c.Message, 120)})
+			rows = append(rows, []string{c.Type, string(c.Status), c.Reason, truncate(c.Message, 120)})
 		}
 		sections = append(sections, sectionTable("conditions", "Conditions", GroupSummary,
 			[]string{"Type", "Status", "Reason", "Message"}, rows))
@@ -204,7 +208,7 @@ func (resourceQuotaProvider) Build(ctx context.Context, req *Request) (*ObjectDe
 		Title:    "ResourceQuota/" + rq.Name,
 		Category: "cluster",
 		Status:   StatusBadge{Tone: "healthy", Label: "Active"},
-		Summary:  fields("Hard Limits", fmtInt32(int32(len(rq.Spec.Hard)))),
+		Summary:  fields("Hard Limits", fmtInt(len(rq.Spec.Hard))),
 	}
 	var sections []Section
 	if len(rq.Spec.Hard) > 0 {
@@ -250,7 +254,7 @@ func (limitRangeProvider) Build(ctx context.Context, req *Request) (*ObjectDetai
 		Title:    "LimitRange/" + lr.Name,
 		Category: "cluster",
 		Status:   StatusBadge{Tone: "healthy", Label: fmt.Sprintf("%d limits", len(lr.Spec.Limits))},
-		Summary:  fields("Limits", fmtInt32(int32(len(lr.Spec.Limits)))),
+		Summary:  fields("Limits", fmtInt(len(lr.Spec.Limits))),
 	}
 	var sections []Section
 	if len(lr.Spec.Limits) > 0 {
@@ -320,16 +324,9 @@ func stringPtr(p *string) string {
 	return *p
 }
 
-func fmtInt64Ptr(p *int64) string {
-	if p == nil {
-		return ""
-	}
-	return fmtInt64(*p)
-}
-
 func formatMicroTime(t *metav1.MicroTime) string {
 	if t == nil || t.IsZero() {
 		return ""
 	}
-	return t.Time.Format("2006-01-02 15:04:05 MST")
+	return t.Format("2006-01-02 15:04:05 MST")
 }

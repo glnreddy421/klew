@@ -38,8 +38,8 @@ func main() {
 		MinHeight: 640,
 		Menu:      buildApplicationMenu(app),
 		Mac: &mac.Options{
-			Appearance:           mac.NSAppearanceNameDarkAqua,
-			DisableZoom:          false,
+			Appearance:  mac.NSAppearanceNameDarkAqua,
+			DisableZoom: false,
 			About: &mac.AboutInfo{
 				Title:   "Klew",
 				Message: fmt.Sprintf("Everything your cluster is saying. One screen.\n\nVersion %s", version.Version),

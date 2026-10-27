@@ -1,6 +1,7 @@
 package kube
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -162,7 +163,7 @@ users:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(after) != string(contents) {
+	if !bytes.Equal(after, contents) {
 		t.Fatal("source kubeconfig was modified")
 	}
 

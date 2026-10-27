@@ -84,19 +84,20 @@ func (podProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, erro
 			[]string{"Type", "Status", "Reason", "Message"}, rows))
 	}
 
-	sections = append(sections, sectionFields("podSpec", "Pod Spec", GroupSpec, fields(
-		"Restart Policy", string(pod.Spec.RestartPolicy),
-		"DNS Policy", string(pod.Spec.DNSPolicy),
-		"Scheduler", pod.Spec.SchedulerName,
-		"Host Network", boolStr(pod.Spec.HostNetwork),
-		"Termination Grace", fmtOptionalInt64(pod.Spec.TerminationGracePeriodSeconds),
-		"Automount SA Token", boolPtrStr(pod.Spec.AutomountServiceAccountToken),
-	)))
-
-	sections = append(sections, sectionFields("nodeAssignment", "Node Assignment", GroupRelationships, fields(
-		"Node", pod.Spec.NodeName,
-		"Nominated Node", pod.Status.NominatedNodeName,
-	)))
+	sections = append(sections,
+		sectionFields("podSpec", "Pod Spec", GroupSpec, fields(
+			"Restart Policy", string(pod.Spec.RestartPolicy),
+			"DNS Policy", string(pod.Spec.DNSPolicy),
+			"Scheduler", pod.Spec.SchedulerName,
+			"Host Network", boolStr(pod.Spec.HostNetwork),
+			"Termination Grace", fmtOptionalInt64(pod.Spec.TerminationGracePeriodSeconds),
+			"Automount SA Token", boolPtrStr(pod.Spec.AutomountServiceAccountToken),
+		)),
+		sectionFields("nodeAssignment", "Node Assignment", GroupRelationships, fields(
+			"Node", pod.Spec.NodeName,
+			"Nominated Node", pod.Status.NominatedNodeName,
+		)),
+	)
 	sections = append(sections, schedulingSections(pod.Spec)...)
 	sections = append(sections, sectionFields("qos", "QoS", GroupRuntime, fields(
 		"QoS Class", string(pod.Status.QOSClass),

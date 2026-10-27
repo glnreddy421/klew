@@ -379,7 +379,7 @@ func TestEnrichEndpointSliceCatalogEntity(t *testing.T) {
 		"addressType": "IPv4",
 		"endpoints": []interface{}{
 			map[string]interface{}{
-				"addresses": []interface{}{"172.20.0.2"},
+				"addresses":  []interface{}{"172.20.0.2"},
 				"conditions": map[string]interface{}{"ready": true},
 			},
 		},
@@ -563,8 +563,8 @@ func TestEnrichPVCatalogEntity(t *testing.T) {
 	enrichPVCatalogEntity(&entity, map[string]interface{}{
 		"status": map[string]interface{}{"phase": "Bound"},
 		"spec": map[string]interface{}{
-			"capacity": map[string]interface{}{"storage": "8Gi"},
-			"accessModes": []interface{}{"ReadWriteOnce"},
+			"capacity":                      map[string]interface{}{"storage": "8Gi"},
+			"accessModes":                   []interface{}{"ReadWriteOnce"},
 			"persistentVolumeReclaimPolicy": "Delete",
 			"storageClassName":              "hostpath",
 			"claimRef": map[string]interface{}{

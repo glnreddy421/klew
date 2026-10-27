@@ -28,8 +28,8 @@ func (secretProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, e
 		Status:   StatusBadge{Tone: "healthy", Label: string(sec.Type)},
 		Summary: fields(
 			"Type", string(sec.Type),
-			"Keys", fmtInt32(int32(len(keys))),
-			"Consumers", fmtInt32(int32(len(consumers))),
+			"Keys", fmtInt(len(keys)),
+			"Consumers", fmtInt(len(consumers)),
 		),
 	}
 	var sections []Section
@@ -52,10 +52,12 @@ func (secretProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, e
 		for _, n := range consumers {
 			rows = append(rows, []string{n})
 		}
-		sections = append(sections, sectionTable("mountedBy", "Mounted By", GroupRelationships,
-			[]string{"Pod"}, rows))
-		sections = append(sections, sectionTable("consumers", "Consumers", GroupRelationships,
-			[]string{"Pod"}, rows))
+		sections = append(sections,
+			sectionTable("mountedBy", "Mounted By", GroupRelationships,
+				[]string{"Pod"}, rows),
+			sectionTable("consumers", "Consumers", GroupRelationships,
+				[]string{"Pod"}, rows),
+		)
 	}
 	sections = append(sections, metaSections(sec.Labels, sec.Annotations, ownerRefsFromMeta(sec.OwnerReferences, sec.Namespace))...)
 	if mf := managedFieldsSection(sec.ManagedFields); !mf.Empty() {

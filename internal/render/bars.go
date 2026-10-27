@@ -8,13 +8,13 @@ import (
 )
 
 var (
-	BarFill   = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
-	BarEmpty  = lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
-	Label     = lipgloss.NewStyle().Bold(true)
-	Muted     = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-	Critical  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("196"))
-	Warning   = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
-	Healthy   = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
+	BarFill  = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+	BarEmpty = lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
+	Label    = lipgloss.NewStyle().Bold(true)
+	Muted    = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	Critical = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("196"))
+	Warning  = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
+	Healthy  = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
 )
 
 // HorizontalBar renders a labeled bar chart row.

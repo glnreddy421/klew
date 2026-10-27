@@ -99,7 +99,7 @@ func collectEventRows(ctx context.Context, req *Request) ([][]string, []string, 
 		if !evidenceTouches(e, kind, name) {
 			continue
 		}
-		push(e.Timestamp.Time(), string(e.SourceType), e.Reason, e.Message, int32(e.Count), "", false)
+		push(e.Timestamp.Time(), string(e.SourceType), e.Reason, e.Message, clampInt32(int64(e.Count)), "", false)
 	}
 
 	var hist *model.EventHistoryCoverage

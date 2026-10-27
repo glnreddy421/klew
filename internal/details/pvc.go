@@ -52,12 +52,14 @@ func (pvcProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, erro
 		),
 	}
 	var sections []Section
-	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields(
-		"Phase", phase,
-		"Capacity", cap,
-	)))
-	sections = append(sections, sectionFields("capacity", "Capacity", GroupRuntime, fields("Storage", cap)))
-	sections = append(sections, sectionFields("storageClass", "StorageClass", GroupRelationships, fields("Name", sc)))
+	sections = append(sections,
+		sectionFields("status", "Status", GroupSummary, fields(
+			"Phase", phase,
+			"Capacity", cap,
+		)),
+		sectionFields("capacity", "Capacity", GroupRuntime, fields("Storage", cap)),
+		sectionFields("storageClass", "StorageClass", GroupRelationships, fields("Name", sc)),
+	)
 	vm := ""
 	if pvc.Spec.VolumeMode != nil {
 		vm = string(*pvc.Spec.VolumeMode)

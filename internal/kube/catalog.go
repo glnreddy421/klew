@@ -132,10 +132,6 @@ func parseDiscoveredResources(lists []*metav1.APIResourceList, failedGroups []st
 
 func toDescriptor(d DiscoveredResource, perms model.ResourcePermissions, access model.ResourceAccessState, count *model.ResourceCount) model.KubernetesResourceDescriptor {
 	source := classifySource(d.Group)
-	section := source
-	if section == model.ResourceSourceExtension && !d.Namespaced {
-		// cluster-scoped extensions stay extension
-	}
 	return model.KubernetesResourceDescriptor{
 		ID:             ResourceID(d.Group, d.Version, d.Resource),
 		Group:          d.Group,

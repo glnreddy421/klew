@@ -5,13 +5,16 @@ package render
 import "fmt"
 
 // ReadinessMatrix renders pod ready/not-ready grid.
-func ReadinessMatrix(pods []struct{ Name string; Ready bool }) []string {
+func ReadinessMatrix(pods []struct {
+	Name  string
+	Ready bool
+}) []string {
 	if len(pods) == 0 {
 		return []string{"  (no pods)"}
 	}
 	var lines []string
 	for _, p := range pods {
-		cell := "░"
+		var cell string
 		if p.Ready {
 			cell = BarFill.Render("█")
 		} else {

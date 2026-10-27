@@ -36,9 +36,9 @@ func BuildScope(ds Dataset, root Ref) InvestigationScope {
 
 	// ── workload-level config/secret/pvc/serviceaccount references ──
 	if hasRoot {
-		linkRefs(&scope, root, "ConfigMap", rootObj.ConfigMaps, RelMounts)
-		linkRefs(&scope, root, "Secret", rootObj.Secrets, RelMounts)
-		linkRefs(&scope, root, "PersistentVolumeClaim", rootObj.PVCs, RelMounts)
+		linkRefs(&scope, root, "ConfigMap", rootObj.ConfigMaps)
+		linkRefs(&scope, root, "Secret", rootObj.Secrets)
+		linkRefs(&scope, root, "PersistentVolumeClaim", rootObj.PVCs)
 		if rootObj.ServiceAccount != "" {
 			sa := Ref{Kind: "ServiceAccount", Name: rootObj.ServiceAccount, Namespace: ds.Namespace}
 			scope.link(root, sa, RelUses)
@@ -149,16 +149,16 @@ func expandPod(scope *InvestigationScope, pod Object) {
 	if pod.Node != "" {
 		scope.link(pod.Ref, Ref{Kind: "Node", Name: pod.Node}, RelSchedules)
 	}
-	linkRefs(scope, pod.Ref, "ConfigMap", pod.ConfigMaps, RelMounts)
-	linkRefs(scope, pod.Ref, "Secret", pod.Secrets, RelMounts)
-	linkRefs(scope, pod.Ref, "PersistentVolumeClaim", pod.PVCs, RelMounts)
+	linkRefs(scope, pod.Ref, "ConfigMap", pod.ConfigMaps)
+	linkRefs(scope, pod.Ref, "Secret", pod.Secrets)
+	linkRefs(scope, pod.Ref, "PersistentVolumeClaim", pod.PVCs)
 	if pod.ServiceAccount != "" {
 		scope.link(pod.Ref, Ref{Kind: "ServiceAccount", Name: pod.ServiceAccount, Namespace: pod.Ref.Namespace}, RelUses)
 	}
 }
 
-func linkRefs(scope *InvestigationScope, from Ref, kind string, names []string, rel RelationKind) {
+func linkRefs(scope *InvestigationScope, from Ref, kind string, names []string) {
 	for _, n := range names {
-		scope.link(from, Ref{Kind: kind, Name: n, Namespace: from.Namespace}, rel)
+		scope.link(from, Ref{Kind: kind, Name: n, Namespace: from.Namespace}, RelMounts)
 	}
 }

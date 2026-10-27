@@ -18,12 +18,9 @@ type mockEmit struct {
 // mockBaseState returns a minimal live investigation state for engine tests.
 func mockBaseState() model.InvestigationState {
 	labels := map[string]string{"app": "payment-gateway"}
-	pod := func(name string, ready bool, restarts int32, oom bool) model.PodSummary {
+	pod := func(name string, ready bool, restarts int32) model.PodSummary {
 		c := model.ContainerStatus{Name: "app", Image: "repo/payment-gateway:v2.3.1", Ready: ready, RestartCount: restarts, State: "running",
 			RequestsCPU: "250m", RequestsMem: "384Mi", LimitsCPU: "500m", LimitsMem: "384Mi"}
-		if oom {
-			c.LastState, c.LastReason, c.LastExitCode = "terminated", "OOMKilled", 137
-		}
 		return model.PodSummary{Name: name, Namespace: "prod", Node: "ip-10-0-2-11", Phase: "Running", Ready: ready, RestartCount: restarts, Labels: labels,
 			Containers: []model.ContainerStatus{c}}
 	}
@@ -39,10 +36,10 @@ func mockBaseState() model.InvestigationState {
 			{Name: "payment-gateway-52aa", Namespace: "prod", Replicas: 1, Ready: 1, DeploymentOwner: "payment-gateway"},
 		},
 		Pods: []model.PodSummary{
-			pod("payment-gateway-a1", false, 4, false),
-			pod("payment-gateway-a2", false, 3, false),
-			pod("payment-gateway-a3", false, 2, false),
-			pod("payment-gateway-a4", true, 0, false),
+			pod("payment-gateway-a1", false, 4),
+			pod("payment-gateway-a2", false, 3),
+			pod("payment-gateway-a3", false, 2),
+			pod("payment-gateway-a4", true, 0),
 		},
 		Services: []model.ServiceSummary{{Name: "payment-gateway", Namespace: "prod", Type: "ClusterIP",
 			Selector: "app=payment-gateway", ReadyEndpoints: 1, TotalEndpoints: 4, Ports: []string{"80/TCP"}}},
@@ -73,8 +70,10 @@ func fixturePermissions() []model.PermissionCheck {
 			out = append(out, allow(res, verb, true))
 		}
 	}
-	out = append(out, allow("pods/log", "get", true))
-	out = append(out, allow("nodes", "get", false))
+	out = append(out,
+		allow("pods/log", "get", true),
+		allow("nodes", "get", false),
+	)
 	return out
 }
 

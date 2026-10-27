@@ -93,7 +93,7 @@ func enrichConfigMapCatalogEntity(entity *model.CatalogEntity, obj map[string]in
 		return
 	}
 	entity.ConfigMapData = catalogConfigMapDataEntries(obj)
-	count := int32(len(entity.ConfigMapData))
+	count := clampInt32(int64(len(entity.ConfigMapData)))
 	entity.DataKeys = &count
 	if count > 0 {
 		entity.StatusHint = fmt.Sprintf("%d keys", count)

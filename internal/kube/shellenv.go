@@ -25,7 +25,7 @@ func BootstrapLoginShellEnv() {
 		if val == "" || !mergeLoginShellVar(key) {
 			continue
 		}
-		os.Setenv(key, val)
+		_ = os.Setenv(key, val) // best effort: a var that fails to set keeps its current value
 	}
 }
 
@@ -55,7 +55,7 @@ func loginShellEnvironment() (map[string]string, error) {
 	if shell == "" {
 		shell = "/bin/zsh"
 	}
-	cmd := exec.Command(shell, "-lc", "env -0")
+	cmd := exec.Command(shell, "-lc", "env -0") //nolint:gosec // G702: runs the user's own login shell ($SHELL) with a fixed script to read its environment
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, err

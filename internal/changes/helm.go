@@ -68,8 +68,7 @@ func DiffHelmRevisions(prev, next HelmRevision) []model.FieldDiff {
 	nc := strings.TrimSpace(next.Chart + " " + next.ChartVersion)
 	out = appendChanged(out, "chart", pc, nc, AreaChart)
 	pv, nv := flattenValues("", prev.Values), flattenValues("", next.Values)
-	redactPath := func(path, v string) string { return RedactValue(path, v) }
-	return append(out, diffStringMap("values", pv, nv, AreaValues, redactPath)...)
+	return append(out, diffStringMap("values", pv, nv, AreaValues, RedactValue)...)
 }
 
 // flattenValues turns nested values into "a.b.c" → scalar strings.
