@@ -4,6 +4,13 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 
 ## [Unreleased]
 
+### Security
+
+- **Verified kubectl downloads** — the version-matched kubectl Klew downloads from `dl.k8s.io` is now checked against the SHA-256 published next to it before it is used, and so is the kubectl bundled into releases. A missing checksum or a mismatch stops the download. kubectl binaries cached by earlier versions are downloaded and verified again once.
+- **Release provenance** — releases include an SPDX SBOM and a `SHA256SUMS` file, and every zip and DMG has signed build provenance and SBOM attestations (`gh attestation verify <file> --repo glnreddy421/klew`).
+- **Hardened workflows** — every GitHub Action is pinned to a commit SHA, workflows get no token permissions by default, and the release job asks only for what it uses.
+- **Go toolchain** — builds use Go 1.26.10, which fixes standard-library vulnerabilities in `net/http`, `crypto/tls`, `crypto/x509` and `encoding/asn1` that earlier toolchains left in release binaries.
+
 ### MCP server
 
 - **`klew-mcp`** — a new read-only MCP server that gives AI assistants Klew's analysis over stdio. Tools: `klew_list_contexts`, `klew_investigate` (verdict, causal chain, failing pods, patterns, incidents, related change, next checks), `klew_investigation_details` (paged sections of an investigation), `klew_event_history` (live plus recorded events with coverage), and `klew_workload_changes` (revisions with field-level diffs). Runs without the desktop app, on macOS and Linux; reads the desktop app's recorded events when present. See [docs/mcp.md](docs/mcp.md).

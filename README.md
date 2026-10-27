@@ -58,6 +58,12 @@ brew install --cask klew
 
 Grab the DMG from [Releases](https://github.com/glnreddy421/klew/releases) — `Klew-x.y.z-macos-arm64.dmg` for Apple Silicon, `Klew-x.y.z-macos-amd64.dmg` for Intel — and drag **Klew** to Applications.
 
+Each release also has an SPDX SBOM, a `SHA256SUMS` file, and signed build provenance. To check that a download was built by this repository's release workflow:
+
+```bash
+gh attestation verify Klew-x.y.z-macos-arm64.dmg --repo glnreddy421/klew
+```
+
 ## Quick start
 
 **Browse** — pick a context and namespace in the top bar, open **Resources**, choose a category, and select a row. The inspector loads live details, the connection trace, and the manifest.

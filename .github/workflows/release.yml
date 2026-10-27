@@ -10,13 +10,19 @@ on:
         description: Tag to publish (e.g. v1.3.5)
         required: true
 
-permissions:
-  contents: write
+# Nothing by default; the job below asks only for what it uses. Third-party
+# actions are pinned to commit SHAs because this job holds the Apple signing
+# certificate and the Homebrew tap token.
+permissions: {}
 
 jobs:
   macos:
     runs-on: macos-latest
     timeout-minutes: 90
+    permissions:
+      contents: write # create the release and upload assets
+      id-token: write # sign build provenance and SBOM attestations
+      attestations: write
     env:
       VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
       GITHUB_REF_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
@@ -26,16 +32,19 @@ jobs:
       APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
 
-      - uses: actions/setup-go@v5
+      - name: Version number
+        run: echo "VERSION_NUMBER=${VERSION#v}" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "24"
           cache: npm
@@ -45,7 +54,7 @@ jobs:
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.14.0
 
       - name: Import signing certificate
-        uses: apple-actions/import-codesign-certs@v3
+        uses: apple-actions/import-codesign-certs@63fff01cd422d4b7b855d40ca1e9d34d2de9427d # v3.0.0
         with:
           p12-file-base64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
           p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -64,6 +73,36 @@ jobs:
 
       - name: Build, sign, notarize, and package (arm64 + Intel)
         run: ./.github/scripts/release-macos.sh
+
+      - name: SBOM (SPDX)
+        # Go modules from go.mod and frontend packages from package-lock.json.
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          path: .
+          format: spdx-json
+          output-file: dist/Klew-${{ env.VERSION_NUMBER }}-sbom.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Checksums
+        working-directory: dist
+        run: shasum -a 256 Klew-*.zip Klew-*.dmg Klew-*-sbom.spdx.json > "Klew-${VERSION_NUMBER}-SHA256SUMS.txt"
+
+      - name: Build provenance attestation
+        # Lets users run: gh attestation verify Klew-<version>-macos-arm64.dmg --repo glnreddy421/klew
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/Klew-*.zip
+            dist/Klew-*.dmg
+
+      - name: SBOM attestation
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-path: |
+            dist/Klew-*.zip
+            dist/Klew-*.dmg
+          sbom-path: dist/Klew-${{ env.VERSION_NUMBER }}-sbom.spdx.json
 
       - name: Publish GitHub release
         env:
@@ -84,7 +123,9 @@ jobs:
             "Klew-${VERSION}-macos-arm64.zip" \
             "Klew-${VERSION}-macos-amd64.zip" \
             "Klew-${VERSION}-macos-arm64.dmg" \
-            "Klew-${VERSION}-macos-amd64.dmg"
+            "Klew-${VERSION}-macos-amd64.dmg" \
+            "Klew-${VERSION}-sbom.spdx.json" \
+            "Klew-${VERSION}-SHA256SUMS.txt"
 
       - name: Update Homebrew tap
         run: ./.github/scripts/update-homebrew-tap.sh
