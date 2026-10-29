@@ -32,4 +32,6 @@ The Resources surface (catalog, entity lists, overview, inspector, manifest YAML
 - **Never** add tools that create, update, patch, delete, apply, scale, exec, or port-forward, or that run suggested commands.
 - Every tool sets `readOnlyHint: true` and `destructiveHint: false`; `TestToolsAreReadOnly` enforces this.
 - Never return Secret values. Keep results compact (cap lists, truncate long text) — they land in the model's context.
+- Every free-text field from the cluster (logs, events, messages) must go through `clean` in `internal/mcpserver/shape.go` (redaction, then truncation), and any new log-derived field must also honour `-no-log-samples`.
+- Describe redaction as best effort. Never claim results are free of sensitive data.
 - Logs go to stderr only; stdout carries the MCP protocol.

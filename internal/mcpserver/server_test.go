@@ -171,7 +171,7 @@ func TestInvestigateSummaryAndDetails(t *testing.T) {
 		t.Fatalf("healthy pod should rank last, got %v", last["name"])
 	}
 
-	res, _ = call(t, cs, "klew_investigation_details", map[string]any{"investigation_id": "inv_missing", "section": "pods"})
+	res, _ = call(t, cs, "klew_investigation_details", map[string]any{"investigation_id": "inv_000000000000", "section": "pods"})
 	if !res.IsError || !strings.Contains(errText(res), "klew_investigate") {
 		t.Fatalf("missing id should error with a hint, got %v", errText(res))
 	}
@@ -244,5 +244,107 @@ func TestWorkloadChangesRejectsUnknownKind(t *testing.T) {
 	res, _ := call(t, sess, "klew_workload_changes", map[string]any{"namespace": "shop", "kind": "Secret", "name": "db"})
 	if !res.IsError {
 		t.Fatal("unsupported kind should be rejected")
+	}
+}
+
+// leakyState is an investigation whose log-derived fields all carry a secret.
+func leakyState() model.InvestigationState {
+	const line = "auth failed password=hunter2-prod for jane@example.com"
+	logTpl := model.LogTemplate{
+		Template: "auth failed password=<*> for <*>", Count: 12, Severity: "error", Pods: []string{"api-1"},
+		Samples: []model.LogSample{{Message: line, Pod: "api-1"}},
+	}
+	return model.InvestigationState{
+		CollectedAt:    model.TimestampFrom(time.Now()),
+		NamespaceScope: model.NamespaceScope{Primary: "shop"},
+		Verdict: model.Verdict{
+			Status: "degraded",
+			StrongSignals: []model.Signal{
+				{Label: "log signal", Source: "LOG", Strength: "strong", Evidence: line},
+				{Label: "OOMKilled", Source: "OBJECT", Strength: "strong", Evidence: "container api/api reason=OOMKilled"},
+			},
+		},
+		CausalChain: []string{"OOMKilled", "auth failed password=hunter2-prod +2m"},
+		Timeline: []model.TimelineEvent{
+			{Type: "log", Message: line},
+			{Type: "k8s_event", Reason: "OOMKilled", Message: "container exceeded memory"},
+		},
+		LiveEvidence: []model.EvidenceEvent{{SourceType: model.SourceLog, Pod: "api-1", Message: line}},
+		LogPatterns: &model.LogPatterns{
+			Templates:     []model.LogTemplate{logTpl},
+			EvidenceBoard: &model.EvidenceBoardPayload{Cards: []model.EvidenceCard{{RootEvent: model.LogTemplate{Template: "[OOMKilled] <*>"}, TriggeredLogs: []model.LogTemplate{logTpl}}}},
+		},
+	}
+}
+
+// plainJSON encodes v without HTML escaping, so "<*>" stays readable.
+func plainJSON(v any) string {
+	var b strings.Builder
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	_ = enc.Encode(v)
+	return b.String()
+}
+
+// allOutput runs an investigation and fetches every detail section, returning
+// all the JSON the client received.
+func allOutput(t *testing.T, s *Server) string {
+	t.Helper()
+	s.runFor = func(context.Context, *kube.Client, engine.LiveOptions, time.Duration) (model.InvestigationState, error) {
+		return leakyState(), nil
+	}
+	cs := connect(t, s)
+	res, out := call(t, cs, "klew_investigate", map[string]any{"namespace": "shop"})
+	if res.IsError {
+		t.Fatalf("investigate: %s", errText(res))
+	}
+	all := plainJSON(out)
+	for _, sec := range detailSections {
+		res, page := call(t, cs, "klew_investigation_details", map[string]any{"investigation_id": out["investigation_id"], "section": sec, "limit": 200})
+		if res.IsError {
+			t.Fatalf("%s: %s", sec, errText(res))
+		}
+		all += plainJSON(page)
+	}
+	return all
+}
+
+func TestResultsAreRedacted(t *testing.T) {
+	all := allOutput(t, testServer(fake.NewSimpleClientset(), nil))
+	for _, secret := range []string{"hunter2-prod", "jane@example.com"} {
+		if strings.Contains(all, secret) {
+			t.Errorf("%q reached the client", secret)
+		}
+	}
+	if !strings.Contains(all, "auth failed password=‹redacted›") {
+		t.Error("redacted log sample missing; samples should still be returned by default")
+	}
+}
+
+func TestNoLogSamplesDropsLogText(t *testing.T) {
+	s := testServer(fake.NewSimpleClientset(), nil)
+	s.shape = shaper{noLogSamples: true}
+	all := allOutput(t, s)
+	if strings.Contains(all, "auth failed for") || strings.Contains(all, "auth failed password=‹redacted› for") {
+		t.Errorf("raw log text reached the client with -no-log-samples:\n%s", all)
+	}
+	for _, want := range []string{
+		"auth failed password=<*> for <*>",   // the template itself is kept
+		"container api/api reason=OOMKilled", // non-log signal evidence is kept
+		`"causal_chain":["OOMKilled"]`,       // log-worded chain step dropped
+	} {
+		if !strings.Contains(all, want) {
+			t.Errorf("missing %s", want)
+		}
+	}
+}
+
+func TestNamespaceMustBeAValidName(t *testing.T) {
+	cs := connect(t, testServer(fake.NewSimpleClientset(), nil))
+	for _, ns := range []string{"Prod", "shop; rm -rf /", "-bad", strings.Repeat("a", 64)} {
+		res, _ := call(t, cs, "klew_event_history", map[string]any{"namespace": ns})
+		if !res.IsError {
+			t.Errorf("namespace %q accepted", ns)
+		}
 	}
 }

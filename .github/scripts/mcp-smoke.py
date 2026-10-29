@@ -35,7 +35,7 @@ def main() -> int:
         {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
         {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {
             "name": "klew_investigation_details",
-            "arguments": {"investigation_id": "inv_missing", "section": "pods"}}},
+            "arguments": {"investigation_id": "inv_000000000000", "section": "pods"}}},
     ]
     proc = subprocess.Popen(
         [sys.argv[1], "-no-history"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,

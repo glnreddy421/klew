@@ -24,6 +24,7 @@ func main() {
 	contextName := flag.String("context", "", "default kube context (default: kubeconfig current-context)")
 	historyDir := flag.String("history-dir", defaultHistoryDir(), "directory with the Klew desktop app's recorded events")
 	noHistory := flag.Bool("no-history", false, "do not read recorded event history")
+	noLogSamples := flag.Bool("no-log-samples", false, "never return raw container log lines; patterns, counts and non-log evidence are still returned")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 
@@ -46,6 +47,7 @@ func main() {
 	}
 	if err := run(mcpserver.Options{
 		Kubeconfig: *kubeconfig, Context: *contextName, HistoryDir: *historyDir, Version: version.Version,
+		NoLogSamples: *noLogSamples,
 	}); err != nil {
 		fmt.Fprintf(os.Stderr, "klew-mcp: %v\n", err)
 		os.Exit(1)

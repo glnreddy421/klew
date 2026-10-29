@@ -2,14 +2,17 @@ package mcpserver
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/glnreddy421/klew/internal/engine"
 	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/internal/redact"
 )
 
 // Compact projections of engine state. Tool results land in the model's
-// context, so they drop UI-only fields (sparklines, labels, layout) and cap
-// long text.
+// context and from there go to the model provider, so every free-text field
+// passes through clean (best-effort redaction, then a length cap) and UI-only
+// fields (sparklines, labels, layout) are dropped.
 
 const maxTextLen = 400
 
@@ -117,8 +120,11 @@ func briefCoverage(c *model.EventHistoryCoverage) *coverageBrief {
 	return &coverageBrief{Since: c.Since, RecordedEvents: c.RecordedEvents, Gaps: gaps, GapsTotal: len(c.Gaps)}
 }
 
-// truncate caps s at maxTextLen runes.
-func truncate(s string) string {
+// clean redacts credentials and email addresses (best effort, see package
+// redact), then caps s at maxTextLen runes. Redacting first keeps a secret cut
+// at the boundary from surviving.
+func clean(s string) string {
+	s = redact.String(s)
 	r := []rune(s)
 	if len(r) <= maxTextLen {
 		return s
@@ -147,7 +153,7 @@ func briefPod(p model.PodSummary) podBrief {
 	for _, c := range p.Containers {
 		out.Containers = append(out.Containers, containerBrief{
 			Name: c.Name, Image: c.Image, Ready: c.Ready, Restarts: c.RestartCount,
-			State: c.State, Reason: c.Reason, Message: truncate(c.Message), ExitCode: c.ExitCode,
+			State: c.State, Reason: c.Reason, Message: clean(c.Message), ExitCode: c.ExitCode,
 			LastState: c.LastState, LastReason: c.LastReason, LastExitCode: c.LastExitCode,
 			RequestsCPU: c.RequestsCPU, RequestsMem: c.RequestsMem, LimitsCPU: c.LimitsCPU, LimitsMem: c.LimitsMem,
 		})
@@ -194,16 +200,110 @@ func allSignals(v model.Verdict) []model.Signal {
 	return append(out, v.WeakSignals...)
 }
 
-func briefSignal(s model.Signal) signalBrief {
-	return signalBrief{
+// shaper projects engine state for tool results. With noLogSamples it leaves
+// out raw container log text: pattern samples, log evidence messages, and log
+// excerpts in signals, the timeline and the causal chain. Templates, counts,
+// trends and every non-log signal are kept.
+type shaper struct {
+	noLogSamples bool
+}
+
+func (sh shaper) signal(s model.Signal) signalBrief {
+	out := signalBrief{
 		Label: s.Label, Severity: s.Severity, Strength: s.Strength, Source: s.Source, Count: s.Count,
-		Evidence: truncate(s.Evidence), Object: refString(s.ObjectRef),
+		Evidence: clean(s.Evidence), Object: refString(s.ObjectRef),
 	}
+	if sh.noLogSamples && s.Source == "LOG" {
+		out.Evidence = ""
+	}
+	return out
+}
+
+func (sh shaper) pattern(t model.LogTemplate, samples int) patternBrief {
+	if sh.noLogSamples {
+		samples = 0
+	}
+	return briefPattern(t, samples)
+}
+
+func (sh shaper) evidence(e model.EvidenceEvent) evidenceBrief {
+	out := briefEvidence(e)
+	if sh.noLogSamples && e.SourceType == model.SourceLog {
+		out.Message = ""
+	}
+	return out
+}
+
+type timelineBrief struct {
+	Time     model.Timestamp `json:"time"`
+	Type     string          `json:"type"`
+	Severity model.Severity  `json:"severity"`
+	Object   string          `json:"object,omitempty"`
+	Reason   string          `json:"reason,omitempty"`
+	Message  string          `json:"message,omitempty"`
+}
+
+func (sh shaper) timeline(e model.TimelineEvent) timelineBrief {
+	out := timelineBrief{
+		Time: e.Timestamp, Type: e.Type, Severity: e.Severity, Reason: e.Reason, Message: clean(e.Message),
+	}
+	if e.SourceKind != "" || e.SourceName != "" {
+		out.Object = refString(model.ObjectRef{Kind: e.SourceKind, Name: e.SourceName})
+	}
+	if sh.noLogSamples && e.Type == string(model.SourceLog) {
+		out.Message = ""
+	}
+	return out
+}
+
+type evidenceCardBrief struct {
+	Confidence    float64        `json:"confidence"`
+	RootEvent     patternBrief   `json:"root_event"`
+	TriggeredLogs []patternBrief `json:"triggered_logs"`
+}
+
+func (sh shaper) card(c model.EvidenceCard) evidenceCardBrief {
+	return evidenceCardBrief{
+		Confidence: c.Confidence,
+		RootEvent:  briefPattern(c.RootEvent, 1), // an infrastructure event, not a log line
+		TriggeredLogs: mapSlice(c.TriggeredLogs, func(t model.LogTemplate) patternBrief {
+			return sh.pattern(t, 1)
+		}),
+	}
+}
+
+// causalChain drops steps labelled with the opening words of a log line when
+// log samples are off; steps named after a classified reason stay.
+func (sh shaper) causalChain(chain []string, tl []model.TimelineEvent) []string {
+	if !sh.noLogSamples {
+		return redact.Strings(chain)
+	}
+	var logText []string
+	for _, e := range tl {
+		if e.Type == string(model.SourceLog) && e.Reason == "" && e.Message != "" {
+			logText = append(logText, e.Message)
+		}
+	}
+	var out []string
+	for _, step := range chain {
+		label, _, _ := strings.Cut(step, " +")
+		fromLog := false
+		for _, m := range logText {
+			if strings.HasPrefix(m, label) {
+				fromLog = true
+				break
+			}
+		}
+		if !fromLog {
+			out = append(out, redact.String(step))
+		}
+	}
+	return out
 }
 
 func briefPattern(t model.LogTemplate, samples int) patternBrief {
 	out := patternBrief{
-		Template: truncate(t.Template), Count: t.Count, Pct: t.Pct, Trend: t.Trend,
+		Template: clean(t.Template), Count: t.Count, Pct: t.Pct, Trend: t.Trend,
 		TrendPct: t.TrendPct, Severity: t.Severity,
 	}
 	out.Pods = t.Pods
@@ -214,7 +314,7 @@ func briefPattern(t model.LogTemplate, samples int) patternBrief {
 		if i >= samples {
 			break
 		}
-		out.Samples = append(out.Samples, sampleBrief{Pod: smp.Pod, Time: smp.Timestamp, Message: truncate(smp.Message)})
+		out.Samples = append(out.Samples, sampleBrief{Pod: smp.Pod, Time: smp.Timestamp, Message: clean(smp.Message)})
 	}
 	return out
 }
@@ -226,7 +326,7 @@ func briefEvent(e model.EventRecord) eventBrief {
 	}
 	return eventBrief{
 		Time: t, FirstSeen: e.FirstSeen, Type: e.Type, Reason: e.Reason, Object: refString(e.InvolvedObject),
-		Namespace: e.InvolvedObject.Namespace, Message: truncate(e.Message), Count: e.Count,
+		Namespace: e.InvolvedObject.Namespace, Message: clean(e.Message), Count: e.Count,
 		Source: e.Source, Recorded: e.Recorded,
 	}
 }
@@ -238,7 +338,7 @@ func briefEvidence(e model.EvidenceEvent) evidenceBrief {
 	}
 	return evidenceBrief{
 		Time: e.Timestamp, Source: e.SourceType, Object: obj, Pod: e.Pod, Severity: e.Severity,
-		Reason: e.Reason, Message: truncate(e.Message), Count: e.Count, Recorded: e.Recorded,
+		Reason: e.Reason, Message: clean(e.Message), Count: e.Count, Recorded: e.Recorded,
 	}
 }
 

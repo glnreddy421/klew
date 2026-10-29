@@ -13,6 +13,7 @@ import (
 	"github.com/glnreddy421/klew/internal/engine"
 	"github.com/glnreddy421/klew/internal/kube"
 	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/internal/redact"
 	"github.com/glnreddy421/klew/internal/service"
 )
 
@@ -55,6 +56,19 @@ func intRange(min, max, def int) func(*jsonschema.Schema) {
 	}
 }
 
+// Kubernetes name rules: namespaces are DNS labels, workloads DNS subdomains.
+const (
+	namespacePattern  = `^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	objectNamePattern = `^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$`
+)
+
+func pattern(re string, maxLen int) func(*jsonschema.Schema) {
+	return func(p *jsonschema.Schema) {
+		p.Pattern = re
+		p.MaxLength = &maxLen
+	}
+}
+
 func enum(values ...string) func(*jsonschema.Schema) {
 	return func(p *jsonschema.Schema) {
 		for _, v := range values {
@@ -89,6 +103,7 @@ func (s *Server) registerTools(srv *mcp.Server) {
 			"Returns an investigation_id for klew_investigation_details. For raw event lists use klew_event_history; for revision diffs use klew_workload_changes.",
 		Annotations: readOnly("Investigate namespace or workload", true),
 		InputSchema: schemaFor[investigateIn](map[string]func(*jsonschema.Schema){
+			"namespace":       pattern(namespacePattern, 63),
 			"observe_seconds": intRange(0, maxObserveSeconds, defaultObserveSeconds),
 		}),
 	}, s.investigate)
@@ -102,9 +117,10 @@ func (s *Server) registerTools(srv *mcp.Server) {
 			"Investigations expire after 30 minutes; run klew_investigate again after that.",
 		Annotations: readOnly("Investigation details", false),
 		InputSchema: schemaFor[detailsIn](map[string]func(*jsonschema.Schema){
-			"section": enum(detailSections...),
-			"limit":   intRange(1, 200, 25),
-			"offset":  intRange(0, 100000, 0),
+			"investigation_id": pattern(`^inv_[0-9a-f]{12}$`, 16),
+			"section":          enum(detailSections...),
+			"limit":            intRange(1, 200, 25),
+			"offset":           intRange(0, 100000, 0),
 		}),
 	}, s.investigationDetails)
 
@@ -115,6 +131,8 @@ func (s *Server) registerTools(srv *mcp.Server) {
 			"Reports recording coverage and gaps. Without the desktop app's history only live events are returned.",
 		Annotations: readOnly("Event history", true),
 		InputSchema: schemaFor[eventHistoryIn](map[string]func(*jsonschema.Schema){
+			"namespace":     pattern(namespacePattern, 63),
+			"object_name":   pattern(objectNamePattern, 253),
 			"since_minutes": intRange(1, 43200, 1440),
 			"limit":         intRange(1, 500, 100),
 		}),
@@ -126,6 +144,8 @@ func (s *Server) registerTools(srv *mcp.Server) {
 			"summary, and field-level diffs (image, env, resources, probes, …). Use it to answer what changed before a failure.",
 		Annotations: readOnly("Workload changes", true),
 		InputSchema: schemaFor[workloadChangesIn](map[string]func(*jsonschema.Schema){
+			"namespace":     pattern(namespacePattern, 63),
+			"name":          pattern(objectNamePattern, 253),
 			"kind":          enum("Deployment", "StatefulSet", "DaemonSet", "HelmRelease"),
 			"max_revisions": intRange(1, 50, 5),
 		}),
@@ -241,26 +261,27 @@ func (s *Server) investigate(ctx context.Context, _ *mcp.CallToolRequest, in inv
 	if err != nil && st.CollectedAt.IsZero() {
 		return nil, investigateOut{}, fmt.Errorf("investigate %s: %w", ns, err)
 	}
-	return nil, summarize(s.cache.put(st), st), nil
+	return nil, s.shape.summarize(s.cache.put(st), st), nil
 }
 
-func summarize(id string, st model.InvestigationState) investigateOut {
+func (sh shaper) summarize(id string, st model.InvestigationState) investigateOut {
 	sum := engine.BuildIncidentSummary(st)
 	v := st.Verdict
 	out := investigateOut{
 		InvestigationID: id, Context: sum.Context, Namespace: sum.Namespace, Workload: st.Query,
 		CollectedAt: st.CollectedAt, Status: v.Status, Confidence: v.Confidence,
 		ConfidenceLabel: engine.ConfidenceLabel(v.Confidence), LeadingSignal: v.LeadingSignal,
-		LikelyTrigger: v.LikelyTrigger, Summary: v.Summary, Hypothesis: st.HypothesisLabel,
-		HypothesisReasons: st.HypothesisReasons, Alternatives: st.HypothesisAlts, CausalChain: st.CausalChain,
-		NextChecks: st.NextChecks, SuggestedActions: st.FixActions,
+		LikelyTrigger: clean(v.LikelyTrigger), Summary: clean(v.Summary), Hypothesis: st.HypothesisLabel,
+		HypothesisReasons: redact.Strings(st.HypothesisReasons), Alternatives: st.HypothesisAlts,
+		CausalChain: sh.causalChain(st.CausalChain, st.Timeline),
+		NextChecks:  redact.Strings(st.NextChecks), SuggestedActions: redact.Strings(st.FixActions),
 		Pods:           podCounts{Ready: sum.ReadyPods, Unready: sum.UnreadyPods, Affected: sum.AffectedPods, Restarts: sum.Restarts},
 		EndpointsReady: sum.EndpointsReady, EndpointsTotal: sum.EndpointsTotal,
 		Incidents: capSlice(st.Incidents, 5), PinnedChange: st.PinnedChange, RecentChange: st.RecentChange,
 		EventHistory: briefCoverage(st.Snapshot.EventHistory),
 	}
 	if len(out.NextChecks) == 0 {
-		out.NextChecks = v.RecommendedNextChecks
+		out.NextChecks = redact.Strings(v.RecommendedNextChecks)
 	}
 	for _, m := range capSlice(st.MatchedObjects, 20) {
 		out.MatchedObjects = append(out.MatchedObjects, refString(m.Ref))
@@ -270,12 +291,17 @@ func summarize(id string, st model.InvestigationState) investigateOut {
 	out.FailingPods = mapSlice(capSlice(failing, 10), briefPod)
 	sigs := allSignals(v)
 	out.SignalsTotal = len(sigs)
-	out.Signals = mapSlice(capSlice(sigs, 8), briefSignal)
+	out.Signals = mapSlice(capSlice(sigs, 8), sh.signal)
 	if lp := st.LogPatterns; lp != nil {
-		out.LogPatterns = mapSlice(capSlice(lp.Templates, 5), func(t model.LogTemplate) patternBrief { return briefPattern(t, 1) })
+		out.LogPatterns = mapSlice(capSlice(lp.Templates, 5), func(t model.LogTemplate) patternBrief { return sh.pattern(t, 1) })
 		out.EventPatterns = mapSlice(capSlice(lp.EventTemplates, 5), func(t model.LogTemplate) patternBrief { return briefPattern(t, 1) })
 	}
-	out.Warnings = append(append([]string{}, v.MissingDataWarnings...), st.Warnings...)
+	if pc := st.PinnedChange; pc != nil {
+		cp := *pc
+		cp.Text = clean(cp.Text)
+		out.PinnedChange = &cp
+	}
+	out.Warnings = redact.Strings(append(append([]string{}, v.MissingDataWarnings...), st.Warnings...))
 	if st.Query != "" && len(st.MatchedObjects) == 0 {
 		out.Warnings = append(out.Warnings, fmt.Sprintf("No objects matched %q in %s; the verdict covers the namespace.", st.Query, sum.Namespace))
 	}
@@ -308,7 +334,7 @@ func (s *Server) investigationDetails(_ context.Context, _ *mcp.CallToolRequest,
 	if !ok {
 		return nil, detailsOut{}, fmt.Errorf("investigation %q not found or expired; run klew_investigate again", in.InvestigationID)
 	}
-	items, err := detailItems(st, in.Section)
+	items, err := s.shape.detailItems(st, in.Section)
 	if err != nil {
 		return nil, detailsOut{}, err
 	}
@@ -330,7 +356,7 @@ func asAny[T any](in []T) []any {
 	return mapSlice(in, func(v T) any { return v })
 }
 
-func detailItems(st model.InvestigationState, section string) ([]any, error) {
+func (sh shaper) detailItems(st model.InvestigationState, section string) ([]any, error) {
 	lp := st.LogPatterns
 	if lp == nil {
 		lp = &model.LogPatterns{}
@@ -339,24 +365,24 @@ func detailItems(st model.InvestigationState, section string) ([]any, error) {
 	case "pods":
 		return asAny(mapSlice(rankPods(st.Snapshot.Pods), briefPod)), nil
 	case "signals":
-		return asAny(mapSlice(allSignals(st.Verdict), briefSignal)), nil
+		return asAny(mapSlice(allSignals(st.Verdict), sh.signal)), nil
 	case "log_patterns":
-		return asAny(mapSlice(lp.Templates, func(t model.LogTemplate) patternBrief { return briefPattern(t, 3) })), nil
+		return asAny(mapSlice(lp.Templates, func(t model.LogTemplate) patternBrief { return sh.pattern(t, 3) })), nil
 	case "event_patterns":
 		return asAny(mapSlice(lp.EventTemplates, func(t model.LogTemplate) patternBrief { return briefPattern(t, 3) })), nil
 	case "evidence_board":
 		if lp.EvidenceBoard == nil {
 			return []any{}, nil
 		}
-		return asAny(lp.EvidenceBoard.Cards), nil
+		return asAny(mapSlice(lp.EvidenceBoard.Cards, sh.card)), nil
 	case "timeline":
-		return asAny(st.Timeline), nil
+		return asAny(mapSlice(st.Timeline, sh.timeline)), nil
 	case "events":
 		evs := append([]model.EventRecord(nil), st.Snapshot.Events...)
 		newestEventsFirst(evs)
 		return asAny(mapSlice(evs, briefEvent)), nil
 	case "live_evidence":
-		return asAny(mapSlice(st.LiveEvidence, briefEvidence)), nil
+		return asAny(mapSlice(st.LiveEvidence, sh.evidence)), nil
 	case "matched_objects":
 		return asAny(st.MatchedObjects), nil
 	}
@@ -508,9 +534,18 @@ func (s *Server) workloadChanges(ctx context.Context, _ *mcp.CallToolRequest, in
 	}
 	out := workloadChangesOut{WorkloadChanges: wc, TotalRevisions: len(wc.Changes)}
 	out.Changes = append([]model.WorkloadChange(nil), capSlice(wc.Changes, clamp(in.MaxRevisions, 50, 5))...)
-	if in.SummaryOnly {
-		for i := range out.Changes {
-			out.Changes[i].Diffs = nil
+	for i := range out.Changes {
+		c := &out.Changes[i]
+		c.Summary, c.ChangeCause = clean(c.Summary), clean(c.ChangeCause)
+		if in.SummaryOnly {
+			c.Diffs = nil
+			continue
+		}
+		// Diff values are already masked by key and shape (changes.RedactValue);
+		// this also catches credentials embedded in longer values.
+		c.Diffs = append([]model.FieldDiff(nil), c.Diffs...)
+		for j := range c.Diffs {
+			c.Diffs[j].Before, c.Diffs[j].After = redact.String(c.Diffs[j].Before), redact.String(c.Diffs[j].After)
 		}
 	}
 	return nil, out, nil
