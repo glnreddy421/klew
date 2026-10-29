@@ -28,3 +28,6 @@ coverage.out
 /klew-desktop
 cmd/klew-desktop/klew-desktop
 dist/
+
+# klew-mcp release staging (.github/scripts/build-mcp.sh)
+/build/

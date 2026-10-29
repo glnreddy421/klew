@@ -10,6 +10,7 @@ on:
         description: Tag to publish (e.g. v1.3.5)
         required: true
 
+# Builds the desktop app (macOS) and klew-mcp (macOS + Linux) from one tag.
 # Nothing by default; the job below asks only for what it uses. Third-party
 # actions are pinned to commit SHAs because this job holds the Apple signing
 # certificate and the Homebrew tap token.
@@ -74,35 +75,65 @@ jobs:
       - name: Build, sign, notarize, and package (arm64 + Intel)
         run: ./.github/scripts/release-macos.sh
 
-      - name: SBOM (SPDX)
-        # Go modules from go.mod and frontend packages from package-lock.json.
+      - name: Build, sign, and notarize klew-mcp (macOS + Linux, arm64 + amd64)
+        env:
+          REQUIRE_SIGNING: "1"
+        run: ./.github/scripts/build-mcp.sh
+
+      # One SBOM per front end, each built from what actually ships: Go modules
+      # come from the build info embedded in the binaries; the desktop SBOM adds
+      # the npm runtime packages bundled into its UI (dev dependencies excluded).
+      - name: Stage desktop app for its SBOM
+        run: |
+          rm -rf build/sbom-desktop
+          mkdir -p build/sbom-desktop/frontend
+          ditto -x -k "dist/Klew-${VERSION_NUMBER}-macos-arm64.zip" build/sbom-desktop
+          cp cmd/klew-desktop/frontend/package.json cmd/klew-desktop/frontend/package-lock.json build/sbom-desktop/frontend/
+
+      - name: SBOM — desktop app
         uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
-          path: .
+          path: build/sbom-desktop
           format: spdx-json
           output-file: dist/Klew-${{ env.VERSION_NUMBER }}-sbom.spdx.json
           upload-artifact: false
           upload-release-assets: false
 
+      - name: SBOM — klew-mcp
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          path: build/mcp
+          format: spdx-json
+          output-file: dist/klew-mcp-${{ env.VERSION_NUMBER }}-sbom.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
       - name: Checksums
         working-directory: dist
-        run: shasum -a 256 Klew-*.zip Klew-*.dmg Klew-*-sbom.spdx.json > "Klew-${VERSION_NUMBER}-SHA256SUMS.txt"
+        run: shasum -a 256 Klew-*.zip Klew-*.dmg klew-mcp-*.tar.gz ./*-sbom.spdx.json > "Klew-${VERSION_NUMBER}-SHA256SUMS.txt"
 
       - name: Build provenance attestation
-        # Lets users run: gh attestation verify Klew-<version>-macos-arm64.dmg --repo glnreddy421/klew
+        # Lets users run: gh attestation verify <file> --repo glnreddy421/klew
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |
             dist/Klew-*.zip
             dist/Klew-*.dmg
+            dist/klew-mcp-*.tar.gz
 
-      - name: SBOM attestation
+      - name: SBOM attestation — desktop app
         uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
         with:
           subject-path: |
             dist/Klew-*.zip
             dist/Klew-*.dmg
           sbom-path: dist/Klew-${{ env.VERSION_NUMBER }}-sbom.spdx.json
+
+      - name: SBOM attestation — klew-mcp
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-path: dist/klew-mcp-*.tar.gz
+          sbom-path: dist/klew-mcp-${{ env.VERSION_NUMBER }}-sbom.spdx.json
 
       - name: Publish GitHub release
         env:
@@ -125,6 +156,11 @@ jobs:
             "Klew-${VERSION}-macos-arm64.dmg" \
             "Klew-${VERSION}-macos-amd64.dmg" \
             "Klew-${VERSION}-sbom.spdx.json" \
+            "klew-mcp-${VERSION}-darwin-arm64.tar.gz" \
+            "klew-mcp-${VERSION}-darwin-amd64.tar.gz" \
+            "klew-mcp-${VERSION}-linux-arm64.tar.gz" \
+            "klew-mcp-${VERSION}-linux-amd64.tar.gz" \
+            "klew-mcp-${VERSION}-sbom.spdx.json" \
             "Klew-${VERSION}-SHA256SUMS.txt"
 
       - name: Update Homebrew tap
