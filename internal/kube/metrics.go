@@ -37,4 +37,3 @@ func (m *MetricsPoller) Start(ctx context.Context, pods []model.PodSummary, wg *
 	_ = wg
 	return ms.Available
 }
-

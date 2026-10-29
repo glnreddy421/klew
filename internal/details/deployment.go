@@ -34,28 +34,30 @@ func (deploymentProvider) Build(ctx context.Context, req *Request) (*ObjectDetai
 	}
 
 	var sections []Section
-	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields(
-		"Observed Generation", fmtInt64(d.Status.ObservedGeneration),
-		"Replicas", fmtInt32(d.Status.Replicas),
-		"Ready", fmtInt32(d.Status.ReadyReplicas),
-		"Updated", fmtInt32(d.Status.UpdatedReplicas),
-		"Available", fmtInt32(d.Status.AvailableReplicas),
-		"Unavailable", fmtInt32(d.Status.UnavailableReplicas),
-	)))
-	sections = append(sections, sectionFields("replicaSummary", "Replica Summary", GroupSummary, fields(
-		"Desired", fmtInt32(int32Or(d.Spec.Replicas, 1)),
-		"Current", fmtInt32(d.Status.Replicas),
-		"Ready", fmtInt32(d.Status.ReadyReplicas),
-		"Updated", fmtInt32(d.Status.UpdatedReplicas),
-		"Available", fmtInt32(d.Status.AvailableReplicas),
-	)))
-	sections = append(sections, sectionFields("strategy", "Strategy", GroupSpec, fields(
-		"Type", string(d.Spec.Strategy.Type),
-		"Max Unavailable", surgeUnavailable(d.Spec.Strategy.RollingUpdate, true),
-		"Max Surge", surgeUnavailable(d.Spec.Strategy.RollingUpdate, false),
-		"Revision History Limit", fmtInt32Ptr(d.Spec.RevisionHistoryLimit),
-		"Progress Deadline", fmtInt32Ptr(d.Spec.ProgressDeadlineSeconds),
-	)))
+	sections = append(sections,
+		sectionFields("status", "Status", GroupSummary, fields(
+			"Observed Generation", fmtInt64(d.Status.ObservedGeneration),
+			"Replicas", fmtInt32(d.Status.Replicas),
+			"Ready", fmtInt32(d.Status.ReadyReplicas),
+			"Updated", fmtInt32(d.Status.UpdatedReplicas),
+			"Available", fmtInt32(d.Status.AvailableReplicas),
+			"Unavailable", fmtInt32(d.Status.UnavailableReplicas),
+		)),
+		sectionFields("replicaSummary", "Replica Summary", GroupSummary, fields(
+			"Desired", fmtInt32(int32Or(d.Spec.Replicas, 1)),
+			"Current", fmtInt32(d.Status.Replicas),
+			"Ready", fmtInt32(d.Status.ReadyReplicas),
+			"Updated", fmtInt32(d.Status.UpdatedReplicas),
+			"Available", fmtInt32(d.Status.AvailableReplicas),
+		)),
+		sectionFields("strategy", "Strategy", GroupSpec, fields(
+			"Type", string(d.Spec.Strategy.Type),
+			"Max Unavailable", surgeUnavailable(d.Spec.Strategy.RollingUpdate, true),
+			"Max Surge", surgeUnavailable(d.Spec.Strategy.RollingUpdate, false),
+			"Revision History Limit", fmtInt32Ptr(d.Spec.RevisionHistoryLimit),
+			"Progress Deadline", fmtInt32Ptr(d.Spec.ProgressDeadlineSeconds),
+		)),
+	)
 	if rows := deployConditionRows(d.Status.Conditions); len(rows) > 0 {
 		sections = append(sections, sectionTable("conditions", "Conditions", GroupSummary,
 			[]string{"Type", "Status", "Reason", "Message"}, rows))
@@ -72,7 +74,7 @@ func (deploymentProvider) Build(ctx context.Context, req *Request) (*ObjectDetai
 		sections = append(sections, sectionTable("replicaSets", "Replica Sets", GroupRelationships,
 			[]string{"Name", "Ready", "Replicas", "Created"}, rows))
 	}
-	sections = append(sections, podTemplateSections(&d.Spec.Template, GroupSpec)...)
+	sections = append(sections, podTemplateSections(&d.Spec.Template)...)
 	sections = append(sections, metaSections(d.Labels, d.Annotations, ownerRefsFromMeta(d.OwnerReferences, d.Namespace))...)
 	if mf := managedFieldsSection(d.ManagedFields); !mf.Empty() {
 		sections = append(sections, mf)

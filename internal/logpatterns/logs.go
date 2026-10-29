@@ -148,7 +148,7 @@ func classifyLogSeverity(line string) model.Severity {
 		return model.SeverityCritical
 	case strings.Contains(l, "error"), strings.Contains(l, "failed"), strings.Contains(l, "refused"):
 		return model.SeverityHigh
-	case strings.Contains(l, "warn"), strings.Contains(l, "timeout"):
+	case strings.Contains(l, "warn"), MentionsTimeout(l):
 		return model.SeverityWarning
 	default:
 		return model.SeverityInfo
@@ -168,7 +168,7 @@ func classifyLogReason(line string) string {
 		return "OOMKilled"
 	case strings.Contains(l, "memory leak"), strings.Contains(l, "heap growth"):
 		return "Memory leak"
-	case strings.Contains(l, "redis"), strings.Contains(l, "timeout"):
+	case MentionsTimeout(l):
 		return "Redis timeout"
 	case strings.Contains(l, "error"), strings.Contains(l, "failed"):
 		return "Error"
@@ -177,4 +177,12 @@ func classifyLogReason(line string) string {
 	default:
 		return ""
 	}
+}
+
+// MentionsTimeout reports whether a lowercased log line describes a real
+// timeout. Merely naming a dependency (e.g. redis's startup warning
+// "no config file specified ... redis-server /path/to/redis.conf") is not one.
+func MentionsTimeout(l string) bool {
+	return strings.Contains(l, "timeout") || strings.Contains(l, "timed out") ||
+		strings.Contains(l, "etimedout")
 }

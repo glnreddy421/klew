@@ -20,8 +20,8 @@ func (serviceAccountProvider) Build(ctx context.Context, req *Request) (*ObjectD
 		Category: "access",
 		Status:   StatusBadge{Tone: "healthy", Label: "Active"},
 		Summary: fields(
-			"Secrets", fmtInt32(int32(len(sa.Secrets))),
-			"Image Pull Secrets", fmtInt32(int32(len(sa.ImagePullSecrets))),
+			"Secrets", fmtInt(len(sa.Secrets)),
+			"Image Pull Secrets", fmtInt(len(sa.ImagePullSecrets)),
 		),
 	}
 	var sections []Section

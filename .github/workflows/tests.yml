@@ -1,0 +1,177 @@
+name: Tests
+
+# Go tests on macOS (everything, including the desktop app) and Linux, a
+# klew-mcp stdio smoke test, and the frontend tests and build. Job names are
+# the required status checks on main; keep them stable.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    name: Go tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS builds everything, including the Wails desktop app.
+          - os: macos-latest
+            packages: ./...
+          # Linux covers the engine and klew-mcp (the desktop app is macOS-only).
+          - os: ubuntu-latest
+            packages: ./internal/... ./cmd/klew-mcp/... ./cmd/klew-stress/...
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Placeholder frontend bundle
+        # cmd/klew-desktop embeds frontend/dist; the frontend job builds the real one.
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p cmd/klew-desktop/frontend/dist
+          [ -e cmd/klew-desktop/frontend/dist/index.html ] || echo '<!doctype html>' > cmd/klew-desktop/frontend/dist/index.html
+
+      - name: go.mod is tidy
+        run: go mod tidy -diff
+
+      - name: gofmt (changed files)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          files=$(git diff --name-only --diff-filter=ACMR "$BASE"...HEAD -- '*.go')
+          [ -z "$files" ] && exit 0
+          # shellcheck disable=SC2086 # word splitting is intended
+          bad=$(gofmt -l $files)
+          if [ -n "$bad" ]; then
+            echo "::error::Run gofmt -w on: $bad"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ${{ matrix.packages }}
+
+      - name: Test (race detector, coverage)
+        run: go test -race -count=1 -covermode=atomic -coverprofile=coverage.out ${{ matrix.packages }}
+
+      - name: Coverage summary
+        if: always() && hashFiles('coverage.out') != ''
+        run: |
+          {
+            echo "### Coverage (${{ matrix.os }})"
+            echo '```'
+            go tool cover -func=coverage.out | tail -1
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Coverage badge data
+        # macOS covers every package, so its total is the one the badge shows.
+        if: runner.os == 'macOS' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          pct="$(go tool cover -func=coverage.out | awk '/^total:/ { sub("%", "", $NF); print $NF }')"
+          color="$(awk -v p="$pct" 'BEGIN { print (p >= 80 ? "brightgreen" : p >= 60 ? "yellow" : p >= 40 ? "orange" : "red") }')"
+          printf '{"schemaVersion":1,"label":"coverage","message":"%s%%","color":"%s"}\n' "$pct" "$color" > coverage-badge.json
+          cat coverage-badge.json
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: runner.os == 'macOS' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          name: coverage-badge
+          path: coverage-badge.json
+          retention-days: 1
+
+      - name: tools/k8s-log-engine (separate module)
+        if: runner.os == 'Linux'
+        working-directory: tools/k8s-log-engine
+        run: |
+          go mod tidy -diff
+          go vet ./...
+          go test -race -count=1 ./...
+
+      - name: Build klew-mcp
+        run: go build -trimpath -o "$RUNNER_TEMP/klew-mcp" ./cmd/klew-mcp
+
+      - name: klew-mcp stdio smoke test
+        run: python3 .github/scripts/mcp-smoke.py "$RUNNER_TEMP/klew-mcp"
+
+  frontend:
+    name: Frontend tests and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: cmd/klew-desktop/frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: cmd/klew-desktop/frontend/package-lock.json
+
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - name: npm audit (high and critical)
+        run: npm audit --audit-level=high
+
+  coverage-badge:
+    name: Publish coverage badge
+    # Writes the shields.io endpoint JSON for the README badge to the `badges`
+    # branch, kept off main so badge updates don't clutter its history.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: go
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write # push to the badges branch
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: coverage-badge
+
+      - name: Push to the badges branch
+        env:
+          REPO: ${{ github.repository }}
+          TOKEN: ${{ github.token }}
+        run: |
+          url="https://x-access-token:${TOKEN}@github.com/${REPO}.git"
+          if git ls-remote --exit-code --heads "$url" badges >/dev/null 2>&1; then
+            git clone --quiet --depth 1 --branch badges "$url" badges
+          else
+            mkdir badges
+            git -C badges init --quiet -b badges
+            git -C badges remote add origin "$url"
+          fi
+          cp coverage-badge.json badges/coverage.json
+          cd badges
+          # Commits appear under the repository owner's identity (see AGENTS.md).
+          git config user.name "glnreddy"
+          git config user.email "glnreddy6@gmail.com"
+          git add coverage.json
+          if git diff --cached --quiet; then
+            echo "Coverage unchanged."
+            exit 0
+          fi
+          git commit --quiet -m "Coverage $(jq -r .message coverage.json)"
+          git push --quiet origin badges

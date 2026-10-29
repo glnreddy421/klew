@@ -30,10 +30,12 @@ func (namespaceProvider) Build(ctx context.Context, req *Request) (*ObjectDetail
 	for _, f := range ns.Spec.Finalizers {
 		finalizers = append(finalizers, string(f))
 	}
-	sections = append(sections, sectionFields("spec", "Spec", GroupSpec, fields(
-		"Finalizers", strings.Join(finalizers, ", "),
-	)))
-	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields("Phase", phase)))
+	sections = append(sections,
+		sectionFields("spec", "Spec", GroupSpec, fields(
+			"Finalizers", strings.Join(finalizers, ", "),
+		)),
+		sectionFields("status", "Status", GroupSummary, fields("Phase", phase)),
+	)
 	if len(ns.Status.Conditions) > 0 {
 		var rows [][]string
 		for _, c := range ns.Status.Conditions {

@@ -30,17 +30,17 @@ type ObjectDetail struct {
 
 // StatusBadge is the compact health chip in the inspector header.
 type StatusBadge struct {
-	Tone  string `json:"tone"`  // healthy|warning|critical|unknown|degraded
+	Tone  string `json:"tone"` // healthy|warning|critical|unknown|degraded
 	Label string `json:"label"`
 }
 
 // Section is one inspector block/tab. Empty sections are omitted before return.
 type Section struct {
-	ID        string     `json:"id"`
-	Title     string     `json:"title"`
-	Group     string     `json:"group,omitempty"`
-	Fields    []Field    `json:"fields,omitempty"`
-	Table     *Table     `json:"table,omitempty"`
+	ID             string     `json:"id"`
+	Title          string     `json:"title"`
+	Group          string     `json:"group,omitempty"`
+	Fields         []Field    `json:"fields,omitempty"`
+	Table          *Table     `json:"table,omitempty"`
 	KeyValues      []KeyValue `json:"keyValues,omitempty"`
 	Notes          []string   `json:"notes,omitempty"`
 	Code           string     `json:"code,omitempty"`

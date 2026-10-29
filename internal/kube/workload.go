@@ -8,10 +8,10 @@ import (
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
 	networkingv1 "k8s.io/api/networking/v1"
-	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 
@@ -105,7 +105,7 @@ func (col *Collector) Collect(ctx context.Context, opts CollectOptions) (model.E
 			bundle.Warnings = append(bundle.Warnings, fmt.Sprintf("list replicasets: %v", err))
 		} else {
 			for _, rs := range rss.Items {
-				if !matchesWorkload(deployNames, rs.Name, rs.Labels, rs.OwnerReferences) {
+				if !matchesWorkload(deployNames, rs.Name, rs.OwnerReferences) {
 					continue
 				}
 				bundle.ReplicaSets = append(bundle.ReplicaSets, summarizeRS(rs))
@@ -358,14 +358,15 @@ func containerFromStatus(podName string, cs corev1.ContainerStatus, pod corev1.P
 			break
 		}
 	}
-	if cs.State.Running != nil {
+	switch {
+	case cs.State.Running != nil:
 		out.State = "running"
 		out.StartedAt = model.TimestampPtrFrom(&cs.State.Running.StartedAt.Time)
-	} else if cs.State.Waiting != nil {
+	case cs.State.Waiting != nil:
 		out.State = "waiting"
 		out.Reason = cs.State.Waiting.Reason
 		out.Message = cs.State.Waiting.Message
-	} else if cs.State.Terminated != nil {
+	case cs.State.Terminated != nil:
 		out.State = "terminated"
 		out.Reason = cs.State.Terminated.Reason
 		out.Message = cs.State.Terminated.Message
@@ -617,7 +618,7 @@ func podPVCRefs(pod corev1.Pod) []model.ResourceRef {
 	return refs
 }
 
-func matchesWorkload(deployNames []string, rsName string, labels map[string]string, owners []metav1.OwnerReference) bool {
+func matchesWorkload(deployNames []string, rsName string, owners []metav1.OwnerReference) bool {
 	if len(deployNames) == 0 {
 		return true
 	}
@@ -704,11 +705,4 @@ func deref32(p *int32) int32 {
 		return 0
 	}
 	return *p
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

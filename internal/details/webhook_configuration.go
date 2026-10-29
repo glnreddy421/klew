@@ -26,7 +26,7 @@ func (p webhookConfigurationProvider) Build(ctx context.Context, req *Request) (
 		Category: "admission",
 		Status:   StatusBadge{Tone: "healthy", Label: fmt.Sprintf("%d webhooks", len(hooks))},
 		Summary: fields(
-			"Webhooks", fmtInt32(int32(len(hooks))),
+			"Webhooks", fmtInt(len(hooks)),
 			"API Version", obj.GetAPIVersion(),
 		),
 	}

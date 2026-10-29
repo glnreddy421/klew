@@ -16,48 +16,48 @@ func BuildTimeline(b model.EvidenceBundle) []model.TimelineEvent {
 	for _, e := range b.Events {
 		sev, conf := eventSeverity(e.Reason, e.Message)
 		events = append(events, model.TimelineEvent{
-			Timestamp:  e.Timestamp,
-			Type:       "event",
-			Severity:   sev,
-			SourceKind: e.InvolvedObject.Kind,
-			SourceName: e.InvolvedObject.Name,
-			Namespace:  b.Namespace,
-			Message:    e.Message,
-			Reason:     e.Reason,
+			Timestamp:      e.Timestamp,
+			Type:           "event",
+			Severity:       sev,
+			SourceKind:     e.InvolvedObject.Kind,
+			SourceName:     e.InvolvedObject.Name,
+			Namespace:      b.Namespace,
+			Message:        e.Message,
+			Reason:         e.Reason,
 			InvolvedObject: e.InvolvedObject,
-			Confidence: conf,
-			EvidenceRefs: []string{fmt.Sprintf("event:%s/%s:%s", e.InvolvedObject.Kind, e.InvolvedObject.Name, e.Reason)},
+			Confidence:     conf,
+			EvidenceRefs:   []string{fmt.Sprintf("event:%s/%s:%s", e.InvolvedObject.Kind, e.InvolvedObject.Name, e.Reason)},
 		})
 	}
 
 	for _, p := range b.Pods {
 		events = append(events, model.TimelineEvent{
-			Timestamp:  p.CreatedAt,
-			Type:       "pod",
-			Severity:   model.SeverityInfo,
-			SourceKind: "Pod",
-			SourceName: p.Name,
-			Namespace:  p.Namespace,
-			Message:    fmt.Sprintf("Pod created phase=%s ready=%v restarts=%d", p.Phase, p.Ready, p.RestartCount),
-			Confidence: 0.9,
+			Timestamp:      p.CreatedAt,
+			Type:           "pod",
+			Severity:       model.SeverityInfo,
+			SourceKind:     "Pod",
+			SourceName:     p.Name,
+			Namespace:      p.Namespace,
+			Message:        fmt.Sprintf("Pod created phase=%s ready=%v restarts=%d", p.Phase, p.Ready, p.RestartCount),
+			Confidence:     0.9,
 			InvolvedObject: model.ObjectRef{Kind: "Pod", Name: p.Name, Namespace: p.Namespace},
-			EvidenceRefs: []string{"pod:" + p.Name},
+			EvidenceRefs:   []string{"pod:" + p.Name},
 		})
 		for _, c := range p.Containers {
 			if c.LastReason != "" {
 				sev := containerReasonSeverity(c.LastReason)
 				events = append(events, model.TimelineEvent{
-					Timestamp:  timeOrNow(c.FinishedAt),
-					Type:       "container",
-					Severity:   sev,
-					SourceKind: "Container",
-					SourceName: c.Name,
-					Namespace:  p.Namespace,
-					Message:    fmt.Sprintf("Container %s last state=%s reason=%s exit=%d restarts=%d", c.Name, c.LastState, c.LastReason, c.LastExitCode, c.RestartCount),
-					Reason:     c.LastReason,
-					Confidence: 0.85,
+					Timestamp:      timeOrNow(c.FinishedAt),
+					Type:           "container",
+					Severity:       sev,
+					SourceKind:     "Container",
+					SourceName:     c.Name,
+					Namespace:      p.Namespace,
+					Message:        fmt.Sprintf("Container %s last state=%s reason=%s exit=%d restarts=%d", c.Name, c.LastState, c.LastReason, c.LastExitCode, c.RestartCount),
+					Reason:         c.LastReason,
+					Confidence:     0.85,
 					InvolvedObject: model.ObjectRef{Kind: "Pod", Name: p.Name, Namespace: p.Namespace},
-					EvidenceRefs: []string{fmt.Sprintf("container:%s/%s", p.Name, c.Name)},
+					EvidenceRefs:   []string{fmt.Sprintf("container:%s/%s", p.Name, c.Name)},
 				})
 			}
 		}
@@ -71,14 +71,14 @@ func BuildTimeline(b model.EvidenceBundle) []model.TimelineEvent {
 	}
 	for _, rs := range b.ReplicaSets {
 		ev := model.TimelineEvent{
-			Timestamp:  rs.CreatedAt,
-			Type:       "rollout",
-			Severity:   model.SeverityInfo,
-			SourceKind: "ReplicaSet",
-			SourceName: rs.Name,
-			Namespace:  rs.Namespace,
-			Message:    fmt.Sprintf("ReplicaSet replicas=%d ready=%d owner=%s", rs.Replicas, rs.Ready, rs.DeploymentOwner),
-			Confidence: 0.8,
+			Timestamp:      rs.CreatedAt,
+			Type:           "rollout",
+			Severity:       model.SeverityInfo,
+			SourceKind:     "ReplicaSet",
+			SourceName:     rs.Name,
+			Namespace:      rs.Namespace,
+			Message:        fmt.Sprintf("ReplicaSet replicas=%d ready=%d owner=%s", rs.Replicas, rs.Ready, rs.DeploymentOwner),
+			Confidence:     0.8,
 			InvolvedObject: model.ObjectRef{Kind: "ReplicaSet", Name: rs.Name, Namespace: rs.Namespace},
 		}
 		// The revision a workload changed to: say what changed and when (a
@@ -94,15 +94,15 @@ func BuildTimeline(b model.EvidenceBundle) []model.TimelineEvent {
 	for _, svc := range b.Services {
 		if svc.ReadyEndpoints == 0 && svc.TotalEndpoints == 0 {
 			events = append(events, model.TimelineEvent{
-				Timestamp:  b.CollectedAt,
-				Type:       "service",
-				Severity:   model.SeverityHigh,
-				SourceKind: "Service",
-				SourceName: svc.Name,
-				Namespace:  svc.Namespace,
-				Message:    "Service has zero ready endpoints",
-				Reason:     "NoEndpoints",
-				Confidence: 0.9,
+				Timestamp:      b.CollectedAt,
+				Type:           "service",
+				Severity:       model.SeverityHigh,
+				SourceKind:     "Service",
+				SourceName:     svc.Name,
+				Namespace:      svc.Namespace,
+				Message:        "Service has zero ready endpoints",
+				Reason:         "NoEndpoints",
+				Confidence:     0.9,
 				InvolvedObject: model.ObjectRef{Kind: "Service", Name: svc.Name, Namespace: svc.Namespace},
 			})
 		}

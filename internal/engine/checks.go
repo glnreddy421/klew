@@ -9,9 +9,13 @@ import (
 )
 
 // failingPod picks the pod/container most likely responsible for the incident.
+// Only unready or restarting pods qualify; with none, it returns empty names.
 func failingPod(b model.EvidenceBundle) (pod, container string) {
 	best := -1
 	for _, p := range b.Pods {
+		if !PodCountsAsUnready(p) && !podHasRestarts(p) {
+			continue
+		}
 		for _, c := range p.Containers {
 			score := int(c.RestartCount)
 			reason := strings.ToLower(c.Reason + " " + c.LastReason + " " + c.State)
@@ -34,25 +38,6 @@ func failingPod(b model.EvidenceBundle) (pod, container string) {
 		}
 	}
 	return pod, container
-}
-
-func workloadSelector(b model.EvidenceBundle) string {
-	if len(b.Workloads) > 0 && b.Workloads[0].Selector != "" {
-		return b.Workloads[0].Selector
-	}
-	for _, p := range b.Pods {
-		if len(p.Labels) == 0 {
-			continue
-		}
-		parts := make([]string, 0, len(p.Labels))
-		for k, v := range p.Labels {
-			parts = append(parts, k+"="+v)
-		}
-		if len(parts) > 0 {
-			return strings.Join(parts, ",")
-		}
-	}
-	return ""
 }
 
 func appendUniqueCheck(dst []string, s string) []string {
@@ -80,11 +65,12 @@ func investigationStepsFor(cat string, b model.EvidenceBundle) []string {
 	case "OOMKilled":
 		oomN := oomPodCount(b)
 		limit := podMemoryLimitMi(b, pod)
-		if oomN > 0 && limit > 0 {
+		switch {
+		case oomN > 0 && limit > 0:
 			add(fmt.Sprintf("Confirm %d pod(s) exceeded the %s memory limit (OOMKilled, exit 137)", oomN, formatMemMi(limit)))
-		} else if oomN > 0 {
+		case oomN > 0:
 			add(fmt.Sprintf("Confirm all %d failing pod(s) were OOMKilled (exit 137)", oomN))
-		} else {
+		default:
 			add("Confirm containers were killed for exceeding their memory limit")
 		}
 		if m := b.Metrics; m.Available && m.MemLimitMi > 0 && m.MemUsageMi > 0 {
@@ -107,11 +93,12 @@ func investigationStepsFor(cat string, b model.EvidenceBundle) []string {
 		if oomN := oomPodCount(b); oomN > 0 {
 			add(fmt.Sprintf("Determine whether restarts on %d pod(s) are OOMKilled vs application exit errors", oomN))
 		}
-		if pod != "" && container != "" {
+		switch {
+		case pod != "" && container != "":
 			add(fmt.Sprintf("Inspect last termination state on %s/%s (exit code and reason)", pod, container))
-		} else if pod != "" {
+		case pod != "":
 			add(fmt.Sprintf("Inspect last termination state on pod %s", pod))
-		} else {
+		default:
 			add("Inspect container exit reason and last termination state")
 		}
 		if pod != "" && container != "" {
@@ -255,59 +242,6 @@ func hasRecentRollout(b model.EvidenceBundle) bool {
 	return readyOld > 0 && readyNew > 0
 }
 
-// kubectlChecksFor returns copy-pasteable verification commands scoped to the bundle.
-func kubectlChecksFor(b model.EvidenceBundle, cat string) []string {
-	ns := b.Namespace
-	if ns == "" || ns == "*" {
-		ns = "<namespace>"
-	}
-	var out []string
-	pod, container := failingPod(b)
-	selector := workloadSelector(b)
-
-	add := func(s string) { out = appendUniqueCheck(out, s) }
-
-	add(fmt.Sprintf("kubectl -n %s get deploy,rs,pod,svc,events", ns))
-
-	if pod != "" {
-		add(fmt.Sprintf("kubectl -n %s describe pod %s", ns, pod))
-		if container != "" {
-			add(fmt.Sprintf("kubectl -n %s logs %s -c %s --tail=200", ns, pod, container))
-			add(fmt.Sprintf("kubectl -n %s logs %s -c %s --previous --tail=200", ns, pod, container))
-		} else {
-			add(fmt.Sprintf("kubectl -n %s logs %s --all-containers --tail=200", ns, pod))
-			add(fmt.Sprintf("kubectl -n %s logs %s --all-containers --previous --tail=200", ns, pod))
-		}
-	} else if selector != "" {
-		add(fmt.Sprintf("kubectl -n %s get pods -l %s", ns, selector))
-		add(fmt.Sprintf("kubectl -n %s describe pod -l %s", ns, selector))
-	}
-
-	if len(b.Workloads) > 0 {
-		w := b.Workloads[0]
-		switch w.Kind {
-		case "Deployment":
-			add(fmt.Sprintf("kubectl -n %s rollout history deploy/%s", ns, w.Name))
-			add(fmt.Sprintf("kubectl -n %s logs deploy/%s --all-containers --tail=200", ns, w.Name))
-		case "StatefulSet":
-			add(fmt.Sprintf("kubectl -n %s logs sts/%s --all-containers --tail=200", ns, w.Name))
-		}
-	}
-
-	switch cat {
-	case "ImagePullBackOff":
-		if pod != "" && container != "" {
-			add(fmt.Sprintf("kubectl -n %s get pod %s -o jsonpath='{.status.containerStatuses[?(@.name==%q)].state.waiting.message}'", ns, pod, container))
-		}
-	case "Mount/config":
-		if pod != "" {
-			add(fmt.Sprintf("kubectl -n %s get pod %s -o yaml | grep -E 'configMap|secret'", ns, pod))
-		}
-	}
-
-	return out
-}
-
 // fixActionsFor returns remediation steps to restore service health (read-only guidance).
 func fixActionsFor(cat string, b model.EvidenceBundle) []string {
 	ns := b.Namespace
@@ -363,4 +297,16 @@ func fixActionsFor(cat string, b model.EvidenceBundle) []string {
 		}
 	}
 	return out
+}
+
+func podHasRestarts(p model.PodSummary) bool {
+	if p.RestartCount > 0 {
+		return true
+	}
+	for _, c := range p.Containers {
+		if c.RestartCount > 0 {
+			return true
+		}
+	}
+	return false
 }

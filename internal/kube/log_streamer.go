@@ -3,6 +3,7 @@ package kube
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"regexp"
@@ -14,6 +15,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
 
+	"github.com/glnreddy421/klew/internal/logpatterns"
 	"github.com/glnreddy421/klew/internal/model"
 )
 
@@ -488,7 +490,7 @@ func (ls *LogStreamer) streamContainer(ctx context.Context, ns, pod, container s
 			return
 		}
 		attempt++
-		if err != nil && err != io.EOF && ls.Sink != nil && attempt == 1 {
+		if err != nil && !errors.Is(err, io.EOF) && ls.Sink != nil && attempt == 1 {
 			// One soft notice; reconnects stay quiet to avoid noise.
 			ls.Sink(systemEvent(
 				"log_stream_retry",
@@ -575,7 +577,7 @@ func classifyLogLine(line string) model.Severity {
 		return model.SeverityCritical
 	case strings.Contains(l, "error"), strings.Contains(l, "failed"), strings.Contains(l, "refused"):
 		return model.SeverityHigh
-	case strings.Contains(l, "warn"), strings.Contains(l, "timeout"):
+	case strings.Contains(l, "warn"), logpatterns.MentionsTimeout(l):
 		return model.SeverityWarning
 	default:
 		return model.SeverityInfo
@@ -594,7 +596,7 @@ func classifyLogReason(line string) string {
 		return "OOMKilled"
 	case strings.Contains(l, "memory leak"), strings.Contains(l, "heap growth"):
 		return "Memory leak"
-	case strings.Contains(l, "redis"), strings.Contains(l, "timeout"):
+	case logpatterns.MentionsTimeout(l):
 		return "Redis timeout"
 	default:
 		return ""

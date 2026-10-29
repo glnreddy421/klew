@@ -1,0 +1,55 @@
+version: "2"
+
+# CI runs this with --new-from-merge-base so pull requests are judged on the
+# code they add or change; existing findings are reported but do not block.
+
+run:
+  timeout: 10m
+  tests: true
+
+linters:
+  default: standard # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    - bodyclose # unclosed HTTP response bodies
+    - dupl # copy-pasted blocks
+    - errorlint # error comparisons that break with wrapping
+    - gocognit # functions too complex to review
+    - gocritic # common bug patterns and smells
+    - gosec # security issues
+    - misspell
+    - nilerr # returning nil after checking err != nil
+    - nolintlint # unjustified or stale //nolint
+    - unconvert
+    - unparam # always-same params and results
+  settings:
+    dupl:
+      threshold: 150
+    gocognit:
+      min-complexity: 40
+    gocritic:
+      enabled-tags: [diagnostic, performance]
+      disabled-checks:
+        - hugeParam # model structs are passed by value on purpose
+        - rangeValCopy
+    gosec:
+      excludes:
+        - G204 # kubectl/shell exec with resolved paths is intentional
+        - G304 # reading user-selected kubeconfig and data files is intentional
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+  exclusions:
+    presets:
+      - comments
+      - std-error-handling
+    rules:
+      - path: _test\.go
+        linters: [dupl, gocognit, gosec, unparam]
+
+formatters:
+  enable:
+    - gofmt
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

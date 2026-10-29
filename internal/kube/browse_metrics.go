@@ -28,8 +28,8 @@ type PodMetricUsage struct {
 // BrowseMetricsResult is scope-level resource usage for Resources browse.
 type BrowseMetricsResult struct {
 	Available bool                 `json:"available"`
-	Note      string                 `json:"note,omitempty"`
-	Summary   model.MetricsSummary   `json:"summary"`
+	Note      string               `json:"note,omitempty"`
+	Summary   model.MetricsSummary `json:"summary"`
 }
 
 func podMetricsKey(namespace, name string) string {

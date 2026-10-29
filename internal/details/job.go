@@ -16,11 +16,12 @@ func (jobProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, erro
 		return nil, err
 	}
 	tone, label := "healthy", "Active"
-	if job.Status.Succeeded > 0 && job.Status.Active == 0 {
+	switch {
+	case job.Status.Succeeded > 0 && job.Status.Active == 0:
 		tone, label = "healthy", "Succeeded"
-	} else if job.Status.Failed > 0 {
+	case job.Status.Failed > 0:
 		tone, label = "critical", "Failed"
-	} else if job.Status.Active > 0 {
+	case job.Status.Active > 0:
 		tone, label = "warning", "Running"
 	}
 	podRows := podsForJob(ctx, req, job.Name)
@@ -51,13 +52,15 @@ func (jobProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, erro
 		statusPairs = append(statusPairs, extra...)
 	}
 	var sections []Section
-	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields(statusPairs...)))
-	sections = append(sections, sectionFields("spec", "Spec", GroupSpec, fields(
-		"Completions", fmtInt32Ptr(job.Spec.Completions),
-		"Parallelism", fmtInt32Ptr(job.Spec.Parallelism),
-		"Backoff Limit", fmtInt32Ptr(job.Spec.BackoffLimit),
-		"TTL Seconds After Finished", fmtInt32Ptr(job.Spec.TTLSecondsAfterFinished),
-	)))
+	sections = append(sections,
+		sectionFields("status", "Status", GroupSummary, fields(statusPairs...)),
+		sectionFields("spec", "Spec", GroupSpec, fields(
+			"Completions", fmtInt32Ptr(job.Spec.Completions),
+			"Parallelism", fmtInt32Ptr(job.Spec.Parallelism),
+			"Backoff Limit", fmtInt32Ptr(job.Spec.BackoffLimit),
+			"TTL Seconds After Finished", fmtInt32Ptr(job.Spec.TTLSecondsAfterFinished),
+		)),
+	)
 	if rows := jobConditionRows(job.Status.Conditions); len(rows) > 0 {
 		sections = append(sections, sectionTable("conditions", "Conditions", GroupSummary,
 			[]string{"Type", "Status", "Reason", "Message"}, rows))
@@ -65,17 +68,18 @@ func (jobProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, erro
 	if ownerSec := ownerRefsRelationshipSection(job.OwnerReferences, job.Namespace); !ownerSec.Empty() {
 		sections = append(sections, ownerSec)
 	}
-	if len(podRows) > 0 {
+	switch {
+	case len(podRows) > 0:
 		sections = append(sections, sectionTable("pods", "Pods", GroupRelationships,
 			[]string{"Name", "Phase", "Ready"}, podRows))
-	} else if job.Status.Active > 0 || job.Status.Succeeded > 0 || job.Status.Failed > 0 {
+	case job.Status.Active > 0 || job.Status.Succeeded > 0 || job.Status.Failed > 0:
 		sections = append(sections, Section{
 			ID:    "pods",
 			Title: "Pods",
 			Group: GroupRelationships,
 			Notes: []string{"Pods for this Job could not be listed — check RBAC for pods/list in this namespace."},
 		})
-	} else {
+	default:
 		sections = append(sections, Section{
 			ID:    "pods",
 			Title: "Pods",
@@ -83,7 +87,7 @@ func (jobProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, erro
 			Notes: []string{"No Pods have been created for this Job yet."},
 		})
 	}
-	sections = append(sections, podTemplateSections(&job.Spec.Template, GroupSpec)...)
+	sections = append(sections, podTemplateSections(&job.Spec.Template)...)
 	sections = append(sections, labelsAnnotationsSections(job.Labels, job.Annotations)...)
 	if mf := managedFieldsSection(job.ManagedFields); !mf.Empty() {
 		sections = append(sections, mf)

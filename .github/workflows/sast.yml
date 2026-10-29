@@ -1,0 +1,65 @@
+name: SAST
+
+# Static analysis of Klew's own code: golangci-lint (including gosec) on new
+# code, and actionlint/shellcheck for workflows and scripts. CodeQL runs
+# through GitHub's default setup. Job names are required status checks on
+# main; keep them stable.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sast-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Go lint (new issues)
+    if: github.event_name == 'pull_request'
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Placeholder frontend bundle
+        run: |
+          mkdir -p cmd/klew-desktop/frontend/dist
+          [ -e cmd/klew-desktop/frontend/dist/index.html ] || echo '<!doctype html>' > cmd/klew-desktop/frontend/dist/index.html
+
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.15.0
+          # Existing findings are tracked separately; a PR must not add new ones.
+          only-new-issues: true
+
+  workflows:
+    name: Workflow and script lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: actionlint (runs shellcheck on run blocks)
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color
+
+      - name: shellcheck scripts
+        run: shellcheck --severity=error .github/scripts/*.sh

@@ -1,7 +1,7 @@
 package engine
 
 import (
-	"crypto/sha1"
+	"crypto/sha1" //nolint:gosec // G505: used only for dedupe fingerprints
 	"encoding/hex"
 	"regexp"
 	"strings"
@@ -259,7 +259,7 @@ func Fingerprint(e model.EvidenceEvent) string {
 	default:
 		key = "sys|" + e.Reason + "|" + normalizeMsg(e.Message)
 	}
-	sum := sha1.Sum([]byte(key))
+	sum := sha1.Sum([]byte(key)) //nolint:gosec // G401: dedupe fingerprint, not a security boundary
 	return hex.EncodeToString(sum[:8])
 }
 
@@ -272,6 +272,6 @@ func normalizeMsg(s string) string {
 // logLineFingerprint uniquely identifies one tailed log line (no digit normalization).
 func logLineFingerprint(e model.EvidenceEvent) string {
 	key := "logline|" + e.Pod + "|" + e.Container + "|" + strings.TrimSpace(e.Raw) + "|" + e.Timestamp.Time().Format(time.RFC3339Nano)
-	sum := sha1.Sum([]byte(key))
+	sum := sha1.Sum([]byte(key)) //nolint:gosec // G401: dedupe fingerprint, not a security boundary
 	return hex.EncodeToString(sum[:8])
 }

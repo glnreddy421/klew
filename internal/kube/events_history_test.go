@@ -47,7 +47,7 @@ func TestCollectEventsMergesRecordedByUID(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "e-live", Namespace: "klew-lab", UID: types.UID("uid-live")},
 			Regarding:  corev1.ObjectReference{Kind: "Pod", Name: "payment-api-1", Namespace: "klew-lab"},
 			Type:       "Warning", Reason: "BackOff", Note: "back-off (v1 wording)",
-			EventTime:  metav1.NewMicroTime(live.Time),
+			EventTime: metav1.NewMicroTime(live.Time),
 		},
 	)
 	hist := &fakeHistory{recs: []model.EventRecord{

@@ -36,16 +36,16 @@ type ClusterNodeItem struct {
 
 // ClusterStatus is cluster-level reachability and inventory for Overview context.
 type ClusterStatus struct {
-	Available         bool               `json:"available"`
-	CollectedAt       model.Timestamp    `json:"collectedAt"`
-	KubernetesVersion string             `json:"kubernetesVersion,omitempty"`
-	Platform          string             `json:"platform,omitempty"`
-	APIReachable      bool               `json:"apiReachable"`
-	Error             string             `json:"error,omitempty"`
-	Nodes             ClusterNodeSummary `json:"nodes"`
-	NodeItems         []ClusterNodeItem        `json:"nodeItems,omitempty"`
-	Versions          ClusterVersionSummary    `json:"versions"`
-	NamespaceCount    int                      `json:"namespaceCount,omitempty"`
+	Available         bool                  `json:"available"`
+	CollectedAt       model.Timestamp       `json:"collectedAt"`
+	KubernetesVersion string                `json:"kubernetesVersion,omitempty"`
+	Platform          string                `json:"platform,omitempty"`
+	APIReachable      bool                  `json:"apiReachable"`
+	Error             string                `json:"error,omitempty"`
+	Nodes             ClusterNodeSummary    `json:"nodes"`
+	NodeItems         []ClusterNodeItem     `json:"nodeItems,omitempty"`
+	Versions          ClusterVersionSummary `json:"versions"`
+	NamespaceCount    int                   `json:"namespaceCount,omitempty"`
 }
 
 type cachedClusterStatus struct {

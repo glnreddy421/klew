@@ -4,6 +4,19 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 
 ## [Unreleased]
 
+### Security
+
+- **Verified kubectl downloads** — the version-matched kubectl Klew downloads from `dl.k8s.io` is now checked against the SHA-256 published next to it before it is used, and so is the kubectl bundled into releases. A missing checksum or a mismatch stops the download. kubectl binaries cached by earlier versions are downloaded and verified again once.
+- **Release provenance** — releases include a `SHA256SUMS` file and one SPDX SBOM per front end (the desktop app; `klew-mcp`), each built from what ships. Every artifact has signed build provenance and SBOM attestations (`gh attestation verify <file> --repo glnreddy421/klew`).
+- **`klew-mcp` release binaries** — signed and notarized macOS binaries and Linux binaries, for arm64 and amd64, are published with each release alongside the desktop app.
+- **Hardened workflows** — every GitHub Action is pinned to a commit SHA, workflows get no token permissions by default, and the release job asks only for what it uses.
+- **Go toolchain** — builds use Go 1.26.10, which fixes standard-library vulnerabilities in `net/http`, `crypto/tls`, `crypto/x509` and `encoding/asn1` that earlier toolchains left in release binaries.
+
+### MCP server
+
+- **`klew-mcp`** — a new read-only MCP server that gives AI assistants Klew's analysis over stdio. Tools: `klew_list_contexts`, `klew_investigate` (verdict, causal chain, failing pods, patterns, incidents, related change, next checks), `klew_investigation_details` (paged sections of an investigation), `klew_event_history` (live plus recorded events with coverage), and `klew_workload_changes` (revisions with field-level diffs). Runs without the desktop app, on macOS and Linux; reads the desktop app's recorded events when present. See [docs/mcp.md](docs/mcp.md).
+- **Data handling** — `klew-mcp` masks common credential formats (authorization headers, JWTs, `password=`-style pairs, URL credentials, known token prefixes, private keys) and email addresses in every result before it reaches the AI provider. This is best effort and can miss sensitive values. `-no-log-samples` leaves raw container log lines out entirely while keeping patterns and counts. Tool inputs are validated against Kubernetes name rules.
+
 ## [1.5.0] — 2026-10-24
 
 ### Workload Changes

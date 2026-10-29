@@ -8,13 +8,13 @@ import (
 
 // Ephemeral auth review APIs are create-only machinery — not useful in the resource browser.
 var nonBrowsableCatalogResources = map[string]struct{}{
-	"subjectaccessreviews":       {},
-	"selfsubjectaccessreviews":   {},
-	"selfsubjectrulesreviews":    {},
-	"localsubjectaccessreviews":  {},
-	"tokenreviews":               {},
-	"subjectrulesreviews":        {},
-	"selfsubjectreviews":         {},
+	"subjectaccessreviews":      {},
+	"selfsubjectaccessreviews":  {},
+	"selfsubjectrulesreviews":   {},
+	"localsubjectaccessreviews": {},
+	"tokenreviews":              {},
+	"subjectrulesreviews":       {},
+	"selfsubjectreviews":        {},
 }
 
 // IsBrowsableCatalogResource reports whether a discovered API resource belongs in the browse catalog.

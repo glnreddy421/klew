@@ -84,7 +84,7 @@ func catalogNodeTaintCount(obj map[string]interface{}) *int32 {
 		zero := int32(0)
 		return &zero
 	}
-	n := int32(len(taints))
+	n := clampInt32(int64(len(taints)))
 	return &n
 }
 

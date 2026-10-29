@@ -2,25 +2,21 @@ package kube
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
 
 	authorizationv1 "k8s.io/api/authorization/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/dynamic"
 
 	"github.com/glnreddy421/klew/internal/model"
 )
 
 const (
-	catalogListConcurrency  = 2
-	catalogCountLimit       = 500
-	catalogRequestTimeout   = 12 * time.Second
+	catalogListConcurrency = 2
+	catalogCountLimit      = 500
+	catalogRequestTimeout  = 12 * time.Second
 )
 
 type rulesIndex struct {
@@ -189,71 +185,6 @@ func resolveAuthRules(ctx context.Context, client *Client, namespace string) (na
 	}
 	globalAuthCache.set(client, namespace, nsRules, clRules)
 	return nsRules, clRules, nil
-}
-
-func countResource(ctx context.Context, dyn dynamic.Interface, d DiscoveredResource, namespace string, allNamespaces bool) *model.ResourceCount {
-	reqCtx, cancel := context.WithTimeout(ctx, catalogRequestTimeout)
-	defer cancel()
-
-	gvr := schema.GroupVersionResource{Group: d.Group, Version: d.Version, Resource: d.Resource}
-	var res dynamic.ResourceInterface
-	if d.Namespaced {
-		if allNamespaces {
-			res = dyn.Resource(gvr)
-		} else {
-			res = dyn.Resource(gvr).Namespace(namespace)
-		}
-	} else {
-		res = dyn.Resource(gvr)
-	}
-	ul, err := res.List(reqCtx, metav1.ListOptions{Limit: catalogCountLimit})
-	if err != nil {
-		if apierrors.IsForbidden(err) {
-			return &model.ResourceCount{State: "forbidden"}
-		}
-		if apierrors.IsNotFound(err) {
-			return &model.ResourceCount{State: "unavailable"}
-		}
-		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) || reqCtx.Err() != nil {
-			return &model.ResourceCount{State: "error", Error: "count timed out (API throttling or slow cluster)"}
-		}
-		if ctx.Err() != nil {
-			return &model.ResourceCount{State: "error", Error: "count canceled"}
-		}
-		return &model.ResourceCount{State: "error", Error: err.Error()}
-	}
-	count := len(ul.Items)
-	if ul.GetContinue() != "" {
-		count = catalogCountLimit
-	}
-	return &model.ResourceCount{State: "loaded", Count: count}
-}
-
-func countResourceMulti(ctx context.Context, dyn dynamic.Interface, d DiscoveredResource, namespaces []string) *model.ResourceCount {
-	total := 0
-	allowed := 0
-	for _, ns := range namespaces {
-		if ctx.Err() != nil {
-			break
-		}
-		c := countResource(ctx, dyn, d, ns, false)
-		if c == nil {
-			continue
-		}
-		switch c.State {
-		case "loaded":
-			allowed++
-			total += c.Count
-		case "forbidden":
-			continue
-		default:
-			continue
-		}
-	}
-	if allowed == 0 {
-		return &model.ResourceCount{State: "forbidden"}
-	}
-	return &model.ResourceCount{State: "loaded", Count: total}
 }
 
 func shouldAttemptCatalogCount(d model.KubernetesResourceDescriptor) bool {

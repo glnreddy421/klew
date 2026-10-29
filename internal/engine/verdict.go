@@ -30,15 +30,16 @@ func GenerateVerdict(b model.EvidenceBundle, timeline []model.TimelineEvent, sig
 		}
 	}
 
-	if len(v.StrongSignals) > 0 {
+	switch {
+	case len(v.StrongSignals) > 0:
 		v.Status = model.VerdictCritical
 		v.Confidence = 0.85
 		v.LeadingSignal = v.StrongSignals[0].Label
-	} else if len(v.MediumSignals) > 0 {
+	case len(v.MediumSignals) > 0:
 		v.Status = model.VerdictWarning
 		v.Confidence = 0.65
 		v.LeadingSignal = v.MediumSignals[0].Label
-	} else if allPodsHealthy(b) {
+	case allPodsHealthy(b):
 		v.Status = model.VerdictHealthy
 		v.Confidence = 0.75
 		v.Summary = "No strong failure signals detected in collected evidence."

@@ -25,7 +25,7 @@ const (
 	helmOwnerValue           = "helm"
 	helmReleaseNameLabel     = "name"
 	helmReleaseVersionLabel  = "version"
-	helmReleaseSecretType    = "helm.sh/release.v1"
+	helmReleaseSecretType    = "helm.sh/release.v1" //nolint:gosec // G101: Kubernetes Secret type name, not a credential
 	helmReleaseDataKey       = "release"
 	helmReleaseNamePrefix    = "sh.helm.release.v1."
 	helmMetaReleaseName      = "meta.helm.sh/release-name"
@@ -34,22 +34,22 @@ const (
 
 // HelmReleaseRecord is a decoded Helm 3 release stored in a Secret or ConfigMap.
 type HelmReleaseRecord struct {
-	Name          string
-	Namespace     string
-	Revision      int
-	Status        string
-	Chart         string
-	ChartVersion  string
-	AppVersion    string
-	Updated       time.Time
-	Description   string
-	Notes         string
-	StorageKind   string
-	StorageName   string
-	StorageUID    string
-	ResourceVer   string
-	FirstDeployed time.Time
-	ConfigYAML    string
+	Name           string
+	Namespace      string
+	Revision       int
+	Status         string
+	Chart          string
+	ChartVersion   string
+	AppVersion     string
+	Updated        time.Time
+	Description    string
+	Notes          string
+	StorageKind    string
+	StorageName    string
+	StorageUID     string
+	ResourceVer    string
+	FirstDeployed  time.Time
+	ConfigYAML     string
 	UserValuesYAML string
 }
 
@@ -59,12 +59,12 @@ type helmReleasePayload struct {
 	Version   int                    `json:"version"`
 	Config    map[string]interface{} `json:"config"`
 	Info      struct {
-		Status          string    `json:"status"`
-		Description     string    `json:"description"`
-		Notes           string    `json:"notes"`
-		FirstDeployed   time.Time `json:"first_deployed"`
-		LastDeployed    time.Time `json:"last_deployed"`
-		Deleted         time.Time `json:"deleted"`
+		Status        string    `json:"status"`
+		Description   string    `json:"description"`
+		Notes         string    `json:"notes"`
+		FirstDeployed time.Time `json:"first_deployed"`
+		LastDeployed  time.Time `json:"last_deployed"`
+		Deleted       time.Time `json:"deleted"`
 	} `json:"info"`
 	Chart struct {
 		Metadata struct {
@@ -247,7 +247,7 @@ func listHelmStorageObjectsMatching(ctx context.Context, client *Client, scope C
 			if !isHelmReleaseConfigMap(cm) {
 				continue
 			}
-			raw := []byte(cm.BinaryData[helmReleaseDataKey])
+			raw := cm.BinaryData[helmReleaseDataKey]
 			if len(raw) == 0 {
 				raw = []byte(cm.Data[helmReleaseDataKey])
 			}

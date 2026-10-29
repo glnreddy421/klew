@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -39,13 +40,12 @@ func ListCatalogEntities(ctx context.Context, client *Client, resourceID string,
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	switch resourceID {
-	case VirtualHelmReleasesResourceID:
+	if resourceID == VirtualHelmReleasesResourceID {
 		return ListHelmReleaseEntities(ctx, client, scope)
 	}
 	group, version, resource, err := ParseResourceID(resourceID)
 	if err != nil {
-		return model.CatalogEntityList{AccessState: model.ResourceAccessError, Error: err.Error()}, nil
+		return model.CatalogEntityList{AccessState: model.ResourceAccessError, Error: err.Error()}, nil //nolint:nilerr // the parse error is reported in the list's Error field
 	}
 	gvr := schema.GroupVersionResource{Group: group, Version: version, Resource: resource}
 
@@ -349,7 +349,7 @@ func catalogServiceEndpointCountsByName(ctx context.Context, client *Client, nam
 func countEndpointSliceAddresses(slices []discoveryv1.EndpointSlice) (ready, total int32) {
 	for _, sl := range slices {
 		for _, ep := range sl.Endpoints {
-			n := int32(len(ep.Addresses))
+			n := clampInt32(int64(len(ep.Addresses)))
 			if n == 0 {
 				continue
 			}
@@ -1009,7 +1009,7 @@ func enrichCronJobCatalogEntity(entity *model.CatalogEntity, obj map[string]inte
 	active := int32(0)
 	if status, ok := obj["status"].(map[string]interface{}); ok {
 		if raw, ok := status["active"].([]interface{}); ok {
-			active = int32(len(raw))
+			active = clampInt32(int64(len(raw)))
 		}
 		entity.LastScheduleTime = stringFromMap(status, "lastScheduleTime")
 	}
@@ -1107,10 +1107,10 @@ func coerceInt32(v interface{}) *int32 {
 	case int32:
 		return &n
 	case int:
-		i := int32(n)
+		i := clampInt32(int64(n))
 		return &i
 	case int64:
-		i := int32(n)
+		i := clampInt32(n)
 		return &i
 	case float64:
 		i := int32(n)
@@ -1119,11 +1119,14 @@ func coerceInt32(v interface{}) *int32 {
 		i := int32(n)
 		return &i
 	case uint64:
-		i := int32(n)
+		i := int32(math.MaxInt32)
+		if n < math.MaxInt32 {
+			i = int32(n)
+		}
 		return &i
 	case json.Number:
 		if i64, err := n.Int64(); err == nil {
-			i := int32(i64)
+			i := clampInt32(i64)
 			return &i
 		}
 	}
@@ -1228,7 +1231,7 @@ func containerRestartCount(cs map[string]interface{}) int32 {
 	case float64:
 		return int32(v)
 	case int64:
-		return int32(v)
+		return clampInt32(v)
 	case int32:
 		return v
 	default:

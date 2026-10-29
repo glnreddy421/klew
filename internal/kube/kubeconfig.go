@@ -32,17 +32,14 @@ type ClusterState struct {
 	User              string          `json:"user"`
 	Contexts          []ContextOption `json:"contexts"`
 	Namespaces        []string        `json:"namespaces"`
-	SyncedAt          model.Timestamp       `json:"syncedAt"`
+	SyncedAt          model.Timestamp `json:"syncedAt"`
 	SyncError         string          `json:"syncError,omitempty"`
 	SyncWarning       string          `json:"syncWarning,omitempty"`
 }
 
 // LoadKubeConfigSnapshot reads contexts from kubeconfig on disk (no cluster calls).
 func LoadKubeConfigSnapshot(kubeconfigPath string) (ClusterState, error) {
-	loader, path, err := configLoader(kubeconfigPath)
-	if err != nil {
-		return ClusterState{}, err
-	}
+	loader, path := configLoader(kubeconfigPath)
 	raw, err := loader.RawConfig()
 	if err != nil {
 		return ClusterState{}, fmt.Errorf("read kubeconfig: %w", err)
@@ -173,7 +170,7 @@ func isNamespaceListRestricted(err error) bool {
 	return apierrors.IsForbidden(err) || apierrors.IsUnauthorized(err)
 }
 
-func configLoader(kubeconfigPath string) (clientcmd.ClientConfig, string, error) {
+func configLoader(kubeconfigPath string) (clientcmd.ClientConfig, string) {
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
 	if kubeconfigPath != "" {
 		loadingRules.ExplicitPath = kubeconfigPath
@@ -186,7 +183,7 @@ func configLoader(kubeconfigPath string) (clientcmd.ClientConfig, string, error)
 		}
 	}
 	loader := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, nil)
-	return loader, path, nil
+	return loader, path
 }
 
 func findContext(contexts []ContextOption, name string) *ContextOption {

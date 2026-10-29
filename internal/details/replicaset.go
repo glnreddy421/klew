@@ -45,7 +45,7 @@ func (replicaSetProvider) Build(ctx context.Context, req *Request) (*ObjectDetai
 	if sec := podsRelationshipSection(ctx, req, matchLabels, podRows); !sec.Empty() {
 		sections = append(sections, sec)
 	}
-	sections = append(sections, podTemplateSections(&rs.Spec.Template, GroupSpec)...)
+	sections = append(sections, podTemplateSections(&rs.Spec.Template)...)
 	sections = append(sections, metaSections(rs.Labels, rs.Annotations, ownerRefsFromMeta(rs.OwnerReferences, rs.Namespace))...)
 	if mf := managedFieldsSection(rs.ManagedFields); !mf.Empty() {
 		sections = append(sections, mf)

@@ -60,11 +60,12 @@ func CheckPermissions(ctx context.Context, c *Client, namespace string) ([]model
 		}
 		result, err := auth.SelfSubjectAccessReviews().Create(ctx, sar, metav1.CreateOptions{})
 		allowed := false
-		if err != nil {
+		switch {
+		case err != nil:
 			warnings = append(warnings, fmt.Sprintf("permission check failed for %s/%s: %v", p.Resource, p.Verb, err))
-		} else if result.Status.Allowed {
+		case result.Status.Allowed:
 			allowed = true
-		} else {
+		default:
 			warnings = append(warnings, fmt.Sprintf("Missing permission: %s %s (namespace=%s)", p.Verb, p.Resource, ns))
 		}
 		checks = append(checks, model.PermissionCheck{

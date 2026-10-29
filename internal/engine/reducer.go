@@ -383,7 +383,7 @@ func ClassifyLogSeverity(line string) model.Severity {
 		return model.SeverityCritical
 	case strings.Contains(l, "error"), strings.Contains(l, "failed"), strings.Contains(l, "refused"):
 		return model.SeverityHigh
-	case strings.Contains(l, "warn"), strings.Contains(l, "timeout"):
+	case strings.Contains(l, "warn"), logpatterns.MentionsTimeout(l):
 		return model.SeverityWarning
 	default:
 		return model.SeverityInfo

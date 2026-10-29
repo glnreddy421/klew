@@ -19,18 +19,20 @@ func (clusterRoleBindingProvider) Build(ctx context.Context, req *Request) (*Obj
 		Status:   StatusBadge{Tone: "healthy", Label: "Bound"},
 		Summary: fields(
 			"Role", crb.RoleRef.Kind+"/"+crb.RoleRef.Name,
-			"Subjects", fmtInt32(int32(len(crb.Subjects))),
+			"Subjects", fmtInt(len(crb.Subjects)),
 		),
 	}
 	var sections []Section
-	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields(
-		"Subjects", fmtInt32(int32(len(crb.Subjects))),
-	)))
-	sections = append(sections, sectionFields("roleRef", "RoleRef", GroupRelationships, fields(
-		"Kind", crb.RoleRef.Kind,
-		"Name", crb.RoleRef.Name,
-		"API Group", crb.RoleRef.APIGroup,
-	)))
+	sections = append(sections,
+		sectionFields("status", "Status", GroupSummary, fields(
+			"Subjects", fmtInt(len(crb.Subjects)),
+		)),
+		sectionFields("roleRef", "RoleRef", GroupRelationships, fields(
+			"Kind", crb.RoleRef.Kind,
+			"Name", crb.RoleRef.Name,
+			"API Group", crb.RoleRef.APIGroup,
+		)),
+	)
 	if rows := subjectRows(crb.Subjects); len(rows) > 0 {
 		sections = append(sections, sectionTable("subjects", "Subjects", GroupRelationships,
 			[]string{"Kind", "Name", "Namespace", "API Group"}, rows))

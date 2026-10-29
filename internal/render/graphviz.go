@@ -70,7 +70,7 @@ func PropagationSteps(g model.WorkloadGraph) []GraphStep {
 		}
 		steps = append(steps, GraphStep{
 			ID: id, Kind: kind, Name: name,
-			Label: shortGraphLabel(kind, name),
+			Label:  shortGraphLabel(kind, name),
 			Health: health, Relation: relation,
 		})
 	}

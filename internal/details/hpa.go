@@ -32,14 +32,16 @@ func (hpaProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, erro
 		),
 	}
 	var sections []Section
-	sections = append(sections, sectionFields("currentReplicas", "Current Replicas", GroupSummary, fields(
-		"Current", fmtInt32(hpa.Status.CurrentReplicas),
-	)))
-	sections = append(sections, sectionFields("desiredReplicas", "Desired Replicas", GroupSummary, fields(
-		"Desired", fmtInt32(hpa.Status.DesiredReplicas),
-		"Min", fmtInt32Ptr(hpa.Spec.MinReplicas),
-		"Max", fmtInt32(hpa.Spec.MaxReplicas),
-	)))
+	sections = append(sections,
+		sectionFields("currentReplicas", "Current Replicas", GroupSummary, fields(
+			"Current", fmtInt32(hpa.Status.CurrentReplicas),
+		)),
+		sectionFields("desiredReplicas", "Desired Replicas", GroupSummary, fields(
+			"Desired", fmtInt32(hpa.Status.DesiredReplicas),
+			"Min", fmtInt32Ptr(hpa.Spec.MinReplicas),
+			"Max", fmtInt32(hpa.Spec.MaxReplicas),
+		)),
+	)
 	if rows := hpaMetricRows(hpa.Spec.Metrics, hpa.Status.CurrentMetrics); len(rows) > 0 {
 		sections = append(sections, sectionTable("targetMetrics", "Target Metrics", GroupSpec,
 			[]string{"Type", "Name", "Target", "Current"}, rows))

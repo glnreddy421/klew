@@ -28,7 +28,7 @@ func (cronJobProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, 
 		"Schedule", cj.Spec.Schedule,
 		"Suspend", boolStr(suspended),
 		"Last Schedule", last,
-		"Active Jobs", fmtInt32(int32(len(cj.Status.Active))),
+		"Active Jobs", fmtInt(len(cj.Status.Active)),
 	}, podRows), cj.Spec.JobTemplate.Spec.Template.Spec)
 
 	detail := &ObjectDetail{
@@ -41,7 +41,7 @@ func (cronJobProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, 
 	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields(
 		"Last Schedule", last,
 		"Last Successful", fmtTime(cj.Status.LastSuccessfulTime),
-		"Active Jobs", fmtInt32(int32(len(cj.Status.Active))),
+		"Active Jobs", fmtInt(len(cj.Status.Active)),
 	)))
 	tz := ""
 	if cj.Spec.TimeZone != nil {
@@ -58,17 +58,18 @@ func (cronJobProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, 
 	if ownerSec := ownerRefsRelationshipSection(cj.OwnerReferences, cj.Namespace); !ownerSec.Empty() {
 		sections = append(sections, ownerSec)
 	}
-	if len(jobRows) > 0 {
+	switch {
+	case len(jobRows) > 0:
 		sections = append(sections, sectionTable("jobs", "Jobs", GroupRelationships,
 			[]string{"Name", "Active", "Succeeded", "Failed", "Start Time"}, jobRows))
-	} else if len(cj.Status.Active) > 0 {
+	case len(cj.Status.Active) > 0:
 		var rows [][]string
 		for _, a := range cj.Status.Active {
 			rows = append(rows, []string{a.Kind, a.Name, a.Namespace})
 		}
 		sections = append(sections, sectionTable("activeJobs", "Active Jobs", GroupRelationships,
 			[]string{"Kind", "Name", "Namespace"}, rows))
-	} else {
+	default:
 		note := "No Jobs found yet — they appear here after the next scheduled run."
 		if last != "" {
 			note = "No active Jobs. Last schedule: " + last + ". Completed Jobs appear here after each run."
@@ -91,7 +92,7 @@ func (cronJobProvider) Build(ctx context.Context, req *Request) (*ObjectDetail, 
 			Notes: []string{"Pods for CronJob Jobs could not be listed — check RBAC for pods/list in this namespace."},
 		})
 	}
-	sections = append(sections, podTemplateSections(&cj.Spec.JobTemplate.Spec.Template, GroupSpec)...)
+	sections = append(sections, podTemplateSections(&cj.Spec.JobTemplate.Spec.Template)...)
 	sections = append(sections, labelsAnnotationsSections(cj.Labels, cj.Annotations)...)
 	if mf := managedFieldsSection(cj.ManagedFields); !mf.Empty() {
 		sections = append(sections, mf)

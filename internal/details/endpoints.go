@@ -28,17 +28,17 @@ func (endpointsProvider) Build(ctx context.Context, req *Request) (*ObjectDetail
 		Category: "network",
 		Status:   endpointStatusBadge(ready, total),
 		Summary: fields(
-			"Addresses", fmtInt32(int32(total)),
-			"Ready", fmtInt32(int32(ready)),
-			"Subsets", fmtInt32(int32(len(ep.Subsets))),
+			"Addresses", fmtInt(total),
+			"Ready", fmtInt(ready),
+			"Subsets", fmtInt(len(ep.Subsets)),
 		),
 	}
 
 	var sections []Section
 	sections = append(sections, sectionFields("status", "Status", GroupSummary, fields(
-		"Ready Addresses", fmtInt32(int32(ready)),
-		"Total Addresses", fmtInt32(int32(total)),
-		"Subsets", fmtInt32(int32(len(ep.Subsets))),
+		"Ready Addresses", fmtInt(ready),
+		"Total Addresses", fmtInt(total),
+		"Subsets", fmtInt(len(ep.Subsets)),
 	)))
 	if len(addrRows) > 0 {
 		sections = append(sections, sectionTable("addresses", "Addresses", GroupRelationships,
