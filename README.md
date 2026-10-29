@@ -1,5 +1,16 @@
 # Klew
 
+[![Tests](https://github.com/glnreddy421/klew/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/glnreddy421/klew/actions/workflows/tests.yml)
+[![Coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fglnreddy421%2Fklew%2Fbadges%2Fcoverage.json)](https://github.com/glnreddy421/klew/actions/workflows/tests.yml)
+[![SCA](https://github.com/glnreddy421/klew/actions/workflows/sca.yml/badge.svg?branch=main)](https://github.com/glnreddy421/klew/actions/workflows/sca.yml)
+[![SAST](https://github.com/glnreddy421/klew/actions/workflows/sast.yml/badge.svg?branch=main)](https://github.com/glnreddy421/klew/actions/workflows/sast.yml)
+[![CodeQL](https://github.com/glnreddy421/klew/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/glnreddy421/klew/actions/workflows/github-code-scanning/codeql)
+[![Release](https://img.shields.io/github/v/release/glnreddy421/klew?label=release)](https://github.com/glnreddy421/klew/releases/latest)
+[![SBOM: SPDX](https://img.shields.io/badge/SBOM-SPDX-blue)](SECURITY.md#supply-chain)
+[![Provenance: Sigstore](https://img.shields.io/badge/provenance-Sigstore%20signed-blue)](SECURITY.md#supply-chain)
+[![Go](https://img.shields.io/github/go-mod/go-version/glnreddy421/klew)](go.mod)
+[![License](https://img.shields.io/github/license/glnreddy421/klew)](LICENSE)
+
 **Live Kubernetes incident investigation for macOS.**
 
 When something breaks in a cluster you need three answers fast: **what failed**, **why**, and **what else is affected**. Klew discovers the related objects, watches live state, events, and logs, correlates them, and keeps one investigation up to date as the cluster changes — instead of a dozen `kubectl` commands across terminal tabs.
@@ -61,7 +72,9 @@ Grab the DMG from [Releases](https://github.com/glnreddy421/klew/releases) — `
 Each release also has an SPDX SBOM, a `SHA256SUMS` file, and signed build provenance. To check that a download was built by this repository's release workflow:
 
 ```bash
-gh attestation verify Klew-x.y.z-macos-arm64.dmg --repo glnreddy421/klew
+gh attestation verify Klew-x.y.z-macos-arm64.dmg --repo glnreddy421/klew          # desktop app
+gh attestation verify klew-mcp-x.y.z-darwin-arm64.tar.gz --repo glnreddy421/klew   # MCP server
+shasum -a 256 -c --ignore-missing Klew-x.y.z-SHA256SUMS.txt                        # checksums of what you downloaded
 ```
 
 ## Quick start
@@ -89,11 +102,13 @@ gh attestation verify Klew-x.y.z-macos-arm64.dmg --repo glnreddy421/klew
 `klew-mcp` gives AI assistants (Claude Code, Claude Desktop, Cursor, …) Klew's verdicts, failure triage, patterns, event history and workload changes over the Model Context Protocol. It is read-only, runs without the desktop app, and works on macOS and Linux.
 
 ```bash
-go install github.com/glnreddy421/klew/cmd/klew-mcp@latest
+go install github.com/glnreddy421/klew/cmd/klew-mcp@latest   # or download a signed binary from Releases
 claude mcp add klew -- klew-mcp
 ```
 
-See [docs/mcp.md](docs/mcp.md) for tools, client setup, and what data the assistant sees.
+**Where your data goes.** `klew-mcp` runs on your machine and sends nothing anywhere itself. But tool results — object names, event messages, and samples of container log lines — become part of the conversation, which your MCP client sends to its AI provider (Anthropic, OpenAI, …). `klew-mcp` masks common credential shapes and email addresses first, **on a best-effort basis: it can miss sensitive values your applications log.** Run it with `-no-log-samples` to never send raw log lines, and only connect it to clusters whose data you are allowed to share with your provider.
+
+See [docs/mcp.md](docs/mcp.md) for tools, client setup, and data handling, and [SECURITY.md](SECURITY.md) for the security model.
 
 ## Privacy
 
