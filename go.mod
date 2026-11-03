@@ -12,10 +12,10 @@ require (
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/wailsapp/wails/v2 v2.17.0
 	golang.org/x/sys v0.49.0
-	k8s.io/api v0.37.1
-	k8s.io/apimachinery v0.37.1
-	k8s.io/client-go v0.37.1
-	k8s.io/metrics v0.37.1
+	k8s.io/api v0.37.2
+	k8s.io/apimachinery v0.37.2
+	k8s.io/client-go v0.37.2
+	k8s.io/metrics v0.37.2
 	modernc.org/sqlite v1.61.0
 	sigs.k8s.io/yaml v1.6.0
 )
