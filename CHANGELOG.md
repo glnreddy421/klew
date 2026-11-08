@@ -2,7 +2,7 @@
 
 All notable changes to Klew are documented here. Version tags follow [SemVer](https://semver.org/).
 
-## [2.0.0] — unreleased
+## [2.0.0] — 2026-11-08
 
 ### Upgrading to 2.0
 
