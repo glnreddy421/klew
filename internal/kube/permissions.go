@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 // scopeAccess is what resolving the scope and the pod-centric collectors read.

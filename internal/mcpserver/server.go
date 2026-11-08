@@ -11,10 +11,10 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/glnreddy421/klew/internal/engine"
-	"github.com/glnreddy421/klew/internal/history"
-	"github.com/glnreddy421/klew/internal/kube"
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/engine"
+	"github.com/glnreddy421/klew/v2/internal/history"
+	"github.com/glnreddy421/klew/v2/internal/kube"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 const instructions = `Klew investigates Kubernetes incidents read-only: its tools only list, get and watch, and no tool changes the cluster. Access is limited to the RBAC of the user's kubeconfig context; a permission error means that context cannot read the resource.

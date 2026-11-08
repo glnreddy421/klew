@@ -16,7 +16,7 @@ import (
 	"k8s.io/client-go/rest"
 	k8stesting "k8s.io/client-go/testing"
 
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 func ownedBy(name, kind, owner string, lbl map[string]string) corev1.Pod {

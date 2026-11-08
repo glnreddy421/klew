@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/glnreddy421/klew/internal/changes"
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/changes"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 // changeMarkerCache keeps each workload's latest change per UID + generation,

@@ -3,7 +3,7 @@ package details
 import (
 	"testing"
 
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 func TestPodsForSelectorSnapshot(t *testing.T) {

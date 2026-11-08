@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/glnreddy421/klew/internal/kube"
+	"github.com/glnreddy421/klew/v2/internal/kube"
 )
 
 func envValue(env []string, key string) (string, bool) {

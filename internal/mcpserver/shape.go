@@ -5,9 +5,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/glnreddy421/klew/internal/engine"
-	"github.com/glnreddy421/klew/internal/model"
-	"github.com/glnreddy421/klew/internal/redact"
+	"github.com/glnreddy421/klew/v2/internal/engine"
+	"github.com/glnreddy421/klew/v2/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/redact"
 )
 
 // Compact projections of engine state. Tool results land in the model's

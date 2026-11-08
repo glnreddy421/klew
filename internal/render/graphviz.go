@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 // GraphStep is one node in the propagation flow shown in TUI and web.

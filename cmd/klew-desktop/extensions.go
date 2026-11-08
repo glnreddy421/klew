@@ -12,8 +12,8 @@ import (
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
-	"github.com/glnreddy421/klew/internal/engine"
-	"github.com/glnreddy421/klew/internal/kube"
+	"github.com/glnreddy421/klew/v2/internal/engine"
+	"github.com/glnreddy421/klew/v2/internal/kube"
 )
 
 // ExtensionsView is what Settings → Extensions shows: Klew's own folder, the

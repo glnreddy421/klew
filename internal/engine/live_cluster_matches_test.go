@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/glnreddy421/klew/internal/kube"
+	"github.com/glnreddy421/klew/v2/internal/kube"
 )
 
 func TestLiveKlewLabMatchHealth(t *testing.T) {

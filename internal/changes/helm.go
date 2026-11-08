@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 // HelmRevision is one decoded Helm release revision (user-supplied values only).

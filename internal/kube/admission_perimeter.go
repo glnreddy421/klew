@@ -10,7 +10,7 @@ import (
 	authorizationv1 "k8s.io/api/authorization/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 const admissionPermissionNote = "Insufficient permissions to list admission webhook configurations (cluster-scoped). Perimeter layer is unknown — not a clean bill of health."

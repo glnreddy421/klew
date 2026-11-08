@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/glnreddy421/klew/internal/changes"
-	"github.com/glnreddy421/klew/internal/model"
-	"github.com/glnreddy421/klew/internal/service"
+	"github.com/glnreddy421/klew/v2/internal/changes"
+	"github.com/glnreddy421/klew/v2/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/service"
 )
 
 const workloadChangesTimeout = 20 * time.Second

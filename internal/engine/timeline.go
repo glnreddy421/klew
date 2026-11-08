@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 // BuildTimeline merges events, container states, rollouts into chronological story.

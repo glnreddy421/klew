@@ -17,8 +17,8 @@ import (
 	"cel.dev/cel-go/ext"
 	"sigs.k8s.io/yaml"
 
-	"github.com/glnreddy421/klew/internal/kube"
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/kube"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 // User extensions are YAML files of Collector and Rule documents:

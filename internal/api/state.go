@@ -1,9 +1,9 @@
 package api
 
 import (
-	"github.com/glnreddy421/klew/internal/engine"
-	"github.com/glnreddy421/klew/internal/model"
-	"github.com/glnreddy421/klew/internal/render"
+	"github.com/glnreddy421/klew/v2/internal/engine"
+	"github.com/glnreddy421/klew/v2/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/render"
 )
 
 // View is the shared investigation snapshot for desktop (and any future UI).

@@ -10,7 +10,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/glnreddy421/klew/internal/kube"
+	"github.com/glnreddy421/klew/v2/internal/kube"
 )
 
 type helmReleaseProvider struct{}

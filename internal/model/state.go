@@ -3,7 +3,7 @@ package model
 import (
 	"time"
 
-	"github.com/glnreddy421/klew/internal/investigation"
+	"github.com/glnreddy421/klew/v2/internal/investigation"
 )
 
 // SourceType identifies evidence origin.

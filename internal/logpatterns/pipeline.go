@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 // DualPipeline owns two isolated Drain3 trees:

@@ -1,7 +1,7 @@
 package engine
 
 import (
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 // Analyze runs the deterministic investigation pipeline on a bundle.

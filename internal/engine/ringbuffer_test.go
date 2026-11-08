@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 func TestRingBufferKeepsDistinctLogLines(t *testing.T) {

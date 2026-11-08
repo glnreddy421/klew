@@ -3,7 +3,7 @@ package engine
 import (
 	"strings"
 
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 // IncidentActive reports whether the current snapshot shows an ongoing failure.

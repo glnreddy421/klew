@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 // Historical window for per-pattern minute buckets / sparklines.

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 func warnEvent(reason, pod string, at time.Time, count int32) model.EventRecord {

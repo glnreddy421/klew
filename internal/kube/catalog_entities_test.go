@@ -9,7 +9,7 @@ import (
 
 	discoveryv1 "k8s.io/api/discovery/v1"
 
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 func TestCatalogContainerState(t *testing.T) {

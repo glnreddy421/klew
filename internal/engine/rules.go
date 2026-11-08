@@ -6,8 +6,8 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/glnreddy421/klew/internal/kube"
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/kube"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 // Rule turns collected evidence into signals, which drive the verdict, and

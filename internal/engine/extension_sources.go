@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 
-	"github.com/glnreddy421/klew/internal/kube"
+	"github.com/glnreddy421/klew/v2/internal/kube"
 )
 
 // ExtensionSources lists the folders of extensions a user linked. Klew reads

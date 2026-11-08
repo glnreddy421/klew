@@ -13,8 +13,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 
-	"github.com/glnreddy421/klew/internal/kube"
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/kube"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 func pod(name string, lbls map[string]string, containers ...string) *corev1.Pod {

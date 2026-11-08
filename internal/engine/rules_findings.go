@@ -8,7 +8,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/labels"
 
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 // Finding rules. Each reports what is wrong with one object and the spec and

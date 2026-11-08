@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 // failingPod picks the pod/container most likely responsible for the incident.

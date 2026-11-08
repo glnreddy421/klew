@@ -16,10 +16,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/yaml"
 
-	"github.com/glnreddy421/klew/internal/changes"
-	"github.com/glnreddy421/klew/internal/kube"
-	"github.com/glnreddy421/klew/internal/model"
-	"github.com/glnreddy421/klew/internal/redact"
+	"github.com/glnreddy421/klew/v2/internal/changes"
+	"github.com/glnreddy421/klew/v2/internal/kube"
+	"github.com/glnreddy421/klew/v2/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/redact"
 )
 
 // Plain list, get and log reads for questions that do not need a full

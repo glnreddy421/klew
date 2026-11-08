@@ -20,10 +20,10 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/glnreddy421/klew/internal/engine"
-	"github.com/glnreddy421/klew/internal/history"
-	"github.com/glnreddy421/klew/internal/kube"
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/engine"
+	"github.com/glnreddy421/klew/v2/internal/history"
+	"github.com/glnreddy421/klew/v2/internal/kube"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 // Exit statuses of klew investigate, so scripts and CI can act on the verdict.

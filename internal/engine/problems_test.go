@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 func ownedPod(name, ownerKind, owner string, ready bool, cs ...model.ContainerStatus) model.PodSummary {

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 const redisStartupWarning = "1:C 27 Oct 2026 09:00:00.000 # Warning: no config file specified, using the default config. In order to specify a config file use redis-server /path/to/redis.conf"

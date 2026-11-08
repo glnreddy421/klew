@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 // Correlation is the output of the CorrelationEngine: a ranked leading signal, a

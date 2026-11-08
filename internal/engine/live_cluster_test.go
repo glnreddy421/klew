@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/glnreddy421/klew/internal/kube"
+	"github.com/glnreddy421/klew/v2/internal/kube"
 )
 
 // Live cluster probe — run with: go test ./internal/engine -run TestLiveKlewLabPaymentAPI -v
