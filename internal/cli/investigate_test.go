@@ -3,6 +3,8 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -28,8 +30,15 @@ func TestParseInvestigate(t *testing.T) {
 		t.Errorf("-all -no-history gave %+v", o)
 	}
 
+	dir := t.TempDir()
+	o, code = parseInvestigate([]string{"-extensions-dir", dir}, &errOut)
+	if code != -1 || o.extensionsDir != dir {
+		t.Errorf("-extensions-dir %s gave exit %d, %+v", dir, code, o)
+	}
+
 	for _, args := range [][]string{
 		{"a", "b"}, {"-o", "yaml"}, {"-only", "graph"}, {"-observe", "1h"}, {"-no-such-flag"},
+		{"-extensions-dir", filepath.Join(dir, "missing")},
 	} {
 		errOut.Reset()
 		if _, code := parseInvestigate(args, &errOut); code != ExitUsage {
@@ -200,5 +209,31 @@ func TestMergeIncidents(t *testing.T) {
 	}
 	if l := latest(got, 2); len(l) != 2 || l[1].LeadingReason != "FailedCreate" || l[0].LeadingReason != "BackOff" {
 		t.Errorf("latest 2: %+v", l)
+	}
+}
+
+func TestLoadRegistryFromExtensionsDir(t *testing.T) {
+	dir := t.TempDir()
+	rule := `apiVersion: klew.dev/v1alpha1
+kind: Rule
+metadata: {name: single-replica}
+spec:
+  resource: workloads
+  when: "object.replicas == 1"
+  state: SingleReplica
+`
+	if err := os.WriteFile(filepath.Join(dir, "rules.yaml"), []byte(rule), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var errOut bytes.Buffer
+	reg := loadRegistry(dir, &errOut)
+	found := false
+	for _, r := range reg.Rules {
+		if r.Name() == "single-replica" {
+			found = true
+		}
+	}
+	if !found || errOut.Len() > 0 {
+		t.Errorf("rule from -extensions-dir not loaded; warnings: %s", errOut.String())
 	}
 }

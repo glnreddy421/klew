@@ -50,6 +50,7 @@ Suggested actions are text. Klew never runs them.
 | `-o json` | Print the report as JSON, with every field |
 | `-no-logs` | Do not read container logs |
 | `-history-dir`, `-no-history` | Where the desktop app's recorded events are, or do not read them |
+| `-extensions-dir DIR` | Use only this folder of [custom collectors and rules](extensions.md), instead of Klew's extensions folder and the folders linked in the desktop app |
 
 `klew investigate -h` lists them all.
 
