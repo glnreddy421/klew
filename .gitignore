@@ -23,11 +23,12 @@ cmd/klew-desktop/frontend/node_modules/
 
 # Test / temp
 *.log
+!tools/k8s-log-engine/testdata/*.log
 coverage.out
 /tmp/
 /klew-desktop
 cmd/klew-desktop/klew-desktop
 dist/
 
-# klew-mcp release staging (.github/scripts/build-mcp.sh)
+# klew command release staging (.github/scripts/build-cli.sh)
 /build/

@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "klew-ui",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "/Users/gln/work/Gitlab/klew-ui", "run", "dev", "--", "--port", "5173", "--strictPort"],
+      "port": 5173
+    }
+  ]
+}

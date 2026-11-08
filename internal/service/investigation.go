@@ -121,60 +121,13 @@ func (s *Service) RefreshSnapshot(ctx context.Context) error {
 	return s.session.RefreshSnapshotNow(ctx)
 }
 
-func (s *Service) LogTailActive() bool {
+// IngestLog passes a log line from the desktop log stream to the
+// investigation when it covers that pod.
+func (s *Service) IngestLog(e model.EvidenceEvent) bool {
 	if s == nil || s.session == nil {
 		return false
 	}
-	return s.session.LogTailActive()
-}
-
-func (s *Service) LogTailEngaged() bool {
-	if s == nil || s.session == nil {
-		return false
-	}
-	return s.session.LogTailEngaged()
-}
-
-func (s *Service) LogTailPaused() bool {
-	if s == nil || s.session == nil {
-		return false
-	}
-	return s.session.LogTailPaused()
-}
-
-func (s *Service) StartLogTail(opts engine.LogTailOptions) error {
-	if s == nil || s.session == nil {
-		return fmt.Errorf("no active investigation")
-	}
-	return s.session.StartLogTail(opts)
-}
-
-func (s *Service) StopLogTail() {
-	if s == nil || s.session == nil {
-		return
-	}
-	s.session.StopLogTail()
-}
-
-func (s *Service) PauseLogTail() error {
-	if s == nil || s.session == nil {
-		return fmt.Errorf("no active investigation")
-	}
-	return s.session.PauseLogTail()
-}
-
-func (s *Service) ResumeLogTail() error {
-	if s == nil || s.session == nil {
-		return fmt.Errorf("no active investigation")
-	}
-	return s.session.ResumeLogTail()
-}
-
-func (s *Service) ClearLogs() {
-	if s == nil || s.session == nil {
-		return
-	}
-	s.session.ClearLogs()
+	return s.session.IngestLog(e)
 }
 
 // Watch invokes fn whenever investigation state changes until ctx is cancelled.

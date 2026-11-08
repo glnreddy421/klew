@@ -48,6 +48,18 @@ type LogStreamer struct {
 	Since     time.Duration
 	// MaxLogRequests limits concurrent GetLogs follows. 0 → DefaultMaxLogRequests.
 	MaxLogRequests int
+	// LabelSelector narrows the pod list/watch server-side, so pods created
+	// later (rollouts, restarts) join the follow. Empty watches every pod.
+	LabelSelector string
+	// Container follows only this container in each pod. Empty → all app containers.
+	Container string
+	// Timestamps stamps each line with the time the kubelet recorded it
+	// instead of the time Klew received it.
+	Timestamps bool
+}
+
+func (ls *LogStreamer) containerWanted(name string) bool {
+	return ls.Container == "" || ls.Container == name
 }
 
 type logTarget struct {
@@ -139,7 +151,7 @@ func (ls *LogStreamer) start(ctx context.Context, pods []model.PodSummary, wg *s
 			ns = ls.Namespace
 		}
 		for _, c := range p.Containers {
-			if c.Name == "" {
+			if c.Name == "" || !ls.containerWanted(c.Name) {
 				continue
 			}
 			ctrl.ensure(logTarget{ns: ns, pod: p.Name, container: c.Name})
@@ -308,6 +320,9 @@ func (c *logStreamController) syncPod(pod *corev1.Pod) {
 	}
 	want := map[string]bool{}
 	for _, name := range appContainerNames(pod) {
+		if !c.ls.containerWanted(name) {
+			continue
+		}
 		want[name] = true
 		c.ensure(logTarget{ns: pod.Namespace, pod: pod.Name, container: name})
 	}
@@ -410,7 +425,9 @@ func (c *logStreamController) watchPods(ctx context.Context) {
 }
 
 func (c *logStreamController) watchPodsOnce(ctx context.Context) (established bool, err error) {
-	list, err := c.ls.Client.Clientset.CoreV1().Pods(c.ls.Namespace).List(ctx, metav1.ListOptions{})
+	list, err := c.ls.Client.Clientset.CoreV1().Pods(c.ls.Namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: c.ls.LabelSelector,
+	})
 	if err != nil {
 		return false, err
 	}
@@ -418,6 +435,7 @@ func (c *logStreamController) watchPodsOnce(ctx context.Context) (established bo
 
 	wi, err := c.ls.Client.Clientset.CoreV1().Pods(c.ls.Namespace).Watch(ctx, metav1.ListOptions{
 		ResourceVersion: list.ResourceVersion,
+		LabelSelector:   c.ls.LabelSelector,
 	})
 	if err != nil {
 		return false, err
@@ -522,9 +540,10 @@ func (ls *LogStreamer) followOnce(ctx context.Context, ns, pod, container string
 		tail = 0
 	}
 	opts := &corev1.PodLogOptions{
-		Container: container,
-		Follow:    true,
-		TailLines: &tail,
+		Container:  container,
+		Follow:     true,
+		TailLines:  &tail,
+		Timestamps: ls.Timestamps,
 	}
 	if initial && ls.Since > 0 {
 		secs := int64(ls.Since.Seconds())
@@ -548,9 +567,13 @@ func (ls *LogStreamer) followOnce(ctx context.Context, ns, pod, container string
 		default:
 		}
 		line := stripANSI(sc.Text())
+		at := time.Now().UTC()
+		if ls.Timestamps {
+			at, line = splitLogTimestamp(line, at)
+		}
 		sev := classifyLogLine(line)
 		ls.Sink(model.EvidenceEvent{
-			Timestamp:  model.TimestampFrom(time.Now().UTC()),
+			Timestamp:  model.TimestampFrom(at),
 			SourceType: model.SourceLog,
 			SourceKind: "Pod",
 			SourceName: pod,
@@ -570,18 +593,22 @@ func (ls *LogStreamer) followOnce(ctx context.Context, ns, pod, container string
 	return io.EOF
 }
 
-func classifyLogLine(line string) model.Severity {
-	l := strings.ToLower(line)
-	switch {
-	case strings.Contains(l, "oom"), strings.Contains(l, "fatal"), strings.Contains(l, "panic"):
-		return model.SeverityCritical
-	case strings.Contains(l, "error"), strings.Contains(l, "failed"), strings.Contains(l, "refused"):
-		return model.SeverityHigh
-	case strings.Contains(l, "warn"), logpatterns.MentionsTimeout(l):
-		return model.SeverityWarning
-	default:
-		return model.SeverityInfo
+// splitLogTimestamp removes the RFC 3339 prefix the kubelet adds when
+// PodLogOptions.Timestamps is set. Lines without one keep fallback.
+func splitLogTimestamp(line string, fallback time.Time) (time.Time, string) {
+	stamp, rest, ok := strings.Cut(line, " ")
+	if !ok {
+		stamp, rest = line, ""
 	}
+	t, err := time.Parse(time.RFC3339Nano, stamp)
+	if err != nil {
+		return fallback, line
+	}
+	return t.UTC(), rest
+}
+
+func classifyLogLine(line string) model.Severity {
+	return logpatterns.ClassifyLogSeverity(line)
 }
 
 func classifyLogReason(line string) string {
@@ -597,7 +624,7 @@ func classifyLogReason(line string) string {
 	case strings.Contains(l, "memory leak"), strings.Contains(l, "heap growth"):
 		return "Memory leak"
 	case logpatterns.MentionsTimeout(l):
-		return "Redis timeout"
+		return "Timeout"
 	default:
 		return ""
 	}

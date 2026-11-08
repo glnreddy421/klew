@@ -15,7 +15,6 @@ export function ScopeBrowseProvider({
   catalog,
   cluster,
   rows = [],
-  chain = false,
   browseLens = RESOURCES_BROWSE_LENS.MATCHES,
   children,
 }) {
@@ -42,7 +41,7 @@ export function ScopeBrowseProvider({
     [rowSig, podSig, catalogSig],
   )
 
-  const nav = useResourceNavigation(baseTree, { enabled: !chain })
+  const nav = useResourceNavigation(baseTree, { enabled: true })
 
   const isOverviewSelected = isCategoryOverview(nav.selectedKind)
   const investigationEntities = nav.entities
@@ -53,7 +52,7 @@ export function ScopeBrowseProvider({
     cluster,
     kindGroup,
     browseScope: cluster?.browseScope,
-    enabled: !chain && canLazyLoad,
+    enabled: canLazyLoad,
   })
   const tree = useLazyResourceCounts(baseTree, {
     clusterKey: clusterScopeKey(cluster),
@@ -119,9 +118,8 @@ export function ScopeBrowseProvider({
     effectiveKindGroup,
     lazy,
     canLazyLoad,
-    chain,
     browseLens,
-  }), [tree, navWithCounts, pods, displayEntities, effectiveKindGroup, lazy, canLazyLoad, chain, browseLens])
+  }), [tree, navWithCounts, pods, displayEntities, effectiveKindGroup, lazy, canLazyLoad, browseLens])
 
   return (
     <ScopeBrowseContext.Provider value={value}>

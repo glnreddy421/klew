@@ -731,38 +731,6 @@ function snapshotObjectToInspectRow(obj, kind, view) {
   return synthesizeInspectRow(kind, obj.name, view)
 }
 
-/** Minimal row for a focus key when the object is not in matches or catalog yet. */
-export function synthesizeFocusRow(key, namespace = '') {
-  const parsed = parseInspectKey(key)
-  if (parsed) {
-    const ns = parsed.namespace || namespace
-    const canonical = buildInspectKey(parsed.kind, parsed.name, ns) || key
-    return {
-      key: canonical,
-      ref: { kind: parsed.kind, name: parsed.name, namespace: ns },
-      kind: parsed.kind,
-      name: parsed.name,
-      namespace: ns,
-      status: 'unknown',
-      signal: null,
-      score: 0,
-    }
-  }
-  const [kind, ...rest] = String(key || '').split('/')
-  const name = rest.join('/')
-  if (!kind || !name) return null
-  return {
-    key,
-    ref: { kind, name, namespace },
-    kind,
-    name,
-    namespace,
-    status: 'unknown',
-    signal: null,
-    score: 0,
-  }
-}
-
 /** Resolve an inspect row by key, including on-demand cluster/namespace objects. */
 export function inspectRowForKey(key, view, rows) {
   const hit = findRowByKey(rows, key)

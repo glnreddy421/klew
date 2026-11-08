@@ -10,6 +10,10 @@ export function TerminalFindBar({
   onFindNext,
   onFindPrevious,
   onClose,
+  className = '',
+  placeholder = 'Find in terminal…',
+  ariaLabel = 'Find text',
+  roleLabel = 'Find in terminal',
 }) {
   const inputRef = useRef(null)
 
@@ -26,24 +30,26 @@ export function TerminalFindBar({
 
   const summary = formatFindResultSummary(resultIndex, resultCount)
 
+  const barClass = ['terminal-find-bar', className].filter(Boolean).join(' ')
+
   return (
     <div
-      className="terminal-find-bar"
+      className={barClass}
       role="search"
-      aria-label="Find in terminal"
+      aria-label={roleLabel}
       onMouseDown={(e) => e.stopPropagation()}
     >
       <input
         ref={inputRef}
         type="search"
         className="terminal-find-input"
-        placeholder="Find in terminal…"
+        placeholder={placeholder}
         value={query}
         spellCheck={false}
         autoComplete="off"
         autoCorrect="off"
         autoCapitalize="off"
-        aria-label="Find text"
+        aria-label={ariaLabel}
         onChange={(e) => onQueryChange(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'Enter') {

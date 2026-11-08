@@ -43,24 +43,22 @@ function pickActiveId(savedId, tabs) {
   return tabs[0]?.id || null
 }
 
-const STORAGE_KEY = 'klew.terminal.tabsByContext'
+const STORAGE_KEY = 'klew.terminal.tabs'
 
-function loadPersistedCache() {
+function loadPersisted() {
   try {
     const raw = sessionStorage.getItem(STORAGE_KEY)
-    if (!raw) return new Map()
-    const obj = JSON.parse(raw)
-    if (!obj || typeof obj !== 'object') return new Map()
-    return new Map(Object.entries(obj))
+    const obj = raw ? JSON.parse(raw) : null
+    if (!obj || !Array.isArray(obj.tabs)) return { tabs: [], activeId: null }
+    return obj
   } catch {
-    return new Map()
+    return { tabs: [], activeId: null }
   }
 }
 
-function persistCache(map) {
+function persist(tabs, activeId) {
   try {
-    const obj = Object.fromEntries(map.entries())
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(obj))
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ tabs: tabsForCache(tabs), activeId }))
   } catch {
     /* quota / private mode */
   }
@@ -78,13 +76,30 @@ export function tabsForCache(tabs) {
   }))
 }
 
-export function useTerminalTabs(cluster, { open = false, persist = false, onEmpty, skipInitialSeed = false } = {}) {
-  const contextKey = terminalContextKey(cluster)
-  const contextName = cluster?.selectedContext || cluster?.currentContext || ''
-  const namespace = cluster?.selectedNamespace || ''
+function restorePersisted() {
+  const saved = loadPersisted()
+  const tabs = reviveTerminalTabs(saved.tabs.map((t) => ({
+    ...t,
+    id: t.id || `term-tab-${nextTabSeq++}`,
+    title: t.title || 'Shell',
+  })))
+  for (const t of tabs) {
+    const n = Number(String(t.id).replace('term-tab-', ''))
+    if (Number.isFinite(n) && n >= nextTabSeq) nextTabSeq = n + 1
+  }
+  return { tabs, activeId: pickActiveId(saved.activeId, tabs) }
+}
 
-  const cacheRef = useRef(loadPersistedCache())
-  const contextKeyRef = useRef(contextKey)
+/**
+ * Terminal tabs for the dock. Each tab is pinned to the kube context that was
+ * current when it opened; switching context leaves existing tabs (and their
+ * shells) alone, and new tabs pick up the new context.
+ */
+export function useTerminalTabs(cluster, { open = false, persist: keepOnClose = false, onEmpty, skipInitialSeed = false } = {}) {
+  const contextName = cluster?.selectedContext || cluster?.currentContext || ''
+  // New shells follow the kube context's own namespace, not the browse selection.
+  const namespace = ''
+
   const tabsRef = useRef([])
   const activeIdRef = useRef(null)
   const seededRef = useRef(false)
@@ -95,96 +110,53 @@ export function useTerminalTabs(cluster, { open = false, persist = false, onEmpt
   tabsRef.current = tabs
   activeIdRef.current = activeId
 
-  const writeCache = useCallback((key, tabList, active) => {
-    if (!key || !String(key).split('\0')[1]) return
-    cacheRef.current.set(key, {
-      tabs: tabsForCache(tabList),
-      activeId: active,
-    })
-    persistCache(cacheRef.current)
-  }, [])
-
-  const loadFromCache = useCallback((key) => {
-    const cached = cacheRef.current.get(key)
-    if (!cached?.tabs?.length) {
-      return { tabs: [], activeId: null, hadCache: false }
-    }
-    const ctxFromKey = String(key).split('\0')[1] || ''
-    const token = Date.now()
-    const restored = cached.tabs.map((t) => ({
-      id: t.id || `term-tab-${nextTabSeq++}`,
-      title: t.title || 'Shell',
-      shell: '',
-      sessionId: null,
-      ready: false,
-      error: '',
-      contextName: t.contextName || ctxFromKey,
-      namespace: t.namespace || '',
-      initialInput: t.initialInput || '',
-      initialInputSent: Boolean(t.initialInputSent),
-      restartToken: token,
-    }))
-    return {
-      tabs: restored,
-      activeId: pickActiveId(cached.activeId, restored),
-      hadCache: true,
-    }
-  }, [])
-
-  // Switch tab group when kube context changes.
-  useEffect(() => {
-    const prevKey = contextKeyRef.current
-    if (prevKey === contextKey) return
-
-    writeCache(prevKey, tabsRef.current, activeIdRef.current)
-
-    const loaded = loadFromCache(contextKey)
-    contextKeyRef.current = contextKey
-    seededRef.current = loaded.hadCache
-    setTabs(loaded.tabs)
-    setActiveId(loaded.activeId)
-  }, [contextKey, writeCache, loadFromCache])
-
-  // Keep cache in sync while the dock is open.
   useEffect(() => {
     if (!open) return
-    writeCache(contextKey, tabs, activeId)
-  }, [open, contextKey, tabs, activeId, writeCache])
+    persist(tabs, activeId)
+  }, [open, tabs, activeId])
 
   const addTab = useCallback((overrides = {}) => {
-    let tabId = ''
-    setTabs((prev) => {
-      const tab = createTerminalTab({
-        contextName,
-        namespace,
-        ...overrides,
-      })
-      tabId = tab.id
-      return [...prev, tab]
-    })
-    setActiveId(tabId)
-    return tabId
+    // Build outside the state updater: updaters may run twice (StrictMode) and
+    // createTerminalTab bumps a counter, which would fork the id.
+    const tab = createTerminalTab({ contextName, namespace, ...overrides })
+    setTabs((prev) => [...prev, tab])
+    setActiveId(tab.id)
+    return tab.id
   }, [contextName, namespace])
 
   const closeTab = useCallback((id) => {
-    setTabs((prev) => {
-      const idx = prev.findIndex((t) => t.id === id)
-      if (idx < 0) return prev
-      const next = prev.filter((t) => t.id !== id)
-      setActiveId((cur) => {
-        if (cur !== id) return cur
-        if (next.length === 0) return null
-        const pick = next[Math.min(idx, next.length - 1)]
-        return pick.id
-      })
-      if (next.length === 0) {
-        seededRef.current = true
-        writeCache(contextKeyRef.current, [], null)
-        onEmpty?.()
-      }
-      return next
+    const prev = tabsRef.current
+    const idx = prev.findIndex((t) => t.id === id)
+    if (idx < 0) return
+    const next = prev.filter((t) => t.id !== id)
+    setTabs(next)
+    setActiveId((cur) => {
+      if (cur !== id) return cur
+      if (next.length === 0) return null
+      return next[Math.min(idx, next.length - 1)].id
     })
-  }, [onEmpty, writeCache])
+    if (next.length === 0) {
+      seededRef.current = true
+      persist([], null)
+      onEmpty?.()
+    }
+  }, [onEmpty])
+
+  /** Close several tabs in one pass — looping closeTab would read stale state. */
+  const closeTabs = useCallback((ids = []) => {
+    const drop = new Set(ids)
+    if (drop.size === 0) return
+    const prev = tabsRef.current
+    const next = prev.filter((t) => !drop.has(t.id))
+    if (next.length === prev.length) return
+    setTabs(next)
+    setActiveId((cur) => (cur && drop.has(cur) ? next[next.length - 1]?.id || null : cur))
+    if (next.length === 0) {
+      seededRef.current = true
+      persist([], null)
+      onEmpty?.()
+    }
+  }, [onEmpty])
 
   const updateTab = useCallback((id, patch) => {
     setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)))
@@ -212,8 +184,8 @@ export function useTerminalTabs(cluster, { open = false, persist = false, onEmpt
 
   useEffect(() => {
     if (!open) {
-      if (!persist) {
-        writeCache(contextKeyRef.current, tabsRef.current, activeIdRef.current)
+      if (!keepOnClose) {
+        if (tabsRef.current.length > 0) persist(tabsRef.current, activeIdRef.current)
         setTabs([])
         setActiveId(null)
         seededRef.current = false
@@ -223,11 +195,11 @@ export function useTerminalTabs(cluster, { open = false, persist = false, onEmpt
 
     if (tabs.length > 0) return
 
-    const loaded = loadFromCache(contextKey)
-    if (loaded.tabs.length > 0) {
+    const restored = restorePersisted()
+    if (restored.tabs.length > 0) {
       seededRef.current = true
-      setTabs(loaded.tabs)
-      setActiveId(loaded.activeId)
+      setTabs(restored.tabs)
+      setActiveId(restored.activeId)
       return
     }
 
@@ -235,7 +207,7 @@ export function useTerminalTabs(cluster, { open = false, persist = false, onEmpt
       seededRef.current = true
       addTab()
     }
-  }, [open, persist, skipInitialSeed, tabs.length, contextKey, addTab, loadFromCache, writeCache])
+  }, [open, keepOnClose, skipInitialSeed, tabs.length, addTab])
 
   const activeTab = tabs.find((t) => t.id === activeId) || null
 
@@ -245,12 +217,13 @@ export function useTerminalTabs(cluster, { open = false, persist = false, onEmpt
     activeTab,
     addTab,
     closeTab,
+    closeTabs,
     updateTab,
     selectTab,
     restartTab,
     restartAllTabs,
     contextName,
     namespace,
-    contextKey,
+    contextKey: terminalContextKey(cluster),
   }
 }

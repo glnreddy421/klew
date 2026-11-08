@@ -1,618 +1,535 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { StreamLiveBadge } from './StreamLiveBadge'
+import { TerminalFindBar } from './TerminalFindBar'
+import { buildLogFindMatches, findSubstringRanges } from '../lib/logFind'
 import {
-  buildStreamGroups,
-  collectStreamPods,
-  hasActiveStreamFilters,
-  StreamMode,
-  STREAM_MODES,
-} from '../lib/streamView'
-import {
-  PANEL_CLOSED,
-  PANEL_MAXIMIZED,
-  PANEL_MINIMIZED,
-  PANEL_NORMAL,
-} from '../hooks/useStreamPanel'
-import { StreamFilterMenu } from './StreamFilterMenu'
-import { StreamSourceIcon } from './KindIcon'
+  describeSources,
+  filterLines,
+  formatLineTime,
+  podColor,
+  podTargets,
+  sourceKey,
+  streamSources,
+} from '../lib/logStream'
+import { isEditableTarget } from '../lib/keyboard'
 
 /**
- * Container logs — on-demand multipod tail from investigation scope.
- * User selects pods and optional line filter before gathering.
+ * Container logs — a stern-style merged stream of the pods the user picked.
+ * Runs with or without an investigation (see hooks/useLogStream).
  */
 export function LiveStreamPanel({
-  evidence,
-  snapshotPods,
-  query = '',
+  logStream,
   running = false,
-  logTailEngaged = false,
-  logTailPaused = false,
-  tailPods = [],
-  dropped = 0,
-  updatedAt,
-  lastEventAt,
-  panelState,
-  height,
-  mode,
-  search,
-  selectedPods = [],
-  follow,
+  investigationPods = [],
+  investigationNamespace = '',
+  tailLines = 0,
+  follow: controlledFollow,
+  defaultFollow = true,
   streamFontSize = 12,
   streamDense = false,
   streamWrapLines = false,
-  onModeChange,
-  onSearchChange,
-  onTogglePod,
-  onSelectMatched,
-  onSelectAllPods,
-  onFollowChange,
-  onToggleLogTailPause,
-  onMinimize,
-  onMaximize,
-  onRestore,
-  onClose,
-  onOpen,
-  onResizeStart,
-  onStartGather,
-  onStopGather,
-  onClearLogs,
-  gatherBusy = false,
-  gatherError = '',
-  embedded = false,
+  onFollowChange: controlledOnFollowChange,
+  dockControls = null,
+  /** Unified bottom panel: title row lives on ConsoleDock; only toolbar + body here. */
+  ideDock = false,
+  /** When inside ConsoleDock, false when another tab is selected (keeps filter state, skips drawing rows). */
+  activeTab = true,
+  /** Open find with this query once (e.g. jump from Patterns). */
+  logsFindFromPatterns = null,
+  onLogsFindFromPatternsHandled,
 }) {
+  const { status, lines, busy, error } = logStream
   const scrollRef = useRef(null)
-  const prevRowCount = useRef(0)
-  const [filterOpen, setFilterOpen] = useState(false)
-  /** Snapshot of groups at the moment the user paused the tail. */
-  const [frozen, setFrozen] = useState(null)
-  const [requestSearch, setRequestSearch] = useState('')
-  const [requestPods, setRequestPods] = useState(() => new Set())
-  /** Last gather request — restored when clearing or stopping tail. */
-  const lastRequestRef = useRef({ pods: null, search: '' })
-  const prevRunningRef = useRef(false)
-  const prevTailRef = useRef(false)
-  const logTailStreaming = logTailEngaged && !logTailPaused
+  const [muted, setMuted] = useState(() => new Set())
+  const [showTime, setShowTime] = useState(true)
+  const [internalFollow, setInternalFollow] = useState(() => Boolean(defaultFollow))
+  const follow = controlledFollow !== undefined ? controlledFollow : internalFollow
+  const onFollowChange = useCallback((next) => {
+    setInternalFollow(Boolean(next))
+    controlledOnFollowChange?.(Boolean(next))
+  }, [controlledOnFollowChange])
+  const [findOpen, setFindOpen] = useState(false)
+  const [findQuery, setFindQuery] = useState('')
+  const [findIndex, setFindIndex] = useState(-1)
 
-  const scopePods = useMemo(
-    () => (snapshotPods || []).filter((p) => p?.name).sort((a, b) => a.name.localeCompare(b.name)),
-    [snapshotPods],
+  const active = Boolean(status.active)
+  const paused = Boolean(status.paused)
+  const streaming = active && !paused
+
+  // A new stream starts with every source visible.
+  const sourcesKey = (status.sources || []).map((s) => `${s.namespace}/${s.label}`).join('|')
+  useEffect(() => {
+    setMuted(new Set())
+  }, [sourcesKey])
+
+  const sources = useMemo(() => streamSources(lines), [lines])
+  const visible = useMemo(
+    () => filterLines(lines, { muted }),
+    [lines, muted],
   )
 
-  // Default all pods selected once per investigation — never clobber manual edits on refresh.
-  useEffect(() => {
-    if (running && !prevRunningRef.current && scopePods.length > 0) {
-      setRequestPods(new Set(scopePods.map((p) => p.name)))
-      setRequestSearch('')
-      lastRequestRef.current = { pods: null, search: '' }
-    }
-    prevRunningRef.current = running
-    if (!running) {
-      prevRunningRef.current = false
-      prevTailRef.current = false
-      setRequestSearch('')
-      setRequestPods(new Set())
-      lastRequestRef.current = { pods: null, search: '' }
-    }
-  }, [running, scopePods])
-
-  // Drop pods that left scope; do not re-select everything on snapshot refresh.
-  useEffect(() => {
-    if (!running || logTailEngaged || !scopePods.length) return
-    const scopeNames = new Set(scopePods.map((p) => p.name))
-    setRequestPods((prev) => {
-      const next = new Set([...prev].filter((n) => scopeNames.has(n)))
-      return next.size ? next : prev
-    })
-  }, [scopePods, running, logTailEngaged])
-
-  // Restore last gather selection when leaving the live tail view.
-  useEffect(() => {
-    if (prevTailRef.current && !logTailEngaged && running) {
-      const saved = lastRequestRef.current
-      if (saved.pods && saved.pods.size > 0) {
-        setRequestPods(new Set(saved.pods))
-        setRequestSearch(saved.search || '')
-      }
-    }
-    prevTailRef.current = logTailEngaged
-  }, [logTailEngaged, running])
-
-  const { all, matched, other } = useMemo(
-    () => collectStreamPods(evidence, snapshotPods, query),
-    [evidence, snapshotPods, query],
+  const findMatches = useMemo(
+    () => buildLogFindMatches(visible, (l) => l.text, findQuery.trim()),
+    [visible, findQuery],
   )
 
-  const selected = Array.isArray(selectedPods) ? selectedPods : []
-  const activeTailPods = logTailEngaged && Array.isArray(tailPods) && tailPods.length ? tailPods : selected
-  const safeMode = mode === StreamMode.Patterns ? StreamMode.Logs : mode
-  const filterKey = `${safeMode}|${search}|${activeTailPods.join(',')}`
+  const findCount = findMatches.length
 
   useEffect(() => {
-    if (mode === StreamMode.Patterns) onModeChange?.(StreamMode.Logs)
-  }, [mode, onModeChange])
+    if (findCount === 0 && findIndex !== -1) setFindIndex(-1)
+    else if (findCount > 0 && findIndex >= findCount) setFindIndex(findCount - 1)
+  }, [findCount, findIndex])
 
-  const streamMeta = useMemo(
-    () => ({
-      updatedAt,
-      lastEventAt,
-      pods: activeTailPods,
-    }),
-    [updatedAt, lastEventAt, activeTailPods],
-  )
+  useEffect(() => {
+    if (!findOpen || !findQuery.trim()) return
+    if (findCount === 0) return
+    if (findIndex < 0) setFindIndex(0)
+  }, [findOpen, findQuery, findCount, findIndex])
 
-  const liveStream = useMemo(() => {
-    if (!running || !logTailEngaged) {
-      return { groups: [], rowCount: 0 }
+  const activeMatch = findIndex >= 0 && findIndex < findCount ? findMatches[findIndex] : null
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el || !activeMatch) return
+    const rowEl = el.querySelector(`[data-log-seq="${activeMatch.row.seq}"]`)
+    rowEl?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' })
+  }, [activeMatch])
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (el && follow && streaming && activeTab) el.scrollTop = el.scrollHeight
+  }, [visible, follow, streaming, activeTab])
+
+  useEffect(() => {
+    if (!active || paused || (ideDock && !activeTab)) return undefined
+    function onKeyDown(e) {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'f') return
+      if (e.altKey) return
+      if (isEditableTarget(e.target) && !e.target?.closest?.('.terminal-find-bar')) return
+      e.preventDefault()
+      e.stopPropagation()
+      setFindOpen(true)
     }
-    return buildStreamGroups(evidence, safeMode, search, streamMeta)
-  }, [evidence, safeMode, search, streamMeta, running, logTailEngaged, filterKey])
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => window.removeEventListener('keydown', onKeyDown, true)
+  }, [active, paused, ideDock, activeTab])
 
-  function toggleRequestPod(name) {
-    setRequestPods((prev) => {
+  useEffect(() => {
+    if (!logsFindFromPatterns?.id || (ideDock && !activeTab)) return
+    const q = String(logsFindFromPatterns.query || '').trim()
+    setFindQuery(q)
+    setFindOpen(true)
+    setFindIndex(-1)
+    onLogsFindFromPatternsHandled?.()
+  }, [logsFindFromPatterns, onLogsFindFromPatternsHandled, ideDock, activeTab])
+
+  const closeFind = useCallback(() => {
+    setFindOpen(false)
+    setFindQuery('')
+    setFindIndex(-1)
+  }, [])
+
+  const findNext = useCallback(() => {
+    if (findCount === 0) return
+    setFindIndex((i) => (i + 1) % findCount)
+  }, [findCount])
+
+  const findPrevious = useCallback(() => {
+    if (findCount === 0) return
+    setFindIndex((i) => (i - 1 + findCount) % findCount)
+  }, [findCount])
+
+  const handleFindQueryChange = useCallback((q) => {
+    setFindQuery(q)
+    setFindIndex(-1)
+  }, [])
+
+  function toggleMuted(key) {
+    setMuted((prev) => {
       const next = new Set(prev)
-      if (next.has(name)) next.delete(name)
-      else next.add(name)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
       return next
     })
   }
 
-  function handleGather() {
-    if (!scopePods.length || requestPods.size === 0) return
-    lastRequestRef.current = {
-      pods: new Set(requestPods),
-      search: requestSearch.trim(),
-    }
-    onStartGather?.({
-      podNames: [...requestPods],
-      lineSearch: requestSearch.trim(),
+  const chips = []
+  if (status.dropped > 0) {
+    chips.push({
+      key: 'dropped',
+      label: `−${status.dropped}`,
+      warn: true,
+      title: 'Lines dropped because they arrived faster than the panel could take them',
     })
   }
-
-  // Capture freeze when pausing; clear on resume / investigation stop.
-  // Filter changes while paused refresh the snapshot from current live lines.
-  const wasPaused = useRef(false)
-  useEffect(() => {
-    if (!running) {
-      setFrozen(null)
-      wasPaused.current = false
-      return
-    }
-    if (logTailPaused) {
-      const justPaused = !wasPaused.current
-      wasPaused.current = true
-      setFrozen((prev) => {
-        if (justPaused || !prev) {
-          return { groups: liveStream.groups, rowCount: liveStream.rowCount, filterKey }
-        }
-        if (prev.filterKey === filterKey) return prev
-        return { groups: liveStream.groups, rowCount: liveStream.rowCount, filterKey }
-      })
-    } else {
-      wasPaused.current = false
-      setFrozen(null)
-    }
-  }, [logTailPaused, running, liveStream, filterKey])
-
-  const groups = logTailPaused && frozen ? frozen.groups : liveStream.groups
-  const rowCount = logTailPaused && frozen ? frozen.rowCount : liveStream.rowCount
-
-  const filtersActive = hasActiveStreamFilters(safeMode, selected, matched, search)
-
-  useEffect(() => {
-    const el = scrollRef.current
-    if (!el || panelState === PANEL_MINIMIZED || panelState === PANEL_CLOSED) {
-      return
-    }
-    if (logTailPaused) return
-    if (follow || rowCount > prevRowCount.current) {
-      el.scrollTop = el.scrollHeight
-    }
-    prevRowCount.current = rowCount
-  }, [groups, rowCount, follow, panelState, logTailPaused])
-
-  if (!embedded && panelState === PANEL_CLOSED) {
-    return (
-      <button type="button" className="stream-reopen" onClick={() => onOpen(PANEL_NORMAL)}>
-        <svg className="stream-doc-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-          <path d="M14 2v6h6" />
-        </svg>
-        Container logs
-        {!running && <span className="stream-live-badge idle">IDLE</span>}
-        {running && !logTailEngaged && <span className="stream-live-badge idle">READY</span>}
-        {running && logTailStreaming && <span className="stream-live-badge">LIVE</span>}
-        {running && logTailEngaged && logTailPaused && <span className="stream-live-badge paused">PAUSED</span>}
-        {running && logTailEngaged && rowCount > 0 && <span className="stream-count">{rowCount}</span>}
-      </button>
-    )
-  }
-
-  const expanded = panelState === PANEL_NORMAL || panelState === PANEL_MAXIMIZED
-  const maximized = panelState === PANEL_MAXIMIZED
-  const crispChips = []
-  if (search.trim()) crispChips.push({ key: 'search', label: `/${search.trim()}/`, mono: true })
-  if (dropped > 0) crispChips.push({ key: 'dropped', label: `−${dropped}`, warn: true })
 
   return (
     <section
       className={[
         'stream-panel',
-        embedded ? 'stream-panel-embedded' : '',
-        expanded ? 'expanded' : 'collapsed',
-        maximized && !embedded ? 'maximized' : '',
+        'stream-panel-embedded',
+        ideDock ? 'stream-panel-ide-dock' : '',
+        'expanded',
         streamDense ? 'stream-dense' : '',
         streamWrapLines ? 'stream-wrap' : '',
       ].filter(Boolean).join(' ')}
-      style={{
-        '--stream-font-size': `${streamFontSize}px`,
-        ...((panelState === PANEL_NORMAL || embedded) ? { '--stream-h': `${height}px` } : null),
-      }}
+      style={{ '--stream-font-size': `${streamFontSize}px` }}
     >
-      {(panelState === PANEL_NORMAL || embedded) && !maximized && (
-        <div
-          className="stream-resize-handle"
-          role="separator"
-          aria-orientation="horizontal"
-          aria-label="Resize live log tail"
-          onMouseDown={onResizeStart}
-        />
-      )}
-
-      <header
-        className={`stream-header ${expanded ? '' : 'stream-header-expandable'}`}
-        onClick={!expanded ? () => onOpen?.(PANEL_NORMAL) : undefined}
-        onKeyDown={!expanded ? (e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault()
-            onOpen?.(PANEL_NORMAL)
-          }
-        } : undefined}
-        role={!expanded ? 'button' : undefined}
-        tabIndex={!expanded ? 0 : undefined}
-        aria-expanded={expanded}
-      >
-        <div className="stream-title">
-          <svg className="stream-doc-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-            <path d="M14 2v6h6" />
-          </svg>
-          <span>Container logs</span>
-          {!embedded && !running && <span className="stream-live-badge idle">IDLE</span>}
-          {!embedded && running && !logTailEngaged && <span className="stream-live-badge idle">READY</span>}
-          {!embedded && running && logTailStreaming && <span className="stream-live-badge">LIVE</span>}
-          {!embedded && running && logTailEngaged && logTailPaused && <span className="stream-live-badge paused">PAUSED</span>}
-          {crispChips.length > 0 && (
-            <span className="stream-chips">
-              {crispChips.map((chip) => (
-                <span
-                  key={chip.key}
-                  className={[
-                    'stream-chip',
-                    chip.mono ? 'mono' : '',
-                    chip.warn ? 'warn' : '',
-                  ].filter(Boolean).join(' ')}
-                >
-                  {chip.label}
-                </span>
-              ))}
-            </span>
-          )}
-          {running && logTailEngaged && rowCount > 0 && <span className="stream-count">{rowCount}</span>}
-        </div>
-
-        <div className="stream-toolbar" onClick={(e) => e.stopPropagation()}>
-          {expanded && running && logTailEngaged && (
-            <>
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm stream-stop-btn"
-                onClick={() => onStopGather?.()}
-                title="Stop gathering logs"
-              >
-                Stop
-              </button>
-              <button
-                type="button"
-                className="stream-icon-btn"
-                onClick={() => onClearLogs?.()}
-                title="Clear all log lines"
-                aria-label="Clear all log lines"
-              >
-                <IconClear />
-              </button>
-              <button
-                type="button"
-                className={`stream-icon-btn ${logTailPaused ? 'paused' : 'live'}`}
-                onClick={() => onToggleLogTailPause?.()}
-                title={logTailPaused ? 'Resume log gather (reopens GetLogs streams)' : 'Pause log gather (closes GetLogs streams)'}
-                aria-label={logTailPaused ? 'Resume log gather' : 'Pause log gather'}
-                aria-pressed={logTailPaused}
-              >
-                {logTailPaused ? <IconPlay /> : <IconPause />}
-              </button>
-              {logTailStreaming && (
+      {ideDock ? (
+        <header className="stream-header stream-header-ide-sub">
+          <div className="stream-ide-sub-meta">
+            <StreamLiveBadge running={active} logTailEngaged={active} logTailPaused={paused} />
+            {active && (
+              <span className="log-stream-sources" title={(status.sources || []).map((s) => `${s.label} (${s.namespace})`).join('\n')}>
+                {describeSources(status.sources)}
+              </span>
+            )}
+            {!active && <span className="stream-ide-sub-hint muted">No stream — pick pods and Stream logs, or ⌘⇧L</span>}
+            {chips.length > 0 && (
+              <span className="stream-chips">
+                {chips.map((chip) => (
+                  <span
+                    key={chip.key}
+                    title={chip.title}
+                    className={['stream-chip', chip.mono ? 'mono' : '', chip.warn ? 'warn' : ''].filter(Boolean).join(' ')}
+                  >
+                    {chip.label}
+                  </span>
+                ))}
+              </span>
+            )}
+            {active && lines.length > 0 && <span className="stream-count">{visible.length}</span>}
+          </div>
+          <div className="stream-toolbar">
+            {active && (
+              <>
                 <button
                   type="button"
-                  className={`stream-icon-btn ${follow ? 'active' : ''}`}
-                  onClick={() => onFollowChange(!follow)}
-                  title={follow ? 'Following new lines — click to hold scroll' : 'Scroll held — click to follow again'}
-                  aria-label={follow ? 'Hold scroll' : 'Follow new lines'}
-                  aria-pressed={follow}
+                  className="btn btn-ghost btn-sm stream-stop-btn"
+                  onClick={() => logStream.stop()}
+                  disabled={busy}
+                  title="Stop streaming and discard the lines"
                 >
-                  {follow ? <IconFollowOn /> : <IconFollowOff />}
+                  Stop
                 </button>
-              )}
-            </>
-          )}
-
-          {!embedded && (
-          <div className="stream-window-controls">
-            {maximized ? (
-              <WindowBtn label="Restore panel" onClick={onRestore}>
-                <IconRestore />
-              </WindowBtn>
-            ) : (
-              <WindowBtn label="Maximize panel" onClick={onMaximize}>
-                <IconMaximize />
-              </WindowBtn>
-            )}
-            <WindowBtn
-              label={expanded ? 'Minimize panel' : 'Expand panel'}
-              onClick={expanded ? onMinimize : () => onOpen(PANEL_NORMAL)}
-            >
-              {expanded ? <IconMinimize /> : <IconExpand />}
-            </WindowBtn>
-            <WindowBtn label="Close panel" onClick={onClose}>
-              <IconClose />
-            </WindowBtn>
-          </div>
-          )}
-        </div>
-      </header>
-
-      {(expanded || embedded) && (
-        <div className="stream-body">
-          {running && !logTailEngaged ? (
-            <div className="log-request">
-              <div className="log-request-intro">
-                <strong>What logs do you need?</strong>
-                <p className="muted">
-                  Pods from your investigation scope — Deployments, StatefulSets, DaemonSets, Jobs, and any other
-                  workload that matched. Select pods, optionally filter by text, then gather.
-                </p>
-              </div>
-              <label className="log-request-field">
-                <span className="log-request-label">Search for text in log lines</span>
-                <input
-                  className="stream-search"
-                  placeholder="Optional — e.g. error, timeout, OOM"
-                  value={requestSearch}
-                  onChange={(e) => setRequestSearch(e.target.value)}
-                />
-              </label>
-              <div className="log-request-toolbar">
-                <span className="log-request-count">
-                  {scopePods.length
-                    ? `${requestPods.size} of ${scopePods.length} pod${scopePods.length === 1 ? '' : 's'} selected`
-                    : 'No pods in scope yet'}
-                </span>
-                <div className="log-request-actions">
+                <button
+                  type="button"
+                  className="stream-icon-btn"
+                  onClick={() => logStream.clear()}
+                  title="Clear the panel (the stream keeps running)"
+                  aria-label="Clear lines"
+                >
+                  <IconClear />
+                </button>
+                <button
+                  type="button"
+                  className={`stream-icon-btn ${paused ? 'paused' : 'live'}`}
+                  onClick={() => (paused ? logStream.resume() : logStream.pause())}
+                  disabled={busy}
+                  title={paused ? 'Resume — replays what was logged while paused' : 'Pause — closes the log connections'}
+                  aria-label={paused ? 'Resume stream' : 'Pause stream'}
+                  aria-pressed={paused}
+                >
+                  {paused ? <IconPlay /> : <IconPause />}
+                </button>
+                <button
+                  type="button"
+                  className={`stream-icon-btn ${showTime ? 'active' : ''}`}
+                  onClick={() => setShowTime((v) => !v)}
+                  title={showTime ? 'Hide timestamps' : 'Show timestamps'}
+                  aria-label="Timestamps"
+                  aria-pressed={showTime}
+                >
+                  <IconClock />
+                </button>
+                {streaming && (
                   <button
                     type="button"
-                    className="btn btn-ghost btn-sm"
-                    disabled={!scopePods.length}
-                    onClick={() => setRequestPods(new Set(scopePods.map((p) => p.name)))}
+                    className={`stream-icon-btn ${follow ? 'active' : ''}`}
+                    onClick={() => onFollowChange(!follow)}
+                    title={follow ? 'Following new lines — click to hold scroll' : 'Scroll held — click to follow again'}
+                    aria-label={follow ? 'Hold scroll' : 'Follow new lines'}
+                    aria-pressed={follow}
                   >
-                    Select all
+                    {follow ? <IconFollowOn /> : <IconFollowOff />}
                   </button>
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    disabled={!scopePods.length}
-                    onClick={() => setRequestPods(new Set())}
-                  >
-                    Clear
-                  </button>
-                </div>
-              </div>
-              <ul className="log-request-pods">
-                {scopePods.map((pod) => (
-                  <li key={pod.name}>
-                    <label className="log-request-pod">
-                      <input
-                        type="checkbox"
-                        checked={requestPods.has(pod.name)}
-                        onChange={() => toggleRequestPod(pod.name)}
-                      />
-                      <span className="log-request-pod-name mono">{pod.name}</span>
-                      <span className="log-request-pod-owner muted">{podOwnerLabel(pod)}</span>
-                    </label>
-                  </li>
-                ))}
-                {!scopePods.length && (
-                  <li className="muted log-request-empty">Waiting for pods in investigation snapshot…</li>
                 )}
-              </ul>
-              {gatherError && <p className="log-request-error">{gatherError}</p>}
-              <div className="log-request-footer">
                 <button
                   type="button"
-                  className="btn btn-primary"
-                  disabled={!scopePods.length || requestPods.size === 0 || gatherBusy}
-                  onClick={handleGather}
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setFindOpen(true)}
+                  title="Find in logs (⌘F)"
                 >
-                  {gatherBusy ? 'Starting…' : 'Gather logs'}
+                  Find
                 </button>
-              </div>
-            </div>
-          ) : (
-            <>
-          <div className="stream-search-row">
-            <input
-              className="stream-search"
-              placeholder={
-                !running
-                  ? 'Start an investigation to request container logs'
-                  : 'Regex or text filter on log lines…'
-              }
-              value={search}
-              onChange={(e) => onSearchChange(e.target.value)}
-              onFocus={() => running && onFollowChange(false)}
-              disabled={!running || !logTailEngaged}
-            />
-            <StreamFilterMenu
-              open={filterOpen}
-              onToggle={setFilterOpen}
-              active={filtersActive}
-              disabled={!running || !logTailEngaged}
-              selectedPods={selected}
-              matchedPods={matched}
-              otherPods={other}
-              onTogglePod={(name) => onTogglePod?.(name, all)}
-              onSelectMatched={() => onSelectMatched?.(matched)}
-              onSelectAllPods={() => onSelectAllPods?.()}
-              onReset={() => {
-                onSelectAllPods?.()
-                onSearchChange?.('')
-                setFilterOpen(false)
-              }}
-            />
-          </div>
-          <div className="stream-mode-tabs" role="tablist" aria-label="Live tail mode">
-            {STREAM_MODES.map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                role="tab"
-                aria-selected={safeMode === m.id}
-                className={`stream-mode-btn ${safeMode === m.id ? 'active' : ''}`}
-                title={m.hint}
-                disabled={!running || !logTailEngaged}
-                onClick={() => onModeChange?.(m.id)}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
-          {running && logTailEngaged && (
-            <p className="stream-live-note">
-              {logTailPaused
-                ? `Gather paused — ${activeTailPods.length} pod${activeTailPods.length === 1 ? '' : 's'} selected. Resume to reopen log streams.`
-                : activeTailPods.length
-                  ? `Gathering from ${activeTailPods.length} pod${activeTailPods.length === 1 ? '' : 's'}. Open Patterns for log and event templates.`
-                  : 'Gathering from all pods in scope. Open Patterns for log and event templates.'}
-            </p>
-          )}
-          <div className="stream-scroll" ref={scrollRef} key={filterKey}>
-            {!running && (
-              <div className="empty-stream">
-                <strong>Container logs</strong>
-                <span>
-                  Investigate a workload, then choose which pods to gather logs from.
-                  Nothing is archived — the panel clears when the investigation stops.
-                </span>
-              </div>
+              </>
             )}
-            {running && logTailEngaged && !groups.length && (
-              <div className="empty-stream">
-                {filtersActive || search.trim()
-                  ? 'No log lines match the current filters.'
-                  : logTailPaused
-                    ? 'Paused — GetLogs streams closed. Resume to continue gathering.'
-                    : 'Gathering container logs…'}
-              </div>
+            {dockControls}
+          </div>
+        </header>
+      ) : (
+        <header className="stream-header">
+          <div className="stream-title">
+            <svg className="stream-doc-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+              <path d="M14 2v6h6" />
+            </svg>
+            <span>Container logs</span>
+            <StreamLiveBadge running={active} logTailEngaged={active} logTailPaused={paused} />
+            {active && (
+              <span className="log-stream-sources" title={(status.sources || []).map((s) => `${s.label} (${s.namespace})`).join('\n')}>
+                {describeSources(status.sources)}
+              </span>
             )}
-            {running && logTailEngaged && groups.map((group) => (
-              <div key={group.key} className="stream-group">
-                <div className="stream-group-header">
-                  <StreamSourceIcon source={group.kind} />
-                  <span className="stream-group-source">{group.key}</span>
-                </div>
-                {group.rows.map((row) => (
-                  <div
-                    key={row.id}
-                    className={[
-                      'stream-row',
-                      `sev-${row.severity}`,
-                      row.fresh ? 'fresh' : '',
-                    ].filter(Boolean).join(' ')}
+            {chips.length > 0 && (
+              <span className="stream-chips">
+                {chips.map((chip) => (
+                  <span
+                    key={chip.key}
+                    title={chip.title}
+                    className={['stream-chip', chip.mono ? 'mono' : '', chip.warn ? 'warn' : ''].filter(Boolean).join(' ')}
                   >
-                    <span className="stream-col time mono">{row.time}</span>
-                    <span className="stream-col type">{row.type}</span>
-                    <span className="stream-col object mono" title={row.object}>{row.object}</span>
-                    <span className="stream-col marker">{severityMark(row.severity)}</span>
-                    <span className="stream-col message" title={row.message}>{row.message}</span>
-                  </div>
+                    {chip.label}
+                  </span>
                 ))}
-              </div>
-            ))}
+              </span>
+            )}
+            {active && lines.length > 0 && <span className="stream-count">{visible.length}</span>}
           </div>
-            </>
-          )}
-        </div>
+
+          <div className="stream-toolbar">
+            {active && (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm stream-stop-btn"
+                  onClick={() => logStream.stop()}
+                  disabled={busy}
+                  title="Stop streaming and discard the lines"
+                >
+                  Stop
+                </button>
+                <button
+                  type="button"
+                  className="stream-icon-btn"
+                  onClick={() => logStream.clear()}
+                  title="Clear the panel (the stream keeps running)"
+                  aria-label="Clear lines"
+                >
+                  <IconClear />
+                </button>
+                <button
+                  type="button"
+                  className={`stream-icon-btn ${paused ? 'paused' : 'live'}`}
+                  onClick={() => (paused ? logStream.resume() : logStream.pause())}
+                  disabled={busy}
+                  title={paused ? 'Resume — replays what was logged while paused' : 'Pause — closes the log connections'}
+                  aria-label={paused ? 'Resume stream' : 'Pause stream'}
+                  aria-pressed={paused}
+                >
+                  {paused ? <IconPlay /> : <IconPause />}
+                </button>
+                <button
+                  type="button"
+                  className={`stream-icon-btn ${showTime ? 'active' : ''}`}
+                  onClick={() => setShowTime((v) => !v)}
+                  title={showTime ? 'Hide timestamps' : 'Show timestamps'}
+                  aria-label="Timestamps"
+                  aria-pressed={showTime}
+                >
+                  <IconClock />
+                </button>
+                {streaming && (
+                  <button
+                    type="button"
+                    className={`stream-icon-btn ${follow ? 'active' : ''}`}
+                    onClick={() => onFollowChange(!follow)}
+                    title={follow ? 'Following new lines — click to hold scroll' : 'Scroll held — click to follow again'}
+                    aria-label={follow ? 'Hold scroll' : 'Follow new lines'}
+                    aria-pressed={follow}
+                  >
+                    {follow ? <IconFollowOn /> : <IconFollowOff />}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setFindOpen(true)}
+                  title="Find in logs (⌘F)"
+                >
+                  Find
+                </button>
+              </>
+            )}
+            {dockControls}
+          </div>
+        </header>
       )}
+
+      <div className="stream-body">
+        <TerminalFindBar
+          open={findOpen}
+          query={findQuery}
+          resultIndex={findIndex}
+          resultCount={findCount}
+          onQueryChange={handleFindQueryChange}
+          onFindNext={findNext}
+          onFindPrevious={findPrevious}
+          onClose={closeFind}
+          className="terminal-find-bar log-stream-find-bar"
+          placeholder="Find in logs…"
+          ariaLabel="Find in logs"
+          roleLabel="Find in logs"
+        />
+        {!active ? (
+          <StreamPicker
+            running={running}
+            pods={investigationPods}
+            namespace={investigationNamespace}
+            busy={busy}
+            error={error}
+            onStart={(names) => logStream.start({ targets: podTargets(investigationNamespace, names), tailLines })}
+          />
+        ) : (
+          <>
+            {sources.length > 1 && (
+              <div className="log-stream-pods" role="group" aria-label="Pods in the stream">
+                {sources.map((s) => {
+                  const off = muted.has(s.key)
+                  return (
+                    <button
+                      key={s.key}
+                      type="button"
+                      className={`log-stream-pod log-pod-c${podColor(s.key)} ${off ? 'is-muted' : ''}`}
+                      aria-pressed={!off}
+                      title={off ? `Show ${s.key}` : `Hide ${s.key}`}
+                      onClick={() => toggleMuted(s.key)}
+                    >
+                      <span className="log-stream-pod-dot" aria-hidden="true" />
+                      <span className="mono">{s.pod}</span>
+                      <span className="log-stream-pod-container">{s.container}</span>
+                      <span className="log-stream-pod-count">{s.count}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+            {(status.notices || []).length > 0 && (
+              <p className="stream-live-note" title={status.notices.join('\n')}>
+                {status.notices[status.notices.length - 1]}
+              </p>
+            )}
+            {error && <p className="log-request-error">{error}</p>}
+            <div className="stream-scroll log-stream-scroll" ref={scrollRef}>
+              {(!ideDock || activeTab) && !visible.length && (
+                <div className="empty-stream">
+                  {lines.length
+                    ? 'No lines (all sources hidden). Show a pod above.'
+                    : paused
+                      ? 'Paused. Resume to reopen the log connections.'
+                      : 'Waiting for log lines…'}
+                </div>
+              )}
+              {(!ideDock || activeTab) && visible.map((l) => (
+                <LogStreamRow
+                  key={l.seq}
+                  line={l}
+                  showTime={showTime}
+                  findQuery={findOpen ? findQuery.trim() : ''}
+                  isFindActive={
+                    Boolean(findOpen && activeMatch && activeMatch.row.seq === l.seq)
+                  }
+                  activeRange={
+                    findOpen && activeMatch && activeMatch.row.seq === l.seq
+                      ? { start: activeMatch.start, end: activeMatch.end }
+                      : null
+                  }
+                />
+              ))}
+            </div>
+          </>
+        )}
+      </div>
     </section>
   )
 }
 
-function podOwnerLabel(pod) {
-  const raw = pod?.ownerRefs ?? pod?.OwnerRefs ?? []
-  const refs = Array.isArray(raw) ? raw : []
-  const kinds = ['Deployment', 'StatefulSet', 'DaemonSet', 'Job', 'ReplicaSet', 'CronJob']
-  const root = refs.find((r) => kinds.includes(r?.kind || r?.Kind))
-  if (root) {
-    const kind = root.kind || root.Kind
-    const name = root.name || root.Name
-    return `${kind}/${name}`
+function LogStreamRow({ line: l, showTime, findQuery, isFindActive, activeRange }) {
+  const ranges = findQuery ? findSubstringRanges(l.text, findQuery) : []
+  return (
+    <div
+      data-log-seq={l.seq}
+      className={[
+        'log-stream-row',
+        `sev-${l.severity || 'info'}`,
+        showTime ? '' : 'no-time',
+        isFindActive ? 'is-find-active' : '',
+      ].filter(Boolean).join(' ')}
+    >
+      {showTime && <span className="log-stream-time mono">{formatLineTime(l.timestamp)}</span>}
+      <span className={`log-stream-source mono log-pod-c${podColor(sourceKey(l))}`} title={`${l.namespace}/${l.pod} · ${l.container}`}>
+        {l.pod}
+        <span className="log-stream-container">/{l.container}</span>
+      </span>
+      <span className="log-stream-marker" aria-hidden="true">{severityMark(l.severity)}</span>
+      <span className="log-stream-text">
+        {ranges.length === 0 ? (
+          l.text
+        ) : (
+          renderHighlightedText(l.text, ranges, activeRange)
+        )}
+      </span>
+    </div>
+  )
+}
+
+function renderHighlightedText(text, ranges, activeRange) {
+  if (!ranges.length) return text
+  const parts = []
+  let pos = 0
+  for (let i = 0; i < ranges.length; i += 1) {
+    const { start, end } = ranges[i]
+    if (start > pos) parts.push(<span key={`t-${pos}`}>{text.slice(pos, start)}</span>)
+    const isActive = activeRange && activeRange.start === start && activeRange.end === end
+    parts.push(
+      <mark
+        key={`m-${start}-${end}-${i}`}
+        className={isActive ? 'log-find-mark log-find-mark-active' : 'log-find-mark'}
+      >
+        {text.slice(start, end)}
+      </mark>,
+    )
+    pos = end
   }
-  return 'Pod'
+    if (pos < text.length) parts.push(<span key={`t-end-${pos}`}>{text.slice(pos)}</span>)
+  return parts
 }
 
-function WindowBtn({ label, onClick, children }) {
+/** Shown when nothing is streaming: where to start, plus a shortcut for the investigation's pods. */
+function StreamPicker({ running, pods, namespace, busy, error, onStart }) {
+  const names = (pods || []).map((p) => p?.name).filter(Boolean)
   return (
-    <button type="button" className="stream-window-btn" aria-label={label} title={label} onClick={onClick}>
-      {children}
-    </button>
-  )
-}
-
-function IconMaximize() {
-  return (
-    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-      <rect x="3.5" y="3.5" width="9" height="9" rx="1" />
-    </svg>
-  )
-}
-
-function IconRestore() {
-  return (
-    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-      <rect x="5" y="2.5" width="8.5" height="8.5" rx="1" />
-      <path d="M2.5 5v8.5H11" />
-    </svg>
-  )
-}
-
-function IconMinimize() {
-  return (
-    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-      <path d="M3.5 8h9" />
-    </svg>
-  )
-}
-
-function IconExpand() {
-  return (
-    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-      <path d="M8 11V5M5.5 7.5L8 5l2.5 2.5" />
-    </svg>
-  )
-}
-
-function IconClose() {
-  return (
-    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-      <path d="M4.5 4.5l7 7M11.5 4.5l-7 7" />
-    </svg>
+    <div className="stream-scroll">
+      <div className="empty-stream">
+        <strong>Container logs</strong>
+        <span>
+          Nothing is streaming. In Resources, select a pod, workload or Service and click Stream logs,
+          or use the checkboxes (or ⌘-click rows) and press ⌘⇧L.
+        </span>
+        {running && names.length > 0 && (
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            disabled={busy}
+            onClick={() => onStart(names)}
+            title={`Stream logs from the ${names.length} pod${names.length === 1 ? '' : 's'} in this investigation; their lines also feed Patterns`}
+          >
+            {busy ? 'Starting…' : `Stream the investigation's ${names.length} pod${names.length === 1 ? '' : 's'} in ${namespace}`}
+          </button>
+        )}
+        {error && <span className="log-request-error">{error}</span>}
+      </div>
+    </div>
   )
 }
 
@@ -639,6 +556,15 @@ function IconPlay() {
   return (
     <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true">
       <path d="M5 3.2v9.6L13 8 5 3.2z" />
+    </svg>
+  )
+}
+
+function IconClock() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+      <circle cx="8" cy="8" r="5.5" />
+      <path d="M8 5v3.2l2 1.3" />
     </svg>
   )
 }

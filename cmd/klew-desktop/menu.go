@@ -21,7 +21,7 @@ func buildApplicationMenu(app *App) *menu.Menu {
 func buildViewMenu(app *App) *menu.MenuItem {
 	view := menu.NewMenu()
 
-	view.AddText("Focus Search", keys.CmdOrCtrl("k"), func(*menu.CallbackData) {
+	view.AddText("Investigate", keys.CmdOrCtrl("k"), func(*menu.CallbackData) {
 		emitMenuEvent(app, "focus-search")
 	})
 	view.AddSeparator()
@@ -38,11 +38,8 @@ func buildTerminalMenu(app *App) *menu.MenuItem {
 	terminal.AddText("Show Terminal", keys.CmdOrCtrl("`"), func(*menu.CallbackData) {
 		emitMenuEvent(app, "terminal")
 	})
-	terminal.AddText("Show Live Logs", keys.Combo("l", keys.CmdOrCtrlKey, keys.ShiftKey), func(*menu.CallbackData) {
+	terminal.AddText("Stream Logs", keys.Combo("l", keys.CmdOrCtrlKey, keys.ShiftKey), func(*menu.CallbackData) {
 		emitMenuEvent(app, "live-logs")
-	})
-	terminal.AddText("Split Panes", keys.Combo("`", keys.CmdOrCtrlKey, keys.ShiftKey), func(*menu.CallbackData) {
-		emitMenuEvent(app, "console-split")
 	})
 
 	return menu.SubMenu("Terminal", terminal)
@@ -60,6 +57,9 @@ func buildToolsMenu(app *App) *menu.MenuItem {
 	tools.AddSeparator()
 	tools.AddText("Open Kubeconfig Folder…", nil, func(*menu.CallbackData) {
 		app.OpenKubeconfigDir()
+	})
+	tools.AddText("Set Up MCP…", nil, func(*menu.CallbackData) {
+		emitMenuEvent(app, "mcp-setup")
 	})
 
 	return menu.SubMenu("Tools", tools)

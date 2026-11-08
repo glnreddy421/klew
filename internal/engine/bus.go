@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 
 	"github.com/glnreddy421/klew/internal/model"
 )
@@ -12,6 +13,8 @@ type Bus struct {
 	ch     chan model.EvidenceEvent
 	closed bool
 	mu     sync.Mutex
+	// queued counts events accepted; handled counts those applied or dropped.
+	queued, handled atomic.Int64
 }
 
 func NewBus(buffer int) *Bus {
@@ -29,17 +32,26 @@ func (b *Bus) Publish(e model.EvidenceEvent) {
 	}
 	select {
 	case b.ch <- e:
+		b.queued.Add(1)
 	default:
 		// drop oldest by receiving one and retrying
 		select {
 		case <-b.ch:
+			b.handled.Add(1)
 		default:
 		}
 		select {
 		case b.ch <- e:
+			b.queued.Add(1)
 		default:
 		}
 	}
+}
+
+// Idle reports whether every published event has been applied or dropped,
+// including the one a consumer may be working on.
+func (b *Bus) Idle() bool {
+	return b.handled.Load() == b.queued.Load()
 }
 
 func (b *Bus) Events() <-chan model.EvidenceEvent {
@@ -66,6 +78,7 @@ func (b *Bus) RunConsumer(ctx context.Context, fn func(model.EvidenceEvent)) {
 				return
 			}
 			fn(e)
+			b.handled.Add(1)
 		}
 	}
 }

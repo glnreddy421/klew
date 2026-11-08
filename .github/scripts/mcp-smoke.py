@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Smoke-test a built klew-mcp binary over stdio.
+"""Smoke-test "klew mcp" from a built klew binary over stdio.
 
 Speaks MCP JSON-RPC to the binary and checks that it initializes, lists the
 expected tools, and marks every tool read-only and non-destructive. Needs no
 cluster: a tool call without a kubeconfig must come back as a tool error, not
 crash the server.
 
-Usage: mcp-smoke.py path/to/klew-mcp
+Usage: mcp-smoke.py path/to/klew
 """
 
 import json
@@ -16,6 +16,9 @@ import threading
 
 EXPECTED_TOOLS = {
     "klew_list_contexts",
+    "klew_list_resources",
+    "klew_get_resource",
+    "klew_pod_logs",
     "klew_investigate",
     "klew_investigation_details",
     "klew_event_history",
@@ -38,7 +41,7 @@ def main() -> int:
             "arguments": {"investigation_id": "inv_000000000000", "section": "pods"}}},
     ]
     proc = subprocess.Popen(
-        [sys.argv[1], "-no-history"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        [sys.argv[1], "mcp", "-no-history"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, env={"PATH": "/usr/bin:/bin", "HOME": "/nonexistent", "KUBECONFIG": "/nonexistent/kubeconfig"},
     )
     timer = threading.Timer(60, proc.kill)
@@ -88,12 +91,12 @@ def main() -> int:
 
     if errors:
         return fail("\n".join(errors), proc)
-    print(f"klew-mcp smoke OK: {len(tools)} read-only tools, version {init['serverInfo'].get('version')}")
+    print(f"klew mcp smoke OK: {len(tools)} read-only tools, version {init['serverInfo'].get('version')}")
     return 0
 
 
 def fail(msg: str, proc: subprocess.Popen) -> int:
-    print(f"klew-mcp smoke FAILED:\n{msg}", file=sys.stderr)
+    print(f"klew mcp smoke FAILED:\n{msg}", file=sys.stderr)
     proc.kill()
     stderr = proc.stderr.read() if proc.stderr else ""
     if stderr:

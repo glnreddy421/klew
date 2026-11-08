@@ -99,6 +99,23 @@ func InvalidateClusterStatus(kubeconfigPath string, client *Client) {
 	delete(globalClusterStatusCache.byID, globalClusterStatusCache.key(kubeconfigPath, client))
 }
 
+// CachedClusterVersion returns the server version from a fresh status cache
+// entry, or "" — it never contacts the API server.
+func CachedClusterVersion(kubeconfigPath, contextName string) string {
+	if contextName == "" {
+		return ""
+	}
+	client, err := NewFromFlags(kubeconfigPath, contextName, "")
+	if err != nil {
+		return ""
+	}
+	st, ok := globalClusterStatusCache.get(kubeconfigPath, client)
+	if !ok {
+		return ""
+	}
+	return st.KubernetesVersion
+}
+
 // CollectClusterStatus queries the API server for version and node inventory.
 func CollectClusterStatus(ctx context.Context, kubeconfigPath, selectedContext string) ClusterStatus {
 	now := model.TimestampFrom(time.Now().UTC())

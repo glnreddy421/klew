@@ -134,6 +134,12 @@ type InvestigationState struct {
 	CausalChain       []string                          `json:"causalChain,omitempty"`
 	// Incidents groups Warning events in the window; empty when there were none.
 	Incidents []Incident `json:"incidents,omitempty"`
+	// Problems lists every unhealthy workload or object in scope, worst first,
+	// from the rules' findings on the current snapshot.
+	Problems []Problem `json:"problems,omitempty"`
+	// Headline summarises Problems in one line, e.g. "3 problems: 2 critical,
+	// 1 high. Worst: Deployment/api (CrashLoopBackOff), …". Empty when none.
+	Headline string `json:"headline,omitempty"`
 	// PinnedChange is a workload change that likely relates to the incident.
 	PinnedChange       *PinnedChange              `json:"pinnedChange,omitempty"`
 	NextChecks         []string                   `json:"nextChecks,omitempty"`
@@ -151,11 +157,6 @@ type InvestigationState struct {
 	Paused             bool                       `json:"paused"`
 	LogPatterns        *LogPatterns               `json:"logPatterns,omitempty"`
 	AdmissionPerimeter *AdmissionPerimeterSummary `json:"admissionPerimeter,omitempty"`
-	// LogTailPods is the active log-gather allowlist; empty = not tailing logs.
-	LogTailPods []string `json:"logTailPods,omitempty"`
-	// LogTailPaused is true when log follows are stopped but the gather session
-	// (pod selection) is retained for resume.
-	LogTailPaused bool `json:"logTailPaused,omitempty"`
 }
 
 // Clone returns a shallow copy safe for TUI rendering.
@@ -169,9 +170,9 @@ func (s InvestigationState) Clone() InvestigationState {
 	out.HypothesisAlts = append([]Hypothesis(nil), s.HypothesisAlts...)
 	out.CausalChain = append([]string(nil), s.CausalChain...)
 	out.Incidents = append([]Incident(nil), s.Incidents...)
+	out.Problems = append([]Problem(nil), s.Problems...)
 	out.NextChecks = append([]string(nil), s.NextChecks...)
 	out.FixActions = append([]string(nil), s.FixActions...)
-	out.LogTailPods = append([]string(nil), s.LogTailPods...)
 	return out
 }
 

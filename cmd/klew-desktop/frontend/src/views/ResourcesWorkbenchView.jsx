@@ -10,10 +10,8 @@ import {
   inspectRowForKey,
   isInspectableKey,
   pickDefaultFocus,
-  synthesizeFocusRow,
   canonicalInspectKey,
 } from '../lib/matches'
-import { buildChainRows, buildFocusScope } from '../lib/focusScope'
 import { useFocusChainCatalog } from '../hooks/useFocusChainCatalog.js'
 import { buildWorkloadTrace, isWorkloadTraceKind } from '../lib/workloadTrace.js'
 import { buildComponentInspect } from '../lib/componentInspect'
@@ -45,10 +43,6 @@ export function ResourcesWorkbenchRoot({
   catalogLoading: catalogLoadingProp,
   catalogEnriching = false,
   catalogError: catalogErrorProp,
-  focusKey,
-  focusPinned,
-  onFocusChange,
-  onClearFocus,
   investigationLoading = false,
   onNavigate,
   layoutMode: layoutModeProp,
@@ -78,10 +72,6 @@ export function ResourcesWorkbenchRoot({
     catalogLoading: catalogLoadingProp,
     catalogEnriching,
     catalogError: catalogErrorProp,
-    focusKey,
-    focusPinned,
-    onFocusChange,
-    onClearFocus,
     investigationLoading,
     onNavigate,
     layoutModeProp,
@@ -122,9 +112,6 @@ export function ResourcesWorkbenchView({ shellMode = false }) {
     investigationLoading,
     onNavigate,
     layoutMode,
-    layout,
-    focusPinned,
-    inspectRow,
     displayRows,
     catalog,
     catalogLoading,
@@ -133,7 +120,6 @@ export function ResourcesWorkbenchView({ shellMode = false }) {
     cluster,
     clusterStatus,
     view,
-    focusKey,
     inspectKey,
     listChrome,
     browseScope,
@@ -150,9 +136,7 @@ export function ResourcesWorkbenchView({ shellMode = false }) {
     reconnectBusy,
     clusterMonitoringEnabled,
     handleInspect,
-    handleFocus,
     handleNavKindChange,
-    onClearFocus,
   } = ctx
 
   const shellInspector = useShellInspector()
@@ -193,12 +177,6 @@ export function ResourcesWorkbenchView({ shellMode = false }) {
       {investigationLoading && (
         <InvestigationLoadingBanner onOpenOverview={() => onNavigate?.('incident')} />
       )}
-      {focusPinned && inspectRow && (
-        <div className="workbench-inline-chrome workbench-inline-chrome-compact">
-          <span className="muted mono">{inspectRow.kind}/{inspectRow.name}</span>
-          <button type="button" className="text-link-btn" onClick={() => onClearFocus?.()}>Clear focus</button>
-        </div>
-      )}
 
       <section className="workbench-panel workbench-catalog-panel workbench-entity-panel">
         <ScopePanel
@@ -210,13 +188,9 @@ export function ResourcesWorkbenchView({ shellMode = false }) {
           catalogLoading={catalogLoading}
           catalogEnriching={catalogEnriching}
           catalogError={catalogError}
-          focusKey={focusKey}
           inspectKey={inspectKey}
-          mode={focusPinned ? 'chain' : 'match'}
           onInspect={shellMode ? openInspect : handleInspect}
-          onFocus={handleFocus}
           onKindChange={openNavKindChange}
-          showFocusButton={listChrome.showFocusButton}
           entityView={listChrome.entityView}
           tableDensity={listChrome.tableDensity}
           showEmptyToggle={listChrome.showEmptyToggle}
@@ -265,10 +239,7 @@ export function ResourcesWorkbenchInspector() {
     inspectRow,
     layoutMode,
     layout,
-    focusPinned,
-    showFocusCta,
     panelMode,
-    handleFocus,
     detailLoading,
     detailError,
     inspectKey,
@@ -283,9 +254,6 @@ export function ResourcesWorkbenchInspector() {
       inspectRow={inspectRow}
       layoutMode={panelMode}
       expanded={layout.id === 'investigation-flow'}
-      focusPinned={focusPinned}
-      showFocusCta={showFocusCta}
-      onFocus={handleFocus}
       onInspect={openInspect}
       loading={detailLoading}
       error={detailError}
@@ -295,8 +263,6 @@ export function ResourcesWorkbenchInspector() {
       emptyHint={
         inspectKey && !inspectRow
           ? `Could not open ${inspectKey}. Pick another row or check your cluster access.`
-          : focusPinned
-          ? 'Select a resource in the focus chain to load its details here.'
           : 'Select a row in the table to load live object details in the tabs below.'
       }
     />
@@ -319,9 +285,6 @@ function useResourcesWorkbenchState({
   catalogLoading: catalogLoadingProp = false,
   catalogEnriching = false,
   catalogError: catalogErrorProp = '',
-  focusKey,
-  focusPinned,
-  onFocusChange,
   investigationLoading = false,
   onNavigate,
   layoutModeProp,
@@ -362,11 +325,10 @@ function useResourcesWorkbenchState({
         showEmptyToggle: false,
       }
       : listChromeForMode(layoutMode)
-    return { ...base, showFocusButton: true }
+    return base
   }, [shellMode, layoutMode])
 
   const panelMode = shellMode ? 'detail-tabs' : inspectPanelMode(layoutMode)
-  const showFocusCta = true
 
   const isAdhocInspectable = useCallback((key, rowList) => {
     return isInspectableKey(key, view, rowList || allRows)
@@ -386,7 +348,7 @@ function useResourcesWorkbenchState({
   }, [isAdhocInspectable, allRows, catalogEntityKeys])
 
   useEffect(() => {
-    if (focusPinned || catalogBrowseActive || investigationLoading) return
+    if (catalogBrowseActive || investigationLoading) return
     if (!allRows.length) {
       onInspectKeyChange?.(null)
       return
@@ -394,83 +356,25 @@ function useResourcesWorkbenchState({
     if (inspectKey && inspectKeyAllowed(inspectKey, allRows)) return
     const preferred = pickDefaultFocus(allRows)
     if (preferred) onInspectKeyChange?.(preferred)
-  }, [allRows, focusPinned, inspectKey, onInspectKeyChange, inspectKeyAllowed, catalogBrowseActive, investigationLoading])
+  }, [allRows, inspectKey, onInspectKeyChange, inspectKeyAllowed, catalogBrowseActive, investigationLoading])
 
-  const prevFocusPinRef = useRef({ pinned: false, key: null })
-  useEffect(() => {
-    const prev = prevFocusPinRef.current
-    const becamePinned = focusPinned && !prev.pinned
-    const rootChanged = focusPinned && focusKey && focusKey !== prev.key
-    prevFocusPinRef.current = { pinned: focusPinned, key: focusKey }
-    if ((becamePinned || rootChanged) && focusKey) {
-      onInspectKeyChange?.(focusKey)
-    }
-  }, [focusPinned, focusKey, onInspectKeyChange])
+  // The inspected workload's connection trace (ingress → service → pods).
+  const traceRow = useMemo(() => {
+    if (!inspectKey) return null
+    return findRowByKey(catalogEntities, inspectKey) || findRowByKey(allRows, inspectKey)
+  }, [inspectKey, catalogEntities, allRows])
 
-  const focusRow = useMemo(() => {
-    if (!focusKey) return allRows[0] || null
-    const ns = investigationNs || catalogEntities[0]?.namespace || ''
-    return (
-      findRowByKey(allRows, focusKey)
-      || findRowByKey(catalogEntities, focusKey)
-      || synthesizeFocusRow(focusKey, ns)
-      || null
-    )
-  }, [focusKey, allRows, catalogEntities, investigationNs])
+  const traceCatalogEnabled = Boolean(traceRow) && isWorkloadTraceKind(traceRow.kind)
 
-  const traceFocusRow = useMemo(() => {
-    if (focusPinned && focusRow) return focusRow
-    if (inspectKey) {
-      return findRowByKey(catalogEntities, inspectKey) || findRowByKey(allRows, inspectKey)
-    }
-    return null
-  }, [focusPinned, focusRow, inspectKey, catalogEntities, allRows])
-
-  const traceCatalogEnabled = Boolean(traceFocusRow)
-    && (focusPinned || isWorkloadTraceKind(traceFocusRow.kind))
-
-  const focusChainCatalog = useFocusChainCatalog({
+  const traceCatalog = useFocusChainCatalog({
     cluster,
     catalog,
     browseScope,
-    focusRow: traceFocusRow || focusRow,
+    focusRow: traceRow,
     enabled: traceCatalogEnabled,
   })
 
-  const chainSourceRows = useMemo(() => {
-    const byKey = new Map()
-    const addRow = (row) => {
-      if (!row?.key) return
-      const ns = row.namespace || row.ref?.namespace || investigationNs || ''
-      const key = canonicalInspectKey(row.key, ns) || row.key
-      const prev = byKey.get(key)
-      byKey.set(key, prev ? { ...prev, ...row, key } : { ...row, key })
-    }
-    for (const row of allRows) addRow(row)
-    for (const row of catalogEntities) addRow(row)
-    for (const row of focusChainCatalog.rows || []) addRow(row)
-    return [...byKey.values()]
-  }, [allRows, catalogEntities, focusChainCatalog.rows, investigationNs])
-
-  const drillDown = useMemo(
-    () => (focusPinned && focusRow
-      ? buildFocusScope(view, focusRow, { catalogRows: focusChainCatalog.rows || [] })
-      : null),
-    [focusPinned, focusRow, view, focusChainCatalog.rows],
-  )
-
-  const rows = useMemo(
-    () => (drillDown?.active ? buildChainRows(view, drillDown, chainSourceRows) : allRows),
-    [drillDown, view, allRows, chainSourceRows],
-  )
-
-  useEffect(() => {
-    if (!rows.length || catalogBrowseActive) return
-    const pool = focusPinned ? chainSourceRows : rows
-    if (inspectKey && inspectKeyAllowed(inspectKey, pool)) return
-    if (focusPinned && inspectKey && inspectRowForKey(inspectKey, view, chainSourceRows)) return
-    onInspectKeyChange?.(focusPinned ? (focusKey || rows[0]?.key) : (pickDefaultFocus(rows) || rows[0]?.key))
-  }, [rows, chainSourceRows, inspectKey, focusPinned, focusKey, inspectKeyAllowed, onInspectKeyChange, catalogBrowseActive, view])
+  const rows = allRows
 
   const inspectRow = useMemo(() => {
     if (inspectKey) {
@@ -483,8 +387,8 @@ function useResourcesWorkbenchState({
       return null
     }
     if (catalogBrowseActive) return null
-    return findRowByKey(rows, focusKey) || rows[0] || null
-  }, [rows, allRows, inspectKey, focusKey, view, catalogBrowseActive, catalogEntities])
+    return rows[0] || null
+  }, [rows, allRows, inspectKey, view, catalogBrowseActive, catalogEntities])
 
   const snapshotInspect = useMemo(
     () => (inspectRow ? buildComponentInspect(view, inspectRow) : null),
@@ -531,34 +435,29 @@ function useResourcesWorkbenchState({
   )
 
   const workloadTrace = useMemo(() => {
-    if (!traceFocusRow || !isWorkloadTraceKind(traceFocusRow.kind)) return null
+    if (!traceRow || !isWorkloadTraceKind(traceRow.kind)) return null
     return buildWorkloadTrace({
-      focusRow: traceFocusRow,
-      catalogRows: focusChainCatalog.rows || [],
+      focusRow: traceRow,
+      catalogRows: traceCatalog.rows || [],
       view,
     })
-  }, [traceFocusRow, focusChainCatalog.rows, view])
+  }, [traceRow, traceCatalog.rows, view])
 
   const displayRows = useMemo(() => {
-    if (!layout.sortBySignal || focusPinned) return rows
+    if (!layout.sortBySignal) return rows
     const rank = { critical: 0, degraded: 1, warning: 1, healthy: 2, unknown: 3 }
     return [...rows].sort((a, b) => (rank[a.status] ?? 3) - (rank[b.status] ?? 3))
-  }, [rows, layout.sortBySignal, focusPinned])
+  }, [rows, layout.sortBySignal])
 
   const resolveInspectNs = useCallback(() => (
     investigationNs
-    || focusRow?.namespace
-    || focusRow?.ref?.namespace
+    || allRows[0]?.namespace
     || catalogEntities[0]?.namespace
     || ''
-  ), [investigationNs, focusRow, catalogEntities])
+  ), [investigationNs, allRows, catalogEntities])
 
   const handleInspect = (key) => {
-    const k = canonicalInspectKey(key, resolveInspectNs()) || key
-    onInspectKeyChange?.(k)
-    if (!focusPinned && findRowByKey(allRows, k)) {
-      onFocusChange?.(k, { pinned: false })
-    }
+    onInspectKeyChange?.(canonicalInspectKey(key, resolveInspectNs()) || key)
   }
 
   const handleNavKindChange = useCallback(({ entities }) => {
@@ -578,10 +477,6 @@ function useResourcesWorkbenchState({
     onInspectKeyChange?.(keys[0])
   }, [onInspectKeyChange])
 
-  const handleFocus = (key) => {
-    onFocusChange?.(key, { pinned: true })
-  }
-
   return {
     allMatches,
     allRows,
@@ -589,7 +484,6 @@ function useResourcesWorkbenchState({
     onNavigate,
     layoutMode,
     layout,
-    focusPinned,
     inspectRow,
     displayRows,
     catalog,
@@ -599,19 +493,16 @@ function useResourcesWorkbenchState({
     cluster,
     clusterStatus,
     view,
-    focusKey,
     inspectKey,
     listChrome,
     handleInspect,
-    handleFocus,
     handleNavKindChange,
     inspect,
-    showFocusCta,
     panelMode,
     detailLoading,
     detailError,
     workloadTrace,
-    workloadTraceLoading: traceCatalogEnabled && focusChainCatalog.loading,
+    workloadTraceLoading: traceCatalogEnabled && traceCatalog.loading,
     browseScope,
     onBrowseScopeChange,
     browseScopeLocked,

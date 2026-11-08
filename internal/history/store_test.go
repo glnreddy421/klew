@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -406,5 +407,42 @@ func TestMigratesV1CoverageTable(t *testing.T) {
 	// Old rows claim no backfill.
 	if len(cov.Sessions) != 1 || cov.Sessions[0].Backfilled || !cov.Since.Equal(fromMS(1000)) {
 		t.Fatalf("migrated coverage = %+v", cov)
+	}
+}
+
+func TestEventsFilterByReasonAndKind(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	row := func(uid, kind, reason string) EventRow {
+		return EventRow{ClusterKey: "k", UID: uid, Namespace: "shop", RegardingKind: kind, RegardingName: uid,
+			Type: "Warning", Reason: reason, LastSeen: now, FirstSeen: now, RecordedAt: now}
+	}
+	if err := s.UpsertEvents(ctx, []EventRow{
+		row("a", "Pod", "BackOff"), row("b", "Pod", "FailedMount"), row("c", "Node", "NodeNotReady"), row("d", "Pod", "Pulled"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	uids := func(q EventQuery) string {
+		q.ClusterKey = "k"
+		got, err := s.Events(ctx, q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var ids []string
+		for _, r := range got {
+			ids = append(ids, r.UID)
+		}
+		sort.Strings(ids)
+		return strings.Join(ids, ",")
+	}
+	if got := uids(EventQuery{Reasons: []string{"backoff", "FAILEDMOUNT"}}); got != "a,b" {
+		t.Errorf("reasons: got %s, want a,b", got)
+	}
+	if got := uids(EventQuery{RegardingKind: "node"}); got != "c" {
+		t.Errorf("kind: got %s, want c", got)
+	}
+	if got := uids(EventQuery{RegardingKind: "Pod", Reasons: []string{"Pulled"}}); got != "d" {
+		t.Errorf("kind and reason: got %s, want d", got)
 	}
 }

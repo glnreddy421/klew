@@ -11,19 +11,16 @@ import {
 } from '../../lib/paneDragResize.js'
 import { shouldDismissInspector } from '../../lib/inspectorDismiss.js'
 import {
-  RAIL_WIDTH,
   WORKSPACE_MIN_WIDTH,
-  nextRailMode,
-  resolveRailCollapsed,
   shouldAutoCollapseExplorer,
 } from '../../lib/shellLayout.js'
-import { ActivityRail } from './ActivityRail.jsx'
 import { ContextExplorer } from './ContextExplorer.jsx'
 import { InspectorPanel } from './InspectorPanel.jsx'
 import { TopBar } from '../TopBar.jsx'
 import { useShellLayout } from '../../hooks/useShellLayout.js'
 import { ShellInspectorProvider } from '../../context/ShellInspectorContext.jsx'
 import { defaultRelations } from './explorers/ExplorerPanels.jsx'
+import { animateIn } from '../../lib/motion.js'
 const EXPLORER_MIN = 180
 const INSPECTOR_MIN = 280
 const INSPECTOR_BOTTOM_MIN = 200
@@ -45,9 +42,6 @@ function useViewportWidth() {
 export function AppShell({
   tab,
   onTabChange,
-  terminalOpen = false,
-  liveLogsOpen = false,
-  streamLive = null,
   onOpenSettings,
   onOpenHelp,
   topBarProps,
@@ -63,18 +57,31 @@ export function AppShell({
   prefs,
   onPrefsChange,
   inspectRow,
-  onOpenPodLogs,
+  onInvestigateRow,
   explorerFilters,
   onExplorerFiltersChange,
   graphRelations,
   onGraphRelationsChange,
   investigationActive = false,
+  investigationStarting = false,
 }) {
+  // Page changes and context switches fade the workspace in, without remounting it.
+  const workspaceRef = useRef(null)
+  const contextName = cluster?.selectedContext || ''
+  const switching = Boolean(topBarProps?.connecting)
+  const firstPaint = useRef(true)
+  useEffect(() => {
+    if (firstPaint.current) {
+      firstPaint.current = false
+      return
+    }
+    if (!switching) animateIn(workspaceRef.current)
+  }, [tab, contextName, switching])
+
   const {
     layout,
     toggleExplorer,
     toggleInspector,
-    setRailMode,
     setExplorerWidth,
     setInspectorWidth,
     setInspectorPlacement,
@@ -89,10 +96,6 @@ export function AppShell({
 
   const viewportWidth = useViewportWidth()
   const hasExplorer = showExplorer && !TABS_WITHOUT_EXPLORER.has(tab)
-  const railCollapsed = resolveRailCollapsed(layout.railMode, hasExplorer)
-  const toggleRail = useCallback(() => {
-    setRailMode(nextRailMode(layout.railMode, hasExplorer))
-  }, [hasExplorer, layout.railMode, setRailMode])
 
   const inspectorLayoutCollapsed = showInspector && layout.inspectorCollapsed
   const inspectorBottom = layout.inspectorPlacement === 'bottom'
@@ -112,7 +115,7 @@ export function AppShell({
     && !explorerAutoSuppressed
     && shouldAutoCollapseExplorer({
       viewportWidth,
-      railWidth: railCollapsed ? RAIL_WIDTH.collapsed : RAIL_WIDTH.expanded,
+      railWidth: 0,
       explorerWidth: layout.explorerWidth,
       inspectorWidth: layout.inspectorWidth,
       minWorkspace: WORKSPACE_MIN_WIDTH
@@ -187,7 +190,6 @@ export function AppShell({
       toggleInspector,
       inspectorCollapsed: inspectorLayoutCollapsed,
       inspectorBottom,
-      onOpenPodLogs,
       applyExplorerAutoWidth,
       explorerAutoFit: !layout.explorerWidthPinned && !explorerCollapsed,
       collapseInspector,
@@ -199,7 +201,6 @@ export function AppShell({
       toggleInspector,
       inspectorLayoutCollapsed,
       inspectorBottom,
-      onOpenPodLogs,
       applyExplorerAutoWidth,
       layout.explorerWidthPinned,
       explorerCollapsed,
@@ -345,7 +346,7 @@ export function AppShell({
           placement={inspectorBottom ? 'bottom' : 'right'}
           onPlacementChange={setInspectorPlacement}
           onClose={toggleInspector}
-          onOpenPodLogs={onOpenPodLogs}
+          onInvestigate={onInvestigateRow}
           cluster={cluster}
         >
           {inspector}
@@ -356,20 +357,14 @@ export function AppShell({
 
   return (
     <ShellInspectorProvider value={shellInspector}>
-    <div className="app-shell">
-      <TopBar {...topBarProps} onOpenSettings={onOpenSettings} onOpenHelp={onOpenHelp} />
+    <div className={`app-shell ${investigationActive ? 'is-investigating' : ''}`}>
+      <TopBar
+        {...topBarProps}
+        onOpenSettings={onOpenSettings}
+        onOpenHelp={onOpenHelp}
+      />
 
       <div className="app-shell-body">
-        <ActivityRail
-          active={tab}
-          terminalOpen={terminalOpen}
-          liveLogsOpen={liveLogsOpen}
-          streamLive={streamLive}
-          onSelect={onTabChange}
-          collapsed={railCollapsed}
-          onToggleCollapse={toggleRail}
-        />
-
         <div className="app-shell-main">
           <div className={`app-shell-panes ${inspectorBottom ? 'inspector-bottom' : 'inspector-right'}`}>
             {hasExplorer && (
@@ -407,7 +402,16 @@ export function AppShell({
               </>
             )}
 
-            <main className="app-workspace">
+            <main
+              ref={workspaceRef}
+              className={[
+                'app-workspace',
+                switching ? 'is-switching' : '',
+                investigationActive ? 'in-investigation' : '',
+                investigationStarting ? 'is-investigate-starting' : '',
+              ].filter(Boolean).join(' ')}
+              aria-busy={switching || investigationStarting || undefined}
+            >
               {children}
             </main>
 

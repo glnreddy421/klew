@@ -15,6 +15,8 @@ type SnapshotOptions struct {
 	Query                   string
 	Tail                    int
 	CheckAdmissionPerimeter bool
+	// NoLogs leaves the logs collector out.
+	NoLogs bool
 }
 
 // CollectSnapshot performs initial read-only snapshot via kube collector.
@@ -26,11 +28,16 @@ func CollectSnapshot(ctx context.Context, client *kube.Client, opts SnapshotOpti
 		Query:                   opts.Query,
 		LogLines:                opts.Tail,
 		CheckAdmissionPerimeter: opts.CheckAdmissionPerimeter,
+		Collectors:              snapshotCollectors(opts),
 	})
 	if err != nil {
 		return model.EvidenceBundle{}, nil, err
 	}
-	bundle.Metrics = kube.CollectMetrics(ctx, client, bundle.Pods)
+	if opts.NoLogs {
+		bundle.Coverage = append(bundle.Coverage, model.CollectorStatus{
+			Collector: "logs", Status: kube.StatusOff, Detail: "Logs are turned off for this investigation",
+		})
+	}
 	return bundle, bundle.MatchedObjects, nil
 }
 
@@ -49,8 +56,13 @@ func BootstrapState(bundle model.EvidenceBundle, scope model.NamespaceScope, que
 	st.WorkloadGraph = BuildGraph(bundle)
 	st.Timeline = BuildTimeline(bundle)
 	st.AdmissionPerimeter = bundle.AdmissionPerimeter
-	signals := ScoreSignals(bundle)
-	st.Verdict = GenerateVerdict(bundle, st.Timeline, signals)
+	reg := ActiveRegistry()
+	res := reg.Evaluate(bundle)
+	st.Problems = BuildProblems(bundle, res.Findings)
+	st.Headline = ProblemsHeadline(st.Problems)
+	st.Warnings = appendUniqueStrings(st.Warnings, reg.Warnings)
+	st.Warnings = appendUniqueStrings(st.Warnings, res.Warnings)
+	st.Verdict = GenerateVerdict(bundle, st.Timeline, res.Signals)
 	return &st
 }
 
@@ -133,4 +145,20 @@ func tailLines(lines []string, n int) []string {
 		return lines
 	}
 	return lines[len(lines)-n:]
+}
+
+// snapshotCollectors is the active registry's collector list, without logs
+// when opts.NoLogs is set.
+func snapshotCollectors(opts SnapshotOptions) []kube.EvidenceCollector {
+	all := ActiveRegistry().CollectorList()
+	if !opts.NoLogs {
+		return all
+	}
+	out := make([]kube.EvidenceCollector, 0, len(all))
+	for _, c := range all {
+		if c.Name() != "logs" {
+			out = append(out, c)
+		}
+	}
+	return out
 }

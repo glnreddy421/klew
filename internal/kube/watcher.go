@@ -28,6 +28,7 @@ type LiveWatcher struct {
 
 	scopeMu   sync.RWMutex
 	scopePods investigationPods
+	target    *targetSets
 
 	dedupeMu sync.Mutex
 	dedupe   map[string]struct{}
@@ -42,6 +43,34 @@ func (w *LiveWatcher) SetScopePodNames(names []string) {
 	w.scopeMu.Lock()
 	w.scopePods = newInvestigationPods(names)
 	w.scopeMu.Unlock()
+}
+
+// SetTarget sets the exact scope of a one-object investigation; nil watches
+// by the query, as before.
+func (w *LiveWatcher) SetTarget(t *model.ScopeTarget) {
+	if w == nil {
+		return
+	}
+	w.scopeMu.Lock()
+	w.target = newTargetSets(t)
+	w.scopeMu.Unlock()
+}
+
+func (w *LiveWatcher) targetSnapshot() *targetSets {
+	w.scopeMu.RLock()
+	defer w.scopeMu.RUnlock()
+	return w.target
+}
+
+// eventInScope decides whether a live event belongs to the investigation.
+func (w *LiveWatcher) eventInScope(kind, name string, scope investigationPods) bool {
+	if t := w.targetSnapshot(); t != nil {
+		if _, ok := scope[name]; ok && kind == "Pod" {
+			return true
+		}
+		return t.eventInTarget(kind, name)
+	}
+	return EventInInvestigationScope(kind, name, w.Query, scope)
 }
 
 func (w *LiveWatcher) scopeSnapshot() investigationPods {
@@ -276,7 +305,7 @@ func (w *LiveWatcher) emitCoreEvent(e *corev1.Event, scope investigationPods) {
 	}
 	kind := e.InvolvedObject.Kind
 	name := e.InvolvedObject.Name
-	if !EventInInvestigationScope(kind, name, w.Query, scope) {
+	if !w.eventInScope(kind, name, scope) {
 		return
 	}
 	if !w.shouldEmit(string(e.UID), kind, name, e.Reason, e.Message) {
@@ -314,7 +343,7 @@ func (w *LiveWatcher) emitEventsV1(e *eventsv1.Event, scope investigationPods) {
 	kind := e.Regarding.Kind
 	name := e.Regarding.Name
 	msg := e.Note
-	if !EventInInvestigationScope(kind, name, w.Query, scope) {
+	if !w.eventInScope(kind, name, scope) {
 		return
 	}
 	if !w.shouldEmit(string(e.UID), kind, name, e.Reason, msg) {
@@ -370,7 +399,11 @@ func (w *LiveWatcher) watchPods(ctx context.Context) {
 		if !ok {
 			continue
 		}
-		if !matchesQueryName(pod.Name, w.Query) && w.Query != "" {
+		if t := w.targetSnapshot(); t != nil {
+			if !t.podInTarget(pod) {
+				continue
+			}
+		} else if !matchesQueryName(pod.Name, w.Query) && w.Query != "" {
 			continue
 		}
 		w.Sink(model.EvidenceEvent{
@@ -429,7 +462,11 @@ func (w *LiveWatcher) watchDeployments(ctx context.Context) {
 		if !ok {
 			continue
 		}
-		if !matchesQueryName(dep.Name, w.Query) && w.Query != "" {
+		if t := w.targetSnapshot(); t != nil {
+			if !t.hasObject("Deployment", dep.Name) {
+				continue
+			}
+		} else if !matchesQueryName(dep.Name, w.Query) && w.Query != "" {
 			continue
 		}
 		if ev.Type == watch.Deleted {

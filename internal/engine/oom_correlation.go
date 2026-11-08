@@ -271,7 +271,7 @@ func ClassifyLogReason(line string) string {
 	case strings.Contains(l, "memory leak"), strings.Contains(l, "heap growth"):
 		return "Memory leak"
 	case logpatterns.MentionsTimeout(l):
-		return "Redis timeout"
+		return "Timeout"
 	case strings.Contains(l, "error"), strings.Contains(l, "failed"):
 		return "Error"
 	case strings.Contains(l, "warn"):

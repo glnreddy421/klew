@@ -11,8 +11,8 @@ import {
 } from '../lib/topbarScale'
 import { WorkspaceLayoutPicker } from '../components/incident/WorkspaceLayoutPicker'
 import { TerminalShellSelect } from '../components/TerminalShellSelect'
-import { TerminalAppearancePicker } from '../components/TerminalAppearancePicker'
 import { EventHistorySettings } from '../components/EventHistorySettings.jsx'
+import { ExtensionsSettings } from '../components/settings/ExtensionsSettings.jsx'
 import {
   InfoRow,
   NumberRow,
@@ -40,10 +40,12 @@ const HELP_LINKS = [
 ]
 
 const KEYBOARD_SHORTCUTS = [
-  { keys: '⌘K', action: 'Focus search' },
+  { keys: '⌘K', action: 'Investigate mode' },
+  { keys: '⌘`', action: 'Show the terminal' },
+  { keys: '⇧⌘L', action: 'Stream logs from the selected resources, or show the dock' },
   { keys: '⌘N', action: 'Open a new window for another cluster' },
   { keys: '⌘R', action: 'Refresh investigation snapshot, or sync kubeconfig when idle' },
-  { keys: '⌘C', action: 'Toggle sidebar labels' },
+  { keys: '⌘,', action: 'Settings' },
 ]
 
 /**
@@ -65,6 +67,8 @@ export function SettingsView({
   section = 'general',
   onSectionChange,
   onTerminalShellChange,
+  /** Set when shown in SettingsDialog: adds the close button. */
+  onClose,
 }) {
   const [kubeDraft, setKubeDraft] = useState(prefs.kubeconfigPath || cluster?.kubeconfigPath || '')
   const [kubeBusy, setKubeBusy] = useState(false)
@@ -184,7 +188,7 @@ export function SettingsView({
     : (connection?.phase === 'connected' ? 'Active' : (connection?.phase || '—'))
 
   return (
-    <div className="settings-shell">
+    <div className={`settings-shell ${onClose ? 'settings-shell-dialog' : ''}`}>
       <aside className="settings-nav" aria-label="Settings sections">
         <div className="settings-nav-search">Settings</div>
         <nav className="settings-nav-list">
@@ -195,23 +199,30 @@ export function SettingsView({
               className={`settings-nav-item ${section === s.id ? 'active' : ''}`}
               aria-current={section === s.id ? 'page' : undefined}
               onClick={() => setSection(s.id)}
+              title={s.hint}
             >
-              <span className="settings-nav-label">{s.label}</span>
-              <span className="settings-nav-hint">{s.hint}</span>
+              <span className="settings-nav-icon" aria-hidden="true"><SectionIcon id={s.id} /></span>
+              <span className="settings-nav-text">
+                <span className="settings-nav-label">{s.label}</span>
+                <span className="settings-nav-hint">{s.hint}</span>
+              </span>
             </button>
           ))}
         </nav>
+        {appInfo?.version && <div className="settings-nav-footer muted">Klew v{appInfo.version}</div>}
       </aside>
 
       <div className="settings-main">
+        {onClose && (
+          <button type="button" className="settings-close" onClick={onClose} aria-label="Close settings" title="Close (Esc)">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true">
+              <path d="M4 4l8 8M12 4l-8 8" />
+            </svg>
+          </button>
+        )}
         {section === 'general' && (
           <SettingsSection title="General" subtitle="Defaults when you start an investigation.">
             <SettingsGroup>
-              <SwitchRow
-                label="Open logs panel when investigating"
-                checked={prefs.openStreamOnInvestigate}
-                onChange={(v) => set({ openStreamOnInvestigate: v })}
-              />
               <SwitchRow
                 label="Auto-scroll while gathering logs"
                 checked={prefs.followLogsByDefault}
@@ -278,7 +289,10 @@ export function SettingsView({
 
         {section === 'appearance' && (
           <SettingsSection title="Appearance" subtitle="Theme, fonts, workspace layout, and live-tail typography.">
-            <SettingsGroup title="Theme">
+            <SettingsGroup
+              title="Theme"
+              description="Light, dark, or follow the system appearance. Applied instantly."
+            >
               <SettingRow stacked>
                 <ThemePicker themeId={themeId} onChange={onThemeChange} />
               </SettingRow>
@@ -345,18 +359,6 @@ export function SettingsView({
                 onChange={(v) => set({ streamWrapLines: v })}
               />
             </SettingsGroup>
-
-            <SettingsGroup
-              title="In-app terminal"
-              description="Terminal panel colors — pair with a Black theme for a fully dark workspace. Applied instantly."
-            >
-              <SettingRow stacked>
-                <TerminalAppearancePicker
-                  value={prefs.terminalAppearance}
-                  onChange={(id) => set({ terminalAppearance: id })}
-                />
-              </SettingRow>
-            </SettingsGroup>
           </SettingsSection>
         )}
 
@@ -368,7 +370,7 @@ export function SettingsView({
             <SettingsGroup title="Collection">
               <NumberRow
                 label="Log tail lines"
-                hint="Per container. 0 follows from now with no history buffer."
+                hint="Live logs and investigation log collection — per container. 0 follows from now with no history buffer."
                 value={prefs.tailLines}
                 min={0}
                 max={5000}
@@ -407,11 +409,11 @@ export function SettingsView({
             subtitle="Protect the API server when many pods match. Extra containers wait for a free slot."
           >
             <SettingsGroup
-              description="Frontend pod filters only hide lines — they do not close kube streams. Lower this value on large namespaces."
+              description="Applies per open log tab (up to 8 log tabs at once). Hiding a pod in a tab only hides its lines — the stream stays open. Lower this value on large namespaces."
             >
               <NumberRow
                 label="Max concurrent log follows"
-                hint="Default 50. Each follow is one pod/container GetLogs stream."
+                hint="Default 50 per log tab. Each follow is one pod/container GetLogs stream."
                 value={prefs.maxLogRequests}
                 min={1}
                 max={200}
@@ -645,6 +647,15 @@ export function SettingsView({
           </SettingsSection>
         )}
 
+        {section === 'extensions' && (
+          <SettingsSection
+            title="Extensions"
+            subtitle="Your own collectors and rules, added to the built-in ones. The desktop app and klew mcp use the same set."
+          >
+            <ExtensionsSettings cluster={cluster} />
+          </SettingsSection>
+        )}
+
         {section === 'help' && (
           <SettingsSection title="Help" subtitle="Shortcuts and where to learn more.">
             <SettingsGroup title="Keyboard shortcuts">
@@ -676,6 +687,24 @@ export function SettingsView({
         )}
       </div>
     </div>
+  )
+}
+
+/** Small line icons for the section nav. */
+function SectionIcon({ id }) {
+  const paths = {
+    general: <><circle cx="8" cy="8" r="2.25" /><path d="M8 1.75v1.5M8 12.75v1.5M1.75 8h1.5M12.75 8h1.5M3.6 3.6l1.05 1.05M11.35 11.35l1.05 1.05M3.6 12.4l1.05-1.05M11.35 4.65l1.05-1.05" /></>,
+    appearance: <><circle cx="8" cy="8" r="6" /><path d="M8 2a6 6 0 000 12z" fill="currentColor" stroke="none" /></>,
+    investigation: <><circle cx="7" cy="7" r="4.25" /><path d="M10.2 10.2L14 14" /></>,
+    concurrency: <><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11" /><circle cx="5" cy="4.5" r="1" fill="currentColor" /><circle cx="10.5" cy="8" r="1" fill="currentColor" /><circle cx="7" cy="11.5" r="1" fill="currentColor" /></>,
+    kubernetes: <><path d="M8 1.75l5.4 3.1v6.3L8 14.25l-5.4-3.1v-6.3z" /><circle cx="8" cy="8" r="1.75" /></>,
+    extensions: <><path d="M6 2.5h4v2.25a1.25 1.25 0 102.5 0V2.5" /><rect x="2.5" y="6" width="11" height="7.5" rx="1.5" /></>,
+    help: <><circle cx="8" cy="8" r="6" /><path d="M6.3 6.2a1.8 1.8 0 113 1.35c-.6.45-1.3.8-1.3 1.65" /><circle cx="8" cy="11.4" r=".6" fill="currentColor" /></>,
+  }
+  return (
+    <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      {paths[id] || <circle cx="8" cy="8" r="5" />}
+    </svg>
   )
 }
 

@@ -5,20 +5,14 @@ export function investigationBreadcrumb({
   cluster,
   inspectKey,
   inspectRow,
-  focusPinned,
-  drillDown,
 }) {
-  const namespace = cluster?.selectedNamespace || cluster?.currentContext || ''
   const row = inspectRow || (inspectKey ? parseInspectKey(inspectKey) : null)
-  if (!row?.kind && !row?.name && !focusPinned) return null
+  // The object's own namespace first: the browse namespace may be another one.
+  const namespace = row?.namespace || row?.ref?.namespace || cluster?.selectedNamespace || cluster?.currentContext || ''
+  if (!row?.kind) return null
 
-  const segments = []
-  if (focusPinned && drillDown?.label) {
-    segments.push(drillDown.label)
-  } else if (row?.kind) {
-    segments.push(row.kind)
-    if (row.name) segments.push(row.name)
-  }
+  const segments = [row.kind]
+  if (row.name) segments.push(row.name)
 
   if (!segments.length) return null
 

@@ -17,6 +17,9 @@ import {
   severityRankTL,
   worstContainer,
 } from '../lib/investigationViews'
+import { useLogStreamActions } from '../context/LogStreamContext.jsx'
+import { streamLogsTitle } from '../lib/logStream.js'
+import { StreamLogsGlyph } from '../components/DockLauncher.jsx'
 
 /**
  * Failures — severity-ranked pod triage + investigation detail.
@@ -53,6 +56,11 @@ export function FailuresView({ view, explorerFilter, investigationActive = false
     return list
   }, [snap.pods, explorerFilter])
   const [selected, setSelected] = useState(null)
+  const logStream = useLogStreamActions()
+  const failingPods = useMemo(
+    () => pods.filter((p) => p.namespace && podHealthLabel(p) !== 'healthy'),
+    [pods],
+  )
 
   const activeKey = selected && pods.some((p) => p.name === selected)
     ? selected
@@ -117,7 +125,20 @@ export function FailuresView({ view, explorerFilter, investigationActive = false
 
       <div className="failures-split">
         <section className="card inv-card">
-          <h3>Pod triage</h3>
+          <h3 className="failures-card-head">
+            Pod triage
+            {logStream && failingPods.length > 0 && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm failures-stream-pods-btn"
+                onClick={() => logStream.streamResources(failingPods.map((p) => ({ kind: 'Pod', name: p.name, namespace: p.namespace })))}
+                title="Stream logs from every failing pod together in the Live logs panel"
+              >
+                <StreamLogsGlyph size={14} />
+                <span>Stream failing pods</span>
+              </button>
+            )}
+          </h3>
           <div className="card-body card-body-flush">
             <ul className="pod-triage-list" role="listbox" aria-label="Failing pods">
               {pods.map((p) => {
@@ -159,7 +180,7 @@ export function FailuresView({ view, explorerFilter, investigationActive = false
             {!active ? (
               <p className="muted">Select a pod to inspect runtime detail.</p>
             ) : (
-              <PodDetail pod={active} events={podEvents} />
+              <PodDetail pod={active} events={podEvents} logStream={logStream} />
             )}
           </div>
         </section>
@@ -168,7 +189,7 @@ export function FailuresView({ view, explorerFilter, investigationActive = false
   )
 }
 
-function PodDetail({ pod, events }) {
+function PodDetail({ pod, events, logStream }) {
   const health = podHealthLabel(pod)
   const containers = pod.containers || []
 
@@ -179,6 +200,17 @@ function PodDetail({ pod, events }) {
           <div className="inspect-category">Pod</div>
           <h4 className="inspect-name mono">{pod.name}</h4>
         </div>
+        {logStream && pod.namespace && (
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm pod-detail-stream-logs-btn"
+            onClick={() => logStream.streamResources([{ kind: 'Pod', name: pod.name, namespace: pod.namespace }])}
+            title={streamLogsTitle('Pod', pod.name)}
+          >
+            <StreamLogsGlyph size={14} />
+            <span>Stream logs</span>
+          </button>
+        )}
         <StatusBadge status={normalizeHealth(health)} />
       </div>
 

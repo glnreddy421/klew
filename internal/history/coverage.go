@@ -244,6 +244,18 @@ func (s *Store) HistoryStart(ctx context.Context, clusterKey string) (time.Time,
 	return fromMS(*v), nil
 }
 
+// LastRecorded is when recording of clusterKey last ended (zero if never).
+func (s *Store) LastRecorded(ctx context.Context, clusterKey string) (time.Time, error) {
+	var v *int64
+	if err := s.db.QueryRowContext(ctx, `SELECT MAX(ended_at) FROM coverage WHERE cluster_key = ?`, clusterKey).Scan(&v); err != nil {
+		return time.Time{}, err
+	}
+	if v == nil {
+		return time.Time{}, nil
+	}
+	return fromMS(*v), nil
+}
+
 // mergeSessions sorts and joins ranges that overlap or sit within GapTolerance.
 // A merged range keeps the end reason of whichever part ends last.
 func mergeSessions(in []Session) []Session {

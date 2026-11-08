@@ -25,9 +25,13 @@ The Resources surface (catalog, entity lists, overview, inspector, manifest YAML
 - Investigation mode may suggest kubectl commands as text; it must not execute mutating cluster calls unless the user explicitly asks for that capability in a future feature.
 - The embedded terminal is user-driven shell access — not part of the Resources read model.
 
+## Command line — read-only
+
+`cmd/klew` and `internal/cli` (`klew investigate` and any later command) follow the Resources rule: only list, get, watch and read local history. Suggested actions are printed as text, never run. Never print Secret values.
+
 ## MCP server — read-only
 
-`cmd/klew-mcp` and `internal/mcpserver` follow the same rule: tools may only list, get, watch and read local history.
+`cmd/klew` (`klew mcp`), the desktop app's `Klew mcp` and `internal/mcpserver` follow the same rule: tools may only list, get, watch and read local history.
 
 - **Never** add tools that create, update, patch, delete, apply, scale, exec, or port-forward, or that run suggested commands.
 - Every tool sets `readOnlyHint: true` and `destructiveHint: false`; `TestToolsAreReadOnly` enforces this.

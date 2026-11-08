@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "klew": {
+      "command": "klew",
+      "args": ["mcp"]
+    }
+  }
+}

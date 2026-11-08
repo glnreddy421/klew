@@ -40,6 +40,7 @@ func (c *investigationCache) put(st model.InvestigationState) string {
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.dropExpired()
 	c.items[id] = cachedInvestigation{state: st, created: c.now()}
 	c.order = append(c.order, id)
 	for len(c.order) > c.max {
@@ -52,9 +53,19 @@ func (c *investigationCache) put(st model.InvestigationState) string {
 func (c *investigationCache) get(id string) (model.InvestigationState, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.dropExpired()
 	it, ok := c.items[id]
-	if !ok || c.now().Sub(it.created) > investigationTTL {
+	if !ok {
 		return model.InvestigationState{}, false
 	}
 	return it.state, true
+}
+
+// dropExpired frees expired states, which hold raw logs and events. Entries
+// are in creation order, so it stops at the first live one. Callers hold mu.
+func (c *investigationCache) dropExpired() {
+	for len(c.order) > 0 && c.now().Sub(c.items[c.order[0]].created) > investigationTTL {
+		delete(c.items, c.order[0])
+		c.order = c.order[1:]
+	}
 }

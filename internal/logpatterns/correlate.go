@@ -15,6 +15,8 @@ const DefaultJaccardThreshold = 0.6
 
 // BuildEvidenceBoard correlates Event templates against Log templates using
 // synchronized volume_history / sparkline series (Jaccard on active minutes).
+// When both templates name their pods, they must share one: lines from another
+// workload that happen to log in the same minutes are not evidence.
 //
 // Isolation: operates only on already-built template payloads — never touches
 // live Miner / MetaStore state. Returned cards deep-copy constituent templates.
@@ -48,15 +50,18 @@ func BuildEvidenceBoard(
 	cards := make([]model.EvidenceCard, 0, len(eventTemplates))
 	correlatedLogs := 0
 
-	for ei := range eventTemplates {
-		evVol := volumeSeries(eventTemplates[ei])
+	for _, ev := range eventTemplates {
+		evVol := volumeSeries(ev)
 		if !hasActiveSlot(evVol) {
 			continue
 		}
 
 		links := make([]link, 0, 4)
-		for li := range logTemplates {
-			logVol := volumeSeries(logTemplates[li])
+		for li, lt := range logTemplates {
+			if !sharePod(ev.Pods, lt.Pods) {
+				continue
+			}
+			logVol := volumeSeries(lt)
 			score := jaccardActiveSlots(evVol, logVol)
 			if score >= threshold {
 				links = append(links, link{logIdx: li, score: score})
@@ -75,7 +80,7 @@ func BuildEvidenceBoard(
 
 		triggered := make([]model.LogTemplate, 0, len(links))
 		ids := make([]string, 0, len(links)+1)
-		ids = append(ids, eventTemplates[ei].ID)
+		ids = append(ids, ev.ID)
 		maxConf := 0.0
 		for _, l := range links {
 			cp := cloneLogTemplate(logTemplates[l.logIdx])
@@ -90,7 +95,7 @@ func BuildEvidenceBoard(
 		cards = append(cards, model.EvidenceCard{
 			EvidenceID:    evidenceID(ids...),
 			Confidence:    round4(maxConf),
-			RootEvent:     cloneLogTemplate(eventTemplates[ei]),
+			RootEvent:     cloneLogTemplate(ev),
 			TriggeredLogs: triggered,
 		})
 	}
@@ -109,6 +114,21 @@ func BuildEvidenceBoard(
 		CardCount:      len(cards),
 		CorrelatedLogs: correlatedLogs,
 	}
+}
+
+// sharePod reports whether a and b have a pod in common, or either is empty.
+func sharePod(a, b []string) bool {
+	if len(a) == 0 || len(b) == 0 {
+		return true
+	}
+	for _, x := range a {
+		for _, y := range b {
+			if x == y {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // jaccardActiveSlots computes |A∩B| / |A∪B| over minutes where volume > 0.

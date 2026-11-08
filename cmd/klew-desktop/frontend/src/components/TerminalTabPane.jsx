@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
@@ -12,36 +12,10 @@ import {
 } from '../../wailsjs/go/main/App'
 import { EventsOn } from '../../wailsjs/runtime/runtime'
 import { shellLabel } from '../lib/shellLabel'
-import { normalizeTerminalAppearance, terminalXtermTheme } from '../lib/terminalAppearance'
+import { terminalNotice } from '../lib/terminalBanner'
+import { terminalXtermTheme } from '../lib/terminalAppearance'
 
-function connectingLabel(contextName, namespace) {
-  const scope = namespace ? `${contextName} / ${namespace}` : contextName
-  return `Connecting to ${scope}`
-}
-
-function TerminalConnectingOverlay({ contextName, namespace }) {
-  const [dots, setDots] = useState('')
-
-  useEffect(() => {
-    let frame = 0
-    const id = window.setInterval(() => {
-      frame = (frame + 1) % 4
-      setDots('.'.repeat(frame))
-    }, 400)
-    return () => window.clearInterval(id)
-  }, [])
-
-  return (
-    <div className="terminal-connecting" role="status" aria-live="polite">
-      <span className="terminal-connecting-prompt" aria-hidden="true">●</span>
-      <span className="terminal-connecting-text">
-        {connectingLabel(contextName, namespace)}
-        <span className="terminal-connecting-dots" aria-hidden="true">{dots || '\u00a0'}</span>
-      </span>
-      <span className="terminal-connecting-cursor" aria-hidden="true">▌</span>
-    </div>
-  )
-}
+const MAX_EARLY_OUTPUT_CHUNKS = 256
 
 /**
  * One xterm instance + PTY session for a terminal tab.
@@ -53,7 +27,7 @@ export function TerminalTabPane({
   open,
   cluster,
   shellPref = '',
-  appearance = 'midnight',
+  appTheme = '',
   onStateChange,
   onSearchRegister,
 }) {
@@ -64,16 +38,17 @@ export function TerminalTabPane({
   const sessionRef = useRef(null)
   const pendingInputRef = useRef('')
   const startGenRef = useRef(0)
+  const restartSeenRef = useRef(tab.restartToken)
+  const startingRef = useRef(false)
+  const earlyOutputRef = useRef([])
   const shellPrefRef = useRef(shellPref)
-  const appearanceRef = useRef(normalizeTerminalAppearance(appearance))
   const activeRef = useRef(active)
   const mountedRef = useRef(false)
-  const connectingRef = useRef(false)
-  const bootWrittenRef = useRef(false)
-  const [showConnecting, setShowConnecting] = useState(false)
+  const openedRef = useRef(false)
   activeRef.current = active
   shellPrefRef.current = shellPref
-  appearanceRef.current = normalizeTerminalAppearance(appearance)
+  const appThemeRef = useRef(appTheme)
+  appThemeRef.current = appTheme
 
   const onSearchRegisterRef = useRef(onSearchRegister)
   onSearchRegisterRef.current = onSearchRegister
@@ -88,14 +63,14 @@ export function TerminalTabPane({
         fit?.fit()
         return runTerminalSearch(() => search.findNext(
           query,
-          buildTerminalFindOptions(appearanceRef.current, overrides),
+          buildTerminalFindOptions(appThemeRef.current, overrides),
         ))
       },
       findPrevious: (query, overrides) => {
         fit?.fit()
         return runTerminalSearch(() => search.findPrevious(
           query,
-          buildTerminalFindOptions(appearanceRef.current, overrides),
+          buildTerminalFindOptions(appThemeRef.current, overrides),
         ))
       },
       clearDecorations: () => search.clearDecorations(),
@@ -105,38 +80,12 @@ export function TerminalTabPane({
   }, [])
 
   const contextName = tab.contextName || cluster?.selectedContext || cluster?.currentContext || ''
-  const namespace = tab.namespace || cluster?.selectedNamespace || ''
+  const namespace = tab.namespace || ''
   const kubeconfig = cluster?.kubeconfigPath || ''
 
   const report = useCallback((patch) => {
     onStateChange?.(tab.id, patch)
   }, [onStateChange, tab.id])
-
-  const writeBootStatus = useCallback((term) => {
-    if (!term) return
-    term.write('\r\n\x1b[2m')
-    term.write(`${connectingLabel(contextName, namespace)}…`)
-    term.write('\x1b[0m')
-    bootWrittenRef.current = true
-  }, [contextName, namespace])
-
-  const clearBootStatus = useCallback((term) => {
-    if (!term || !bootWrittenRef.current) return
-    term.write('\x1b[1A\x1b[2K')
-    bootWrittenRef.current = false
-  }, [])
-
-  const beginConnecting = useCallback(() => {
-    connectingRef.current = true
-    setShowConnecting(true)
-  }, [])
-
-  const endConnecting = useCallback(() => {
-    if (!connectingRef.current) return
-    connectingRef.current = false
-    setShowConnecting(false)
-    clearBootStatus(termRef.current)
-  }, [clearBootStatus])
 
   const flushPendingInput = useCallback((id) => {
     if (!id || !pendingInputRef.current) return
@@ -164,25 +113,16 @@ export function TerminalTabPane({
         /* ignore */
       }
     }
-    endConnecting()
     report({ sessionId: null, ready: false })
-  }, [report, endConnecting])
+  }, [report])
 
   const startSession = useCallback(async () => {
     const gen = ++startGenRef.current
     report({ error: '', ready: false, shell: '' })
 
-    if (!contextName) {
-      endConnecting()
-      report({ error: 'Select a cluster context before opening the terminal.' })
-      await closeSession()
-      return
-    }
-
     const term = termRef.current
     const fit = fitRef.current
     if (!term || !fit) {
-      endConnecting()
       report({ error: 'Terminal view is not ready yet. Try Restart.', ready: false })
       return
     }
@@ -191,13 +131,13 @@ export function TerminalTabPane({
     if (gen !== startGenRef.current) return
 
     term.reset()
-    beginConnecting()
-    writeBootStatus(term)
 
     if (activeRef.current && fit) fit.fit()
     const cols = Math.max(term.cols || 0, 80)
     const rows = Math.max(term.rows || 0, 24)
 
+    earlyOutputRef.current = []
+    startingRef.current = true
     try {
       const info = await StartTerminal({
         kubeconfig,
@@ -211,7 +151,14 @@ export function TerminalTabPane({
         await CloseTerminal(info.id).catch(() => {})
         return
       }
+      startingRef.current = false
       sessionRef.current = info.id
+      // The shell prints its prompt before StartTerminal resolves; replay it.
+      const early = earlyOutputRef.current.filter((c) => c.id === info.id)
+      earlyOutputRef.current = []
+      const notice = terminalNotice(info)
+      if (notice) term.write(notice)
+      for (const chunk of early) term.write(chunk.data)
       flushPendingInput(info.id)
       if (tab.initialInput && !tab.initialInputSent) {
         await WriteTerminal(info.id, tab.initialInput).catch(() => {})
@@ -223,10 +170,12 @@ export function TerminalTabPane({
         ready: true,
         error: '',
         shell: shellLabel(info.shell),
+        shellNamespace: info.namespace || '',
       })
     } catch (err) {
       if (gen !== startGenRef.current) return
-      endConnecting()
+      startingRef.current = false
+      earlyOutputRef.current = []
       report({ sessionId: null, ready: false, error: String(err), shell: '' })
     }
   }, [
@@ -236,9 +185,6 @@ export function TerminalTabPane({
     kubeconfig,
     report,
     flushPendingInput,
-    beginConnecting,
-    writeBootStatus,
-    endConnecting,
     tab.initialInput,
     tab.initialInputSent,
   ])
@@ -251,7 +197,7 @@ export function TerminalTabPane({
       cursorBlink: true,
       fontSize: 12,
       fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-      theme: terminalXtermTheme(appearanceRef.current),
+      theme: terminalXtermTheme(appThemeRef.current),
       scrollback: 5000,
       disableStdin: false,
       // SearchAddon highlights matches via registerDecoration, a proposed API in
@@ -262,40 +208,52 @@ export function TerminalTabPane({
     const search = new SearchAddon()
     term.loadAddon(fit)
     term.loadAddon(search)
-    term.open(el)
-    fit.fit()
     termRef.current = term
     fitRef.current = fit
     searchRef.current = search
-    publishSearchApi()
     mountedRef.current = true
+    openedRef.current = false
+    restartSeenRef.current = tab.restartToken
+
+    // xterm measures its font when opened; inside a display:none pane that is 0×0 and
+    // the terminal stays blank. Attach (and start the shell) once the pane has a size.
+    let boot = 0
+    const attach = () => {
+      if (openedRef.current || !el.clientWidth || !el.clientHeight) return
+      openedRef.current = true
+      term.open(el)
+      fit.fit()
+      publishSearchApi()
+      boot = requestAnimationFrame(() => {
+        if (mountedRef.current) startSession()
+      })
+    }
 
     const onData = term.onData((data) => {
       sendInput(data)
     })
 
     const offOut = EventsOn('terminal:output', (payload) => {
-      if (!payload || payload.id !== sessionRef.current) return
-      if (connectingRef.current) {
-        connectingRef.current = false
-        setShowConnecting(false)
-        if (bootWrittenRef.current) {
-          term.write('\x1b[1A\x1b[2K')
-          bootWrittenRef.current = false
+      if (!payload) return
+      if (payload.id !== sessionRef.current) {
+        if (startingRef.current && earlyOutputRef.current.length < MAX_EARLY_OUTPUT_CHUNKS) {
+          earlyOutputRef.current.push({ id: payload.id, data: payload.data || '' })
         }
+        return
       }
       term.write(payload.data || '')
     })
     const offExit = EventsOn('terminal:exit', (payload) => {
       if (!payload || payload.id !== sessionRef.current) return
       sessionRef.current = null
-      connectingRef.current = false
-      setShowConnecting(false)
-      bootWrittenRef.current = false
       report({ sessionId: null, ready: false, shell: '' })
     })
 
     const ro = new ResizeObserver(() => {
+      if (!openedRef.current) {
+        attach()
+        return
+      }
       if (!activeRef.current) return
       fit.fit()
       const id = sessionRef.current
@@ -304,11 +262,7 @@ export function TerminalTabPane({
       }
     })
     ro.observe(el)
-
-    // Defer first session until xterm has laid out (avoids 0-size PTY on open).
-    const boot = requestAnimationFrame(() => {
-      if (mountedRef.current) startSession()
-    })
+    attach()
 
     return () => {
       mountedRef.current = false
@@ -329,7 +283,7 @@ export function TerminalTabPane({
   }, [open, tab.id])
 
   useEffect(() => {
-    if (!open || !active || !termRef.current || !fitRef.current) return
+    if (!open || !active || !openedRef.current || !termRef.current || !fitRef.current) return
     const fit = fitRef.current
     const term = termRef.current
     const frame = requestAnimationFrame(() => {
@@ -343,8 +297,13 @@ export function TerminalTabPane({
     return () => cancelAnimationFrame(frame)
   }, [open, active, focused])
 
+  // The mount effect already boots a session; only explicit restarts after that start another.
   useEffect(() => {
     if (!open || tab.restartToken == null) return undefined
+    if (restartSeenRef.current === tab.restartToken) return undefined
+    restartSeenRef.current = tab.restartToken
+    // Not attached yet: the first session starts on attach.
+    if (!openedRef.current) return undefined
     const frame = requestAnimationFrame(() => {
       startSession()
     })
@@ -355,36 +314,21 @@ export function TerminalTabPane({
   useEffect(() => {
     const term = termRef.current
     if (!term || !open) return
-    const theme = terminalXtermTheme(appearance)
+    const theme = terminalXtermTheme(appTheme)
     term.options.theme = theme
     if (typeof term.setOption === 'function') {
       term.setOption('theme', theme)
     }
-    term.refresh(0, Math.max(term.rows - 1, 0))
-  }, [appearance, open])
-
-  useEffect(() => {
-    if (!showConnecting) return undefined
-    const timeout = window.setTimeout(() => {
-      endConnecting()
-    }, 8000)
-    return () => window.clearTimeout(timeout)
-  }, [showConnecting, endConnecting, tab.id])
+    if (openedRef.current) term.refresh(0, Math.max(term.rows - 1, 0))
+  }, [appTheme, open])
 
   return (
     <div
-      className={[
-        'terminal-tab-pane',
-        active ? 'is-active' : '',
-        showConnecting ? 'is-connecting' : '',
-      ].filter(Boolean).join(' ')}
+      className={`terminal-tab-pane ${active ? 'is-active' : ''}`}
       role="tabpanel"
       aria-hidden={!active}
     >
       <div ref={containerRef} className="terminal-xterm-host" />
-      {showConnecting && active && (
-        <TerminalConnectingOverlay contextName={contextName} namespace={namespace} />
-      )}
     </div>
   )
 }

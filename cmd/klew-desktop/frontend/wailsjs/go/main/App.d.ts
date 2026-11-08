@@ -7,14 +7,17 @@ import {kube} from '../models';
 import {history} from '../models';
 import {details} from '../models';
 import {api} from '../models';
+import {logstream} from '../models';
+
+export function AddExtensionFile():Promise<main.ExtensionsView>;
 
 export function ClearEventHistory():Promise<main.EventHistorySettings>;
-
-export function ClearLogs():Promise<void>;
 
 export function CloseTerminal(arg1:string):Promise<void>;
 
 export function DiscoverMatches(arg1:main.DiscoverOptions):Promise<Array<model.MatchedObject>>;
+
+export function ExtensionsStatus():Promise<main.ExtensionsView>;
 
 export function GetAppInfo():Promise<version.Info>;
 
@@ -46,23 +49,41 @@ export function GetView():Promise<api.View>;
 
 export function GetWorkloadChanges(arg1:string,arg2:string,arg3:string):Promise<model.WorkloadChanges>;
 
+export function InvestigableTypes():Promise<Array<model.InvestigableType>>;
+
+export function InvestigationTargets(arg1:main.DiscoverOptions):Promise<model.TargetList>;
+
+export function LinkExtensionFolder():Promise<main.ExtensionsView>;
+
 export function ListCatalogEntities(arg1:main.ListCatalogEntitiesOptions):Promise<model.CatalogEntityList>;
 
-export function LogTailActive():Promise<boolean>;
+export function ListLogStreams():Promise<Array<logstream.Status>>;
+
+export function LogStreamLines(arg1:string):Promise<Array<logstream.Line>>;
+
+export function LogStreamStatus(arg1:string):Promise<logstream.Status>;
+
+export function MCPSetupInfo():Promise<main.MCPSetupInfo>;
+
+export function OpenExtensionsFolder(arg1:string):Promise<void>;
 
 export function OpenKubeconfigDir():Promise<void>;
 
 export function OpenNewWindow(arg1:main.OpenWindowOptions):Promise<void>;
 
-export function PauseLogTail():Promise<void>;
+export function PauseLogStream(arg1:string):Promise<void>;
 
 export function RefreshInvestigation():Promise<void>;
 
 export function RefreshResourceCatalog(arg1:main.CatalogOptions):Promise<model.ResourceCatalog>;
 
+export function ReloadExtensions():Promise<main.ExtensionsView>;
+
+export function RemoveExtensionFile(arg1:string):Promise<main.ExtensionsView>;
+
 export function ResizeTerminal(arg1:string,arg2:number,arg3:number):Promise<void>;
 
-export function ResumeLogTail():Promise<void>;
+export function ResumeLogStream(arg1:string):Promise<void>;
 
 export function SelectContext(arg1:string):Promise<kube.ClusterState>;
 
@@ -88,7 +109,7 @@ export function StartCatalogEntityWatch(arg1:main.StartCatalogEntityWatchOptions
 
 export function StartInvestigation(arg1:main.StartOptions):Promise<void>;
 
-export function StartLogTail(arg1:main.LogTailOptions):Promise<void>;
+export function StartLogStream(arg1:main.LogStreamOptions):Promise<logstream.Status>;
 
 export function StartTerminal(arg1:main.TerminalOptions):Promise<main.TerminalInfo>;
 
@@ -96,8 +117,12 @@ export function StopCatalogEntityWatch():Promise<void>;
 
 export function StopInvestigation():Promise<void>;
 
-export function StopLogTail():Promise<void>;
+export function StopLogStream(arg1:string):Promise<void>;
 
 export function SyncCluster():Promise<kube.ClusterState>;
+
+export function TestExtensions(arg1:string):Promise<main.ExtensionTestResult>;
+
+export function UnlinkExtensionFolder(arg1:string):Promise<main.ExtensionsView>;
 
 export function WriteTerminal(arg1:string,arg2:string):Promise<void>;

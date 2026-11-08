@@ -160,6 +160,35 @@ func KubectlDirForCluster(clusterVersion string) string {
 	return kubectlDir(path)
 }
 
+// KubectlDirForClusterCached is KubectlDirForCluster without network: a
+// cluster-matched kubectl is used only if it is already downloaded.
+func KubectlDirForClusterCached(clusterVersion string) string {
+	kubectlConfig.RLock()
+	useBundled := kubectlConfig.useBundled
+	custom := kubectlConfig.customPath
+	matchCluster := kubectlConfig.matchClusterKubectl
+	kubectlConfig.RUnlock()
+
+	if custom != "" {
+		if st, err := os.Stat(custom); err == nil && !st.IsDir() {
+			return kubectlDir(custom)
+		}
+	}
+	bundledVersion := bundledKubectlVersionLabel()
+	if useBundled && matchCluster && clusterVersion != "" && bundledVersion != "" &&
+		versionSkewRequiresDownload(bundledVersion, clusterVersion) {
+		if p := cachedClusterKubectlPath(normalizeKubectlReleaseVersion(clusterVersion)); p != "" && cachedKubectlVerified(p) {
+			return kubectlDir(p)
+		}
+	}
+	if useBundled {
+		if b := BundledKubectlPath(); b != "" {
+			return kubectlDir(b)
+		}
+	}
+	return kubectlDir(systemKubectlPath())
+}
+
 func kubectlDir(path string) string {
 	if path == "" {
 		return ""

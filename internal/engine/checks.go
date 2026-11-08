@@ -140,7 +140,7 @@ func investigationStepsFor(cat string, b model.EvidenceBundle) []string {
 		}
 
 	case "Dependency failure":
-		add("Confirm dependency reachability and latency (e.g. redis, database)")
+		add("Confirm the dependency that is timing out is reachable and responsive")
 		add("Check whether readiness failures track dependency timeouts in logs")
 		if workload != "" {
 			add(fmt.Sprintf("Validate %s connection settings and network path to dependencies", workload))
@@ -242,7 +242,9 @@ func hasRecentRollout(b model.EvidenceBundle) bool {
 	return readyOld > 0 && readyNew > 0
 }
 
-// fixActionsFor returns remediation steps to restore service health (read-only guidance).
+// fixActionsFor returns remediation commands for a person to review (never
+// run). They name the workload and container that own the failing pod, and
+// suggest a rollback only when a Deployment has a previous revision to return to.
 func fixActionsFor(cat string, b model.EvidenceBundle) []string {
 	ns := b.Namespace
 	if ns == "" || ns == "*" {
@@ -251,52 +253,115 @@ func fixActionsFor(cat string, b model.EvidenceBundle) []string {
 	var out []string
 	add := func(s string) { out = appendUniqueCheck(out, s) }
 
-	workload := ""
-	kind := "deployment"
-	if len(b.Workloads) > 0 {
-		workload = b.Workloads[0].Name
-		switch b.Workloads[0].Kind {
-		case "StatefulSet":
-			kind = "statefulset"
-		case "DaemonSet":
-			kind = "daemonset"
+	pod, container := failingPod(b)
+	kind, name := failingWorkload(b, pod)
+	if cat == "Dependency failure" {
+		add("Restore reachability of the dependency that is timing out, then restart the affected pods")
+	}
+	if name == "" {
+		return out
+	}
+	ref := strings.ToLower(kind) + "/" + name
+	undo := func() {
+		if kind == "Deployment" && deploymentRevisions(b, name) >= 2 {
+			add(fmt.Sprintf("kubectl -n %s rollout undo %s", ns, ref))
 		}
 	}
 
 	switch cat {
-	case "CrashLoopBackOff":
-		if workload != "" {
-			add(fmt.Sprintf("kubectl -n %s rollout undo %s/%s", ns, kind, workload))
-			add(fmt.Sprintf("kubectl -n %s patch %s %s --type=json -p='[{\"op\":\"remove\",\"path\":\"/spec/template/spec/containers/0/command\"}]'", ns, kind, workload))
-		}
-		add("klew-labs: cd scenarios/05-crashloop && ./cleanup.sh")
-	case "OOMKilled":
-		if workload != "" {
-			add(fmt.Sprintf("kubectl -n %s rollout undo %s/%s", ns, kind, workload))
-			add(fmt.Sprintf("kubectl -n %s set resources %s/%s -c app --limits=memory=512Mi", ns, kind, workload))
-		}
-		add("klew-labs: cd scenarios/04-oomkill && ./cleanup.sh")
+	case "CrashLoopBackOff", "Mount/config", "Readiness failed", "Service impact":
+		undo()
 	case "Rollout correlation":
-		if workload != "" {
-			add(fmt.Sprintf("kubectl -n %s rollout undo %s/%s", ns, kind, workload))
-			add(fmt.Sprintf("kubectl -n %s rollout status %s/%s", ns, kind, workload))
+		undo()
+		add(fmt.Sprintf("kubectl -n %s rollout status %s", ns, ref))
+	case "OOMKilled":
+		if container != "" {
+			limit := "<higher-limit>"
+			if mi := containerMemLimitMi(b, pod, container); mi > 0 {
+				limit = formatMemMi(mi * 2)
+			}
+			add(fmt.Sprintf("kubectl -n %s set resources %s -c %s --limits=memory=%s", ns, ref, container, limit))
 		}
+		undo()
 	case "ImagePullBackOff":
-		if workload != "" {
-			add(fmt.Sprintf("kubectl -n %s rollout undo %s/%s", ns, kind, workload))
-			add(fmt.Sprintf("kubectl -n %s set image %s/%s app=<known-good-image>", ns, kind, workload))
+		if container != "" {
+			add(fmt.Sprintf("kubectl -n %s set image %s %s=<known-good-image>", ns, ref, container))
 		}
-	case "Mount/config", "Readiness failed", "Service impact":
-		if workload != "" {
-			add(fmt.Sprintf("kubectl -n %s rollout undo %s/%s", ns, kind, workload))
-		}
+		undo()
 	case "Dependency failure":
-		add("Restore dependency reachability (e.g. redis) then restart affected pods")
-		if workload != "" {
-			add(fmt.Sprintf("kubectl -n %s rollout restart %s/%s", ns, kind, workload))
-		}
+		add(fmt.Sprintf("kubectl -n %s rollout restart %s", ns, ref))
 	}
 	return out
+}
+
+// failingWorkload resolves the workload that owns pod. With no owner to follow
+// it falls back to the only collected workload, or returns empty names.
+func failingWorkload(b model.EvidenceBundle, pod string) (kind, name string) {
+	for _, p := range b.Pods {
+		if p.Name == pod && len(p.OwnerRefs) > 0 {
+			return PodWorkload(b, p)
+		}
+	}
+	if len(b.Workloads) == 1 {
+		return b.Workloads[0].Kind, b.Workloads[0].Name
+	}
+	return "", ""
+}
+
+// PodWorkload returns the Deployment, StatefulSet, DaemonSet, Job or CronJob
+// that owns p, following a ReplicaSet to its Deployment and a Job to its
+// CronJob. Other owners and unowned pods return empty names.
+func PodWorkload(b model.EvidenceBundle, p model.PodSummary) (kind, name string) {
+	if len(p.OwnerRefs) == 0 {
+		return "", ""
+	}
+	o := p.OwnerRefs[0]
+	switch o.Kind {
+	case "StatefulSet", "DaemonSet":
+		return o.Kind, o.Name
+	case "Job":
+		for _, j := range b.Jobs {
+			if j.Name == o.Name && j.CronJob != "" {
+				return "CronJob", j.CronJob
+			}
+		}
+		return "Job", o.Name
+	case "ReplicaSet":
+		for _, rs := range b.ReplicaSets {
+			if rs.Name == o.Name && rs.DeploymentOwner != "" {
+				return "Deployment", rs.DeploymentOwner
+			}
+		}
+		if hash := p.Labels["pod-template-hash"]; hash != "" && strings.HasSuffix(o.Name, "-"+hash) {
+			return "Deployment", strings.TrimSuffix(o.Name, "-"+hash)
+		}
+	}
+	return "", ""
+}
+
+// deploymentRevisions counts the collected ReplicaSets of a Deployment.
+func deploymentRevisions(b model.EvidenceBundle, name string) int {
+	n := 0
+	for _, rs := range b.ReplicaSets {
+		if rs.DeploymentOwner == name {
+			n++
+		}
+	}
+	return n
+}
+
+func containerMemLimitMi(b model.EvidenceBundle, pod, container string) int64 {
+	for _, p := range b.Pods {
+		if p.Name != pod {
+			continue
+		}
+		for _, c := range p.Containers {
+			if c.Name == container {
+				return parseMemQuantity(c.LimitsMem)
+			}
+		}
+	}
+	return 0
 }
 
 func podHasRestarts(p model.PodSummary) bool {

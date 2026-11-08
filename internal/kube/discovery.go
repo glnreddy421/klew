@@ -236,6 +236,9 @@ func DiscoverMatches(ctx context.Context, c *Client, scope model.NamespaceScope,
 }
 
 func dynamicClient(c *Client) (dynamic.Interface, error) {
+	if c.Dynamic != nil {
+		return c.Dynamic, nil
+	}
 	if c.Config == nil {
 		return nil, fmt.Errorf("rest config is required for discovery")
 	}
@@ -297,32 +300,4 @@ func dedupeMatches(in []model.MatchedObject) []model.MatchedObject {
 		out = append(out, m)
 	}
 	return out
-}
-
-// DetectCRDs lists API resources that look like CRDs (non-core groups).
-func DetectCRDs(ctx context.Context, c *Client) ([]string, error) {
-	_ = ctx
-	disco := c.Clientset.Discovery()
-	groups, err := disco.ServerGroups()
-	if err != nil {
-		return nil, err
-	}
-	var kinds []string
-	for _, g := range groups.Groups {
-		if g.Name == "" || strings.HasPrefix(g.Name, "kube") {
-			continue
-		}
-		for _, v := range g.Versions {
-			rl, err := disco.ServerResourcesForGroupVersion(g.Name + "/" + v.Version)
-			if err != nil {
-				continue
-			}
-			for _, r := range rl.APIResources {
-				if !strings.Contains(r.Name, "/") {
-					kinds = append(kinds, schema.GroupVersionResource{Group: g.Name, Version: v.Version, Resource: r.Name}.String())
-				}
-			}
-		}
-	}
-	return kinds, nil
 }

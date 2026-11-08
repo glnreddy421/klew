@@ -10,7 +10,6 @@ import { GraphView } from './GraphView'
 import { NodesView } from './NodesView'
 import { FailuresView } from './FailuresView'
 import { EvidenceView } from './EvidenceView'
-import { SettingsView } from './SettingsView'
 import { WorkspaceChrome } from '../components/WorkspaceChrome'
 import { CollectingMatchesSplash } from '../components/incident/CollectingMatchesSplash'
 import { HomeView } from './HomeView.jsx'
@@ -20,13 +19,13 @@ import { loadLayoutMode } from '../lib/incidentLayout'
 import { normalizeBrowseScope } from '../lib/browseScope.js'
 import { hasClusterContexts } from '../lib/clusterIdentity.js'
 import { defaultRelations } from '../components/shell/explorers/ExplorerPanels.jsx'
+import { RESOURCES_SURFACE_TABS } from '../lib/constants'
 
 export function MainContent({
   tab,
   view,
   running,
   starting = false,
-  scopePickerOpen = false,
   activeQuery = '',
   cluster,
   clusterStatus,
@@ -61,17 +60,12 @@ export function MainContent({
   onToggleFavoriteContext,
   onClearDefaultContext,
   onOpenProxySettings,
-  onOpenSettingsKubernetes,
+  onOpenMcpSetup,
   onTerminalShellChange,
   onOpenTerminalShellPicker,
   terminalShellRestartToken = 0,
   settingsSection = 'general',
   onSettingsSectionChange,
-  focusKey,
-  focusPinned,
-  drillDown,
-  onFocusChange,
-  onClearFocus,
   onFilterLogsFromPatterns,
   inspectKey,
   onInspectKeyChange,
@@ -79,6 +73,7 @@ export function MainContent({
   onExplorerFiltersChange,
   graphRelations,
   onGraphRelationsChange,
+  investigateChrome = null,
   renderShell,
 }) {
   const matchCount = getMatchedObjects(view).length
@@ -109,11 +104,9 @@ export function MainContent({
     }
   }, [prefs?.workspaceLayout])
 
-  const overviewCollecting = !scopePickerOpen && (
-    starting || (running && matchCount === 0)
-  )
+  const overviewCollecting = starting || (running && matchCount === 0)
   // Resources catalog is independent — only show correlation banner after discovery finishes.
-  const resourcesCorrelating = !scopePickerOpen && running && matchCount === 0
+  const resourcesCorrelating = running && matchCount === 0
 
   const timeWindowLabel = prefs?.windowMin ? `Last ${prefs.windowMin}m` : 'Last 15m'
   const live = running && prefs?.autoRefresh !== false
@@ -134,7 +127,7 @@ export function MainContent({
       || cluster?.selectedNamespace
     ),
   )
-  const showWelcome = !running && !starting && !scopePickerOpen && tab !== 'settings' && tab !== 'home'
+  const showWelcome = !running && !starting && tab !== 'settings' && tab !== 'home'
     && !hasBrowseScope
     && !hasClusterContexts(cluster)
 
@@ -147,10 +140,6 @@ export function MainContent({
     catalogLoading: resourcesCatalog.loading,
     catalogEnriching: resourcesCatalog.enriching,
     catalogError: resourcesCatalog.error,
-    focusKey,
-    focusPinned,
-    onFocusChange,
-    onClearFocus,
     investigationLoading: resourcesCorrelating,
     onNavigate: handleNavigate,
     layoutMode,
@@ -197,40 +186,16 @@ export function MainContent({
           onToggleFavoriteContext={onToggleFavoriteContext}
           onReconnect={onReconnect}
           onOpenProxySettings={onOpenProxySettings}
-          onOpenSettings={onOpenSettingsKubernetes || onOpenSettings}
+          onOpenMcpSetup={onOpenMcpSetup}
         />
       </div>
     )
     return renderShell?.({ workspace: home, showInspector: false }) ?? home
   }
 
-  if (tab === 'settings') {
-    const settings = (
-      <div className="main-content main-content-settings">
-        <SettingsView
-          cluster={cluster}
-          themeId={themeId}
-          onThemeChange={onThemeChange}
-          prefs={prefs}
-          onPrefsChange={onPrefsChange}
-          onClusterRefresh={onClusterRefresh}
-          onReconnect={onReconnect}
-          onDisconnect={onDisconnect}
-          reconnectBusy={reconnectBusy}
-          monitoringPaused={monitoringPaused}
-          connection={connection}
-          onClearDefaultContext={onClearDefaultContext}
-          onTerminalShellChange={onTerminalShellChange}
-          section={settingsSection}
-          onSectionChange={onSettingsSectionChange}
-        />
-      </div>
-    )
-    return renderShell?.({ workspace: settings, showInspector: false }) ?? settings
-  }
-
   const workspaceInner = (
     <>
+      {RESOURCES_SURFACE_TABS.has(tab) && investigateChrome}
       <WorkspaceChrome
         tab={tab}
         cluster={cluster}
@@ -238,9 +203,6 @@ export function MainContent({
         view={view}
         inspectKey={inspectKey}
         inspectRow={inspectRow}
-        focusPinned={focusPinned}
-        drillDown={drillDown}
-        onClearFocus={onClearFocus}
         timeWindowLabel={timeWindowLabel}
         live={live}
         compact

@@ -96,3 +96,24 @@ func TestBuildEvidenceBoard_Empty(t *testing.T) {
 		t.Fatalf("%#v", board)
 	}
 }
+
+func TestBuildEvidenceBoard_NeedsSharedPod(t *testing.T) {
+	vol := []int64{1, 1, 0, 1}
+	ev := model.LogTemplate{ID: "e1", Template: "[BackOff] Back-off restarting failed container", VolumeHistory: vol, Pods: []string{"billing-1"}}
+	logs := []model.LogTemplate{
+		{ID: "l1", Template: "FATAL required_version file not found", VolumeHistory: vol, Pods: []string{"billing-1"}},
+		{ID: "l2", Template: "writing to /exports/invoices.csv", VolumeHistory: vol, Pods: []string{"invoice-export-x"}},
+		{ID: "l3", Template: "no pods recorded", VolumeHistory: vol},
+	}
+	b := BuildEvidenceBoard(logs, []model.LogTemplate{ev}, 0.6, 4)
+	if len(b.Cards) != 1 {
+		t.Fatalf("cards=%d want 1", len(b.Cards))
+	}
+	var got []string
+	for _, l := range b.Cards[0].TriggeredLogs {
+		got = append(got, l.ID)
+	}
+	if len(got) != 2 || got[0] == "l2" || got[1] == "l2" {
+		t.Fatalf("linked %v, want l1 and l3 but not another workload's l2", got)
+	}
+}

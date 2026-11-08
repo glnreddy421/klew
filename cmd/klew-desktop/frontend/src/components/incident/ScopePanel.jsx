@@ -1,7 +1,6 @@
 import { useMemo, useEffect } from 'react'
 import { buildCatalogScopeTree, catalogTreeSignature, isAccessDenied } from '../../lib/resourceCatalog.js'
 import {
-  flattenTreeEntities,
   entitySearchPlaceholder,
   isCategoryOverview,
   visibleCategories,
@@ -13,6 +12,7 @@ import { clusterScopeKey, useLazyResourceCounts } from '../../hooks/useLazyResou
 import { useScopeBrowse } from '../../context/ScopeBrowseContext.jsx'
 import { InlineLoading } from '../LoadingSpinner.jsx'
 import { useShellInspector } from '../../context/ShellInspectorContext.jsx'
+import { HeaderSlot } from '../../context/HeaderSlotContext.jsx'
 import { DataAgeLabel } from '../DataAgeLabel.jsx'
 import { RefreshButton } from '../RefreshButton.jsx'
 import { ResourceNav } from './ResourceNav.jsx'
@@ -35,13 +35,9 @@ export function ScopePanel({
   catalogLoading = false,
   catalogEnriching = false,
   catalogError = '',
-  focusKey,
   inspectKey,
-  mode = 'match',
   onInspect,
-  onFocus,
   onKindChange,
-  showFocusButton = true,
   entityView = 'list',
   tableDensity = 'standard',
   showEmptyToggle = true,
@@ -63,15 +59,13 @@ export function ScopePanel({
   const shellInspector = useShellInspector()
   const browseCtx = useScopeBrowse()
   const pods = view?.state?.snapshot?.pods || []
-  const chain = mode === 'chain'
 
   const internal = useScopePanelState({
     view,
     catalog,
     cluster,
     rows,
-    chain,
-    enabled: !browseCtx && !chain && clusterMonitoringEnabled,
+    enabled: !browseCtx && clusterMonitoringEnabled,
     browseLens,
     clusterMonitoringEnabled,
   })
@@ -98,20 +92,15 @@ export function ScopePanel({
   )
 
   useEffect(() => {
-    if (chain || !onKindChange) return
+    if (!onKindChange) return
     onKindChange({
       groupId: nav.selectedGroupId,
       kind: nav.selectedKind,
       resourceId: nav.selectedResourceId,
       entities: displayEntities,
     })
-  }, [chain, nav.selectedGroupId, nav.selectedKind, nav.selectedResourceId, entityChangeSig, onKindChange])
+  }, [nav.selectedGroupId, nav.selectedKind, nav.selectedResourceId, entityChangeSig, onKindChange])
 
-  const chainEntities = useMemo(() => {
-    if (!chain) return []
-    if (rows?.length) return rows
-    return flattenTreeEntities(tree)
-  }, [chain, rows, tree])
   const isOverview = isCategoryOverview(nav.selectedKind)
   const workloadKindGroups = useMemo(
     () => tree?.categories?.find((c) => c.id === 'workloads')?.kinds || [],
@@ -138,27 +127,10 @@ export function ScopePanel({
     reconnectBusy,
   }
 
-  if (chain) {
-    return (
-      <div className="scope-panel scope-panel-browse">
-        <EntityList
-          title="Focus chain"
-          kind={null}
-          entities={chainEntities}
-          filteredEntities={chainEntities}
-          inspectKey={inspectKey}
-          focusKey={focusKey}
-          showFocusButton={false}
-          onSelect={onInspect}
-          onFocus={onFocus}
-          chainMode
-        />
-      </div>
-    )
-  }
-
   return (
     <div className="scope-panel scope-panel-browse">
+      {/* Shares the Watch / Investigate bar's row when that bar is shown. */}
+      <HeaderSlot name="tools">
       <div className="scope-toolbar">
         <div className="scope-toolbar-controls">
           {!isOverview && (
@@ -268,6 +240,7 @@ export function ScopePanel({
           )}
         </div>
       </div>
+      </HeaderSlot>
 
       <div className={`scope-browse-split ${entityView === 'table' ? 'scope-browse-table' : 'scope-browse-list'} ${navInExplorer ? 'scope-browse-no-nav' : ''}`}>
         <>
@@ -308,10 +281,7 @@ export function ScopePanel({
             onBrowseScopeChange={onBrowseScopeChange}
             hasSearchQuery={nav.entitySearchQuery.trim()}
             inspectKey={inspectKey}
-            focusKey={focusKey}
-            showFocusButton={showFocusButton}
             onSelect={onInspect}
-            onFocus={onFocus}
           />
         ) : (
           <EntityList
@@ -324,10 +294,7 @@ export function ScopePanel({
             {...entityFetchProps}
             hasSearchQuery={nav.entitySearchQuery.trim()}
             inspectKey={inspectKey}
-            focusKey={focusKey}
-            showFocusButton={showFocusButton}
             onSelect={onInspect}
-            onFocus={onFocus}
           />
         )}
         </>
@@ -341,7 +308,6 @@ function useScopePanelState({
   catalog,
   cluster,
   rows,
-  chain,
   enabled,
   browseLens = RESOURCES_BROWSE_LENS.MATCHES,
   clusterMonitoringEnabled = true,

@@ -3,7 +3,6 @@ import { PANEL_NORMAL } from './useStreamPanel'
 
 export const DOCK_VIEW_TERMINAL = 'terminal'
 export const DOCK_VIEW_STREAM = 'stream'
-export const DOCK_VIEW_SPLIT = 'split'
 
 const MIN_HEIGHT = 120
 const DEFAULT_HEIGHT_RATIO = 0.42
@@ -37,26 +36,6 @@ export function useConsoleDock({ stream, terminal }) {
     setExpanded(true)
     setMaximized(false)
   }, [stream])
-
-  const openSplit = useCallback(() => {
-    terminal.openPanel()
-    stream.openPanel(PANEL_NORMAL)
-    setActiveView(DOCK_VIEW_SPLIT)
-    setExpanded(true)
-    setMaximized(false)
-  }, [stream, terminal])
-
-  const selectView = useCallback((view) => {
-    if (view === DOCK_VIEW_TERMINAL) {
-      openTerminal()
-      return
-    }
-    if (view === DOCK_VIEW_STREAM) {
-      openStream()
-      return
-    }
-    openSplit()
-  }, [openTerminal, openStream, openSplit])
 
   const collapse = useCallback(() => {
     setExpanded(false)
@@ -118,8 +97,6 @@ export function useConsoleDock({ stream, terminal }) {
     maximized,
     openTerminal,
     openStream,
-    openSplit,
-    selectView,
     collapse,
     closeAll,
     minimize,

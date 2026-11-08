@@ -1,99 +1,97 @@
-/** @typedef {'midnight' | 'black' | 'silver'} TerminalAppearanceId */
+import { DEFAULT_THEME, getTheme } from './themes'
 
-export const DEFAULT_TERMINAL_APPEARANCE = 'midnight'
+// The terminal always follows the app theme (light or dark), like an IDE's integrated terminal.
 
-export const TERMINAL_APPEARANCES = [
-  {
-    id: 'midnight',
-    label: 'Midnight',
-    description: 'Grey-black — easy on the eyes',
-    swatch: ['#0d1117', '#e6edf3'],
-  },
-  {
-    id: 'black',
-    label: 'Black',
-    description: 'True black — high contrast',
-    swatch: ['#000000', '#f5f5f5'],
-  },
-  {
-    id: 'silver',
-    label: 'Black silver',
-    description: 'Deep black with cool silver text',
-    swatch: ['#050506', '#c5cdd8'],
-  },
-]
+// xterm's default ANSI palette assumes a dark background; white/yellow vanish on light shells.
+const LIGHT_ANSI = {
+  red: '#c62828',
+  green: '#2e7d32',
+  yellow: '#a66a00',
+  blue: '#1565c0',
+  magenta: '#8e24aa',
+  cyan: '#00838f',
+  white: '#6b7280',
+  brightRed: '#d32f2f',
+  brightGreen: '#388e3c',
+  brightYellow: '#b7791f',
+  brightBlue: '#1976d2',
+  brightMagenta: '#9c27b0',
+  brightCyan: '#0097a7',
+  brightWhite: '#4b5563',
+}
 
-const PRESETS = {
-  midnight: {
+function parseHex(hex) {
+  const raw = String(hex || '').trim().replace('#', '')
+  const full = raw.length === 3 ? raw.split('').map((c) => c + c).join('') : raw
+  if (!/^[0-9a-fA-F]{6}$/.test(full)) return null
+  return [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16))
+}
+
+/** Mix two #rrggbb colors; weight is the share of `a` (0–1). xterm decorations need plain hex. */
+export function mixHex(a, b, weight) {
+  const ca = parseHex(a)
+  const cb = parseHex(b)
+  if (!ca || !cb) return a
+  const w = Math.min(1, Math.max(0, weight))
+  return `#${ca
+    .map((v, i) => Math.round(v * w + cb[i] * (1 - w)).toString(16).padStart(2, '0'))
+    .join('')}`
+}
+
+function hexAlpha(hex, alpha) {
+  const c = parseHex(hex)
+  if (!c) return hex
+  return `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${alpha})`
+}
+
+/** Terminal colors for an app theme: CSS vars for chrome, xterm theme, find highlights. */
+export function terminalPalette(themeId) {
+  const theme = getTheme(themeId || DEFAULT_THEME)
+  const v = theme.vars
+  const light = theme.mode === 'light'
+  const bg = v['--surface']
+  const fg = v['--text']
+  const accent = v['--accent']
+  const accentStrong = v['--accent-hover'] || accent
+  const selection = hexAlpha(accent, light ? 0.22 : 0.32)
+  return {
     css: {
-      '--terminal-bg': '#0d1117',
-      '--terminal-fg': '#e6edf3',
-      '--terminal-fg-muted': '#8b949e',
-      '--terminal-border': '#30363d',
-      '--terminal-cursor': '#58a6ff',
-      '--terminal-selection': 'rgba(56, 139, 253, 0.35)',
+      '--terminal-bg': bg,
+      '--terminal-fg': fg,
+      '--terminal-fg-muted': v['--text-secondary'],
+      '--terminal-border': v['--border'],
+      '--terminal-cursor': accent,
+      '--terminal-selection': selection,
     },
     xterm: {
-      background: '#0d1117',
-      foreground: '#e6edf3',
-      cursor: '#58a6ff',
-      selectionBackground: 'rgba(56, 139, 253, 0.35)',
-      brightBlack: '#6e7681',
-      black: '#0d1117',
+      background: bg,
+      foreground: fg,
+      cursor: accent,
+      cursorAccent: bg,
+      selectionBackground: selection,
+      black: light ? fg : bg,
+      brightBlack: v['--text-secondary'],
+      ...(light ? LIGHT_ANSI : null),
     },
-  },
-  black: {
-    css: {
-      '--terminal-bg': '#000000',
-      '--terminal-fg': '#f5f5f5',
-      '--terminal-fg-muted': '#a3a3a3',
-      '--terminal-border': '#2a2a2a',
-      '--terminal-cursor': '#ffffff',
-      '--terminal-selection': 'rgba(255, 255, 255, 0.22)',
+    find: {
+      matchBackground: mixHex(accent, bg, light ? 0.18 : 0.25),
+      matchBorder: accent,
+      matchOverviewRuler: accent,
+      activeMatchBackground: mixHex(accent, bg, light ? 0.34 : 0.45),
+      activeMatchBorder: accentStrong,
+      activeMatchColorOverviewRuler: accentStrong,
     },
-    xterm: {
-      background: '#000000',
-      foreground: '#f5f5f5',
-      cursor: '#ffffff',
-      selectionBackground: 'rgba(255, 255, 255, 0.22)',
-      brightBlack: '#737373',
-      black: '#000000',
-    },
-  },
-  silver: {
-    css: {
-      '--terminal-bg': '#050506',
-      '--terminal-fg': '#c5cdd8',
-      '--terminal-fg-muted': '#8b939e',
-      '--terminal-border': '#1e2128',
-      '--terminal-cursor': '#d4dae3',
-      '--terminal-selection': 'rgba(196, 205, 216, 0.18)',
-    },
-    xterm: {
-      background: '#050506',
-      foreground: '#c5cdd8',
-      cursor: '#d4dae3',
-      selectionBackground: 'rgba(196, 205, 216, 0.18)',
-      brightBlack: '#6b7280',
-      black: '#050506',
-    },
-  },
+  }
 }
 
-export function normalizeTerminalAppearance(value) {
-  const id = String(value || '').trim()
-  if (PRESETS[id]) return id
-  return DEFAULT_TERMINAL_APPEARANCE
+export function terminalAppearanceStyle(themeId) {
+  return terminalPalette(themeId).css
 }
 
-export function terminalAppearancePreset(id) {
-  return PRESETS[normalizeTerminalAppearance(id)]
+export function terminalXtermTheme(themeId) {
+  return terminalPalette(themeId).xterm
 }
 
-export function terminalAppearanceStyle(id) {
-  return terminalAppearancePreset(id).css
-}
-
-export function terminalXtermTheme(id) {
-  return terminalAppearancePreset(id).xterm
+export function terminalFindDecorations(themeId) {
+  return terminalPalette(themeId).find
 }

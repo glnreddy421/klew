@@ -37,7 +37,7 @@ function usePopoverDismiss(open, setOpen, anchorRef, panelRef) {
   }, [open, setOpen, anchorRef, panelRef])
 }
 
-function usePopover() {
+export function usePopover() {
   const [open, setOpen] = useState(false)
   const anchorRef = useRef(null)
   const panelRef = useRef(null)
@@ -87,7 +87,7 @@ function usePopoverPosition(open, anchorRef, panelRef) {
   return position
 }
 
-function PopoverPortal({ open, anchorRef, panelRef, className, role, ariaLabel, children }) {
+export function PopoverPortal({ open, anchorRef, panelRef, className, role, ariaLabel, children }) {
   const position = usePopoverPosition(open, anchorRef, panelRef)
   if (!open || !position) return null
 
@@ -109,7 +109,7 @@ function PopoverPortal({ open, anchorRef, panelRef, className, role, ariaLabel, 
   )
 }
 
-function usePopoverFilter(open) {
+export function usePopoverFilter(open) {
   const [filter, setFilter] = useState('')
   const inputRef = useRef(null)
 
@@ -123,7 +123,7 @@ function usePopoverFilter(open) {
   return { filter, setFilter, inputRef }
 }
 
-function PopoverSearch({ value, onChange, inputRef, placeholder, ariaLabel, onKeyDown }) {
+export function PopoverSearch({ value, onChange, inputRef, placeholder, ariaLabel, onKeyDown }) {
   return (
     <div className="shell-popover-search">
       <input
@@ -710,7 +710,7 @@ export function NamespacePopover({
   )
 }
 
-function ChevronDown() {
+export function ChevronDown() {
   return (
     <svg className="shell-scope-chevron" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
       <path d="M4 6l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />

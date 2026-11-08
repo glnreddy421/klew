@@ -17,12 +17,8 @@ function EmptyEntityState({ label, hasSearch }) {
 function EntityListItem({
   row,
   selected,
-  focusKey,
-  showFocusButton,
   onSelect,
-  onFocus,
 }) {
-  const isRoot = rowKeysMatch(focusKey, row.key)
   const tone = row.status || 'unknown'
   const isPod = row.kind === 'Pod'
   const showReady = isPod && (row.ready != null || row.total != null)
@@ -34,7 +30,6 @@ function EntityListItem({
         className={[
           'entity-list-row',
           selected ? 'selected' : '',
-          isRoot ? 'focus-root' : '',
         ].filter(Boolean).join(' ')}
         aria-selected={selected}
         onClick={() => onSelect?.(row.key)}
@@ -48,20 +43,6 @@ function EntityListItem({
           <span className="entity-list-ready">{formatReady(row.ready, row.total)}</span>
         )}
       </button>
-      {showFocusButton && (
-        <button
-          type="button"
-          className="entity-list-focus"
-          title={`Focus ${row.name}`}
-          aria-label={`Focus ${row.name}`}
-          onClick={(e) => {
-            e.stopPropagation()
-            onFocus?.(row.key)
-          }}
-        >
-          Focus
-        </button>
-      )}
     </li>
   )
 }
@@ -84,12 +65,8 @@ export function EntityList({
   reconnectBusy = false,
   refreshing = false,
   inspectKey,
-  focusKey,
-  showFocusButton = true,
   onSelect,
-  onFocus,
   title,
-  chainMode = false,
   hasSearchQuery = '',
 }) {
   const label = title || kindGroup?.label || (kind ? kindDisplayLabel(kind) : 'Resources')
@@ -97,8 +74,7 @@ export function EntityList({
 
   const centerLoading = resourceCenterLoading || (entitiesLoading && list.length === 0)
 
-  const accessBlocked = !chainMode
-    && entities.length === 0
+  const accessBlocked = entities.length === 0
     && !entitiesLoading
     && !resourceCenterLoading
     && !catalogPending
@@ -106,19 +82,17 @@ export function EntityList({
 
   return (
     <section className="entity-list" aria-label={`${label} entities`}>
-      {!chainMode && (
-        <header className="entity-list-header">
-          <div className="entity-list-heading">
-            {kind ? <KindIcon kind={kind} size={16} /> : null}
-            <h4 className="entity-list-title">{label}</h4>
-            {!accessBlocked && (
-              <span className="entity-list-count">
-                {entitiesLoading && entities.length === 0 ? '…' : entities.length}
-              </span>
-            )}
-          </div>
-        </header>
-      )}
+      <header className="entity-list-header">
+        <div className="entity-list-heading">
+          {kind ? <KindIcon kind={kind} size={16} /> : null}
+          <h4 className="entity-list-title">{label}</h4>
+          {!accessBlocked && (
+            <span className="entity-list-count">
+              {entitiesLoading && entities.length === 0 ? '…' : entities.length}
+            </span>
+          )}
+        </div>
+      </header>
 
       <div className="entity-list-body">
         {accessBlocked ? (
@@ -149,10 +123,7 @@ export function EntityList({
                     key={row.key}
                     row={row}
                     selected={rowKeysMatch(inspectKey, row.key)}
-                    focusKey={focusKey}
-                    showFocusButton={showFocusButton && !chainMode}
                     onSelect={onSelect}
-                    onFocus={onFocus}
                   />
                 ))}
               </ul>

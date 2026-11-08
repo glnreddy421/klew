@@ -25,16 +25,22 @@ type Correlation struct {
 
 // CorrelationEngine merges live evidence signals with structural snapshot signals
 // and applies deterministic correlation rules to form a leading hypothesis.
-type CorrelationEngine struct{}
+type CorrelationEngine struct {
+	// Findings are the rule findings for the current snapshot. Serious ones
+	// about objects other than pods become signals.
+	Findings []model.Finding
+}
 
 // Correlate combines evidence-derived and snapshot-derived signals with live events.
-func (CorrelationEngine) Correlate(b model.EvidenceBundle, evidenceSignals []model.Signal, events []model.EvidenceEvent) Correlation {
-	if WorkloadNominal(b) && !IncidentActive(b) {
+func (c CorrelationEngine) Correlate(b model.EvidenceBundle, evidenceSignals []model.Signal, events []model.EvidenceEvent) Correlation {
+	objectSignals := findingSignals(c.Findings)
+	if WorkloadNominal(b) && !IncidentActive(b) && len(objectSignals) == 0 {
 		return recoveredCorrelation(b, evidenceSignals)
 	}
 
 	signals := append([]model.Signal{}, evidenceSignals...)
 	signals = append(signals, structuralSignals(b)...)
+	signals = append(signals, objectSignals...)
 
 	f := detectFlags(signals, b)
 
@@ -56,7 +62,7 @@ func (CorrelationEngine) Correlate(b model.EvidenceBundle, evidenceSignals []mod
 		{f.rollout && f.podFailures, "Rollout correlation", 20},
 		{f.imagePull, "ImagePullBackOff", 26},
 		{f.failedMount && f.hasConfigRefs, "Mount/config", 22},
-		{f.redis && f.readiness, "Dependency failure", 18},
+		{f.timeout && f.readiness, "Dependency failure", 18},
 	}
 
 	boost := map[string]float64{}
@@ -263,7 +269,7 @@ func hypothesisFor(leading string) (string, []string) {
 	case "Mount/config":
 		return "Configuration issue", []string{"FailedMount", "Secret/ConfigMap ref"}
 	case "Dependency failure":
-		return "Dependency issue", []string{"Redis timeout", "Readiness failures"}
+		return "Dependency issue", []string{"Timeouts", "Readiness failures"}
 	case "":
 		return "Collecting evidence…", nil
 	default:
@@ -292,15 +298,15 @@ func correlationBullets(f corrFlags) []string {
 	if f.failedMount && f.hasConfigRefs {
 		out = append(out, "✓ Mount/config reference failing")
 	}
-	if f.redis {
-		out = append(out, "✓ Redis timeout likely secondary")
+	if f.timeout {
+		out = append(out, "✓ Timeouts likely secondary")
 	}
 	return out
 }
 
 type corrFlags struct {
 	oom, memLogs, readiness, endpointsDropped, rollout, podFailures bool
-	imagePull, failedMount, hasConfigRefs, redis                    bool
+	imagePull, failedMount, hasConfigRefs, timeout                  bool
 }
 
 func detectFlags(signals []model.Signal, b model.EvidenceBundle) corrFlags {
@@ -318,8 +324,8 @@ func detectFlags(signals []model.Signal, b model.EvidenceBundle) corrFlags {
 			f.imagePull = true
 		case strings.Contains(l, "failedmount") || strings.Contains(l, "mount"):
 			f.failedMount = true
-		case strings.Contains(l, "redis") || strings.Contains(l, "timeout"):
-			f.redis = true
+		case strings.Contains(l, "timeout"):
+			f.timeout = true
 		}
 		if strings.Contains(l, "memory") || strings.Contains(l, "oom") {
 			if s.Source == "LOG" {
@@ -398,7 +404,7 @@ func category(label string) string {
 		return "ImagePullBackOff"
 	case strings.Contains(l, "mount"):
 		return "Mount/config"
-	case strings.Contains(l, "redis") || strings.Contains(l, "timeout"):
+	case strings.Contains(l, "timeout"):
 		return "Dependency failure"
 	case strings.Contains(l, "crashloop"):
 		return "CrashLoopBackOff"

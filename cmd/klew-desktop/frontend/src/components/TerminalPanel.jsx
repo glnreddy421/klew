@@ -10,14 +10,14 @@ import {
 } from '../lib/terminalSplit'
 
 import { TerminalFindBar } from './TerminalFindBar'
-import { normalizeTerminalAppearance, terminalAppearanceStyle } from '../lib/terminalAppearance'
+import { terminalAppearanceStyle } from '../lib/terminalAppearance'
 import { isEditableTarget } from '../lib/keyboard'
 
 export function TerminalPanel({
   open,
   cluster,
   shellPref = '',
-  appearance = 'midnight',
+  appTheme = '',
   panelState = PANEL_NORMAL,
   height = 280,
   layout = 'dock',
@@ -31,10 +31,29 @@ export function TerminalPanel({
   launchRequest = null,
   onLaunchHandled,
   embedded = false,
+  /** Bottom IDE dock: outer tabs + chrome live on ConsoleDock */
+  ideDock = false,
+  /** True when the terminal layer is the active tab in ConsoleDock */
+  activePane = true,
+  /** Optional lifted terminal tabs state from useTerminalTabs */
+  terminalTabs = null,
+  /** Reports shell/find/restart actions so ConsoleDock can render them as header icons */
+  onActionsChange,
+  /** Optional controlled splitView from ConsoleDock */
+  splitView: controlledSplitView,
+  onSplitViewChange,
+  dockControls = null,
 }) {
   const isWorkspace = layout === 'workspace'
   const isOpen = open && panelState !== PANEL_CLOSED
   const minimized = !embedded && panelState === PANEL_MINIMIZED
+
+  const internalTabs = useTerminalTabs(cluster, {
+    open: !terminalTabs && isOpen,
+    persist: isWorkspace,
+    onEmpty: isWorkspace ? undefined : onClose,
+    skipInitialSeed: Boolean(launchRequest?.id) || Boolean(terminalTabs),
+  })
 
   const {
     tabs,
@@ -48,19 +67,17 @@ export function TerminalPanel({
     restartAllTabs,
     contextName,
     namespace,
-  } = useTerminalTabs(cluster, {
-    open: isOpen,
-    persist: isWorkspace,
-    onEmpty: isWorkspace ? undefined : onClose,
-    skipInitialSeed: Boolean(launchRequest?.id),
-  })
+  } = terminalTabs || internalTabs
+  const activeNamespace = activeTab?.namespace || activeTab?.shellNamespace || namespace
 
   const shellRestartRef = useRef(shellRestartToken)
   const launchRef = useRef(null)
   const tabMenuRef = useRef(null)
   const tabSearchApisRef = useRef(new Map())
   const findResultsDisposeRef = useRef(null)
-  const [splitView, setSplitView] = useState(null)
+  const [internalSplitView, setInternalSplitView] = useState(null)
+  const splitView = controlledSplitView !== undefined ? controlledSplitView : internalSplitView
+  const setSplitView = onSplitViewChange || setInternalSplitView
   const [tabMenu, setTabMenu] = useState(null)
   const [findOpen, setFindOpen] = useState(false)
   const [findQuery, setFindQuery] = useState('')
@@ -162,7 +179,7 @@ export function TerminalPanel({
   const handleSelectTab = useCallback((id) => {
     setSplitView(null)
     selectTab(id)
-  }, [selectTab])
+  }, [selectTab, setSplitView])
 
   const handleCloseTab = useCallback((id) => {
     setSplitView((prev) => {
@@ -170,7 +187,7 @@ export function TerminalPanel({
       return null
     })
     closeTab(id)
-  }, [closeTab])
+  }, [closeTab, setSplitView])
 
   const openSplit = useCallback((orientation, anchorTabId) => {
     const partnerId = resolveSplitPartner(tabs, anchorTabId, activeId)
@@ -178,11 +195,11 @@ export function TerminalPanel({
     if (!next) return
     setSplitView(next)
     dismissTabMenu()
-  }, [tabs, activeId, dismissTabMenu])
+  }, [tabs, activeId, dismissTabMenu, setSplitView])
 
   useEffect(() => {
     if (tabs.length < 2) setSplitView(null)
-  }, [tabs.length])
+  }, [tabs.length, setSplitView])
 
   useEffect(() => {
     if (!tabMenu) return undefined
@@ -205,7 +222,7 @@ export function TerminalPanel({
   }, [tabMenu, dismissTabMenu])
 
   useEffect(() => {
-    if (!isOpen || minimized) return undefined
+    if (!isOpen || minimized || !activePane) return undefined
     function onKeyDown(e) {
       if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'f') return
       if (e.altKey) return
@@ -216,7 +233,7 @@ export function TerminalPanel({
     }
     window.addEventListener('keydown', onKeyDown, true)
     return () => window.removeEventListener('keydown', onKeyDown, true)
-  }, [isOpen, minimized])
+  }, [isOpen, minimized, activePane])
 
   useEffect(() => {
     if (!findOpen) {
@@ -259,12 +276,25 @@ export function TerminalPanel({
     onLaunchHandled?.()
   }, [launchRequest, addTab, onLaunchHandled])
 
+  const canFind = Boolean(activeId) || Boolean(splitView)
+  const canRestart = Boolean(activeId)
+  useEffect(() => {
+    if (!onActionsChange) return undefined
+    onActionsChange({
+      changeShell: onChangeShell,
+      find: openFind,
+      restart: () => restartTab(activeId),
+      canFind,
+      canRestart,
+    })
+    return () => onActionsChange(null)
+  }, [onActionsChange, onChangeShell, openFind, restartTab, activeId, canFind, canRestart])
+
   if (!open || panelState === PANEL_CLOSED) {
     return null
   }
 
   const maximized = !embedded && panelState === PANEL_MAXIMIZED
-  const appearanceId = normalizeTerminalAppearance(appearance)
 
   const handleTabState = (id, patch) => {
     updateTab(id, patch)
@@ -276,146 +306,131 @@ export function TerminalPanel({
         'stream-panel',
         'terminal-panel',
         embedded ? 'terminal-panel-embedded' : '',
-        `terminal-theme-${appearanceId}`,
+        ideDock ? 'terminal-panel-ide-dock' : '',
         isWorkspace ? 'terminal-panel-workspace' : '',
         maximized ? 'maximized' : '',
         minimized ? 'collapsed' : '',
       ].filter(Boolean).join(' ')}
       style={{
-        ...(!maximized && !minimized && height ? { height } : null),
-        ...terminalAppearanceStyle(appearanceId),
+        ...(!ideDock && !maximized && !minimized && height ? { height } : null),
+        ...terminalAppearanceStyle(appTheme),
       }}
       aria-label="Cluster terminal"
     >
-      <header className="stream-header terminal-header">
-        {!minimized && !maximized && (
-          <div
-            className="stream-resize-handle"
-            onMouseDown={onResizeStart}
-            role="separator"
-            aria-orientation="horizontal"
-            aria-label="Resize terminal"
-          />
-        )}
-        <div className="stream-title">
-          <TerminalIcon />
-          <span>Terminal</span>
-          {activeTab?.shell && (
-            <span className="stream-chip terminal-shell-chip">{activeTab.shell}</span>
+      {!ideDock && (
+        <header className="stream-header terminal-header">
+          {!minimized && !maximized && (
+            <div
+              className="stream-resize-handle"
+              onMouseDown={onResizeStart}
+              role="separator"
+              aria-orientation="horizontal"
+              aria-label="Resize terminal"
+            />
           )}
-          <span className="stream-chip mono terminal-context-chip">
-            {activeTab?.contextName || contextName}
-            {(activeTab?.namespace || namespace) ? ` / ${activeTab?.namespace || namespace}` : ''}
-          </span>
-        </div>
-        <div className="stream-toolbar">
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            onClick={onChangeShell}
-            title="Change shell"
-          >
-            Shell…
-          </button>
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            onClick={openFind}
-            disabled={!activeId && !splitView}
-            title="Find in terminal (⌘F)"
-          >
-            Find
-          </button>
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            onClick={() => restartTab(activeId)}
-            disabled={!activeId}
-            title="Restart active shell"
-          >
-            Restart
-          </button>
-          {onClose && !embedded ? (
-            <button type="button" className="stream-icon-btn" onClick={onClose} aria-label="Close terminal">×</button>
-          ) : null}
-          {!embedded && (
-            <>
-          {minimized ? (
-            <button type="button" className="stream-icon-btn" onClick={onRestore} aria-label="Expand">▲</button>
-          ) : (
-            <button type="button" className="stream-icon-btn" onClick={onMinimize} aria-label="Minimize">▼</button>
-          )}
-          {!maximized ? (
-            <button type="button" className="stream-icon-btn" onClick={onMaximize} aria-label="Maximize">⛶</button>
-          ) : (
-            <button type="button" className="stream-icon-btn" onClick={onRestore} aria-label="Restore">⛶</button>
-          )}
-            </>
-          )}
-        </div>
-      </header>
-
+          <div className="stream-title">
+            <TerminalIcon />
+            <span>Terminal</span>
+            {activeTab?.shell && (
+              <span className="stream-chip terminal-shell-chip">{activeTab.shell}</span>
+            )}
+            <span className="stream-chip mono terminal-context-chip">
+              {activeTab?.contextName || contextName}
+              {activeNamespace ? ` / ${activeNamespace}` : ''}
+            </span>
+          </div>
+          <div className="stream-toolbar">
+            <TerminalActionButtons
+              onChangeShell={onChangeShell}
+              onFind={openFind}
+              onRestart={() => restartTab(activeId)}
+              canFind={Boolean(activeId) || Boolean(splitView)}
+              canRestart={Boolean(activeId)}
+            />
+            {dockControls}
+            {onClose && !embedded ? (
+              <button type="button" className="stream-icon-btn" onClick={onClose} aria-label="Close terminal">×</button>
+            ) : null}
+            {!embedded && (
+              <>
+                {minimized ? (
+                  <button type="button" className="stream-icon-btn" onClick={onRestore} aria-label="Expand">▲</button>
+                ) : (
+                  <button type="button" className="stream-icon-btn" onClick={onMinimize} aria-label="Minimize">▼</button>
+                )}
+                {!maximized ? (
+                  <button type="button" className="stream-icon-btn" onClick={onMaximize} aria-label="Maximize">⛶</button>
+                ) : (
+                  <button type="button" className="stream-icon-btn" onClick={onRestore} aria-label="Restore">⛶</button>
+                )}
+              </>
+            )}
+          </div>
+        </header>
+      )}
       {!minimized && (
         <>
-          <div className="terminal-tab-bar" role="tablist" aria-label="Terminal tabs">
-            {tabs.map((tab) => (
-              <div
-                key={tab.id}
-                className={[
-                  'terminal-tab',
-                  tab.id === activeId && !splitView ? 'is-active' : '',
-                  splitView && splitIncludesTab(splitView, tab.id) ? 'is-split-member' : '',
-                  tab.ready ? '' : 'is-pending',
-                ].filter(Boolean).join(' ')}
-                onContextMenu={(e) => {
-                  if (tabs.length < 2) return
-                  e.preventDefault()
-                  setTabMenu({ tabId: tab.id, x: e.clientX, y: e.clientY })
-                }}
-              >
-                <button
-                  type="button"
-                  className="terminal-tab-select"
-                  role="tab"
-                  aria-selected={tab.id === activeId && !splitView}
-                  title={[
-                    tab.title,
-                    tab.shell,
-                    tab.contextName,
-                    tab.namespace,
-                    tabs.length >= 2 ? 'Right-click to split' : '',
-                  ].filter(Boolean).join(' · ')}
-                  onClick={() => handleSelectTab(tab.id)}
-                >
-                  <span className="terminal-tab-label">{tab.title}</span>
-                  {tab.shell && (
-                    <span className="terminal-tab-shell">{tab.shell}</span>
-                  )}
-                  {!tab.ready && !tab.error && <span className="terminal-tab-dot" aria-hidden="true" />}
-                </button>
-                <button
-                  type="button"
-                  className="terminal-tab-close"
-                  aria-label={`Close ${tab.title}`}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleCloseTab(tab.id)
+          {!ideDock && (
+            <div className="terminal-tab-bar" role="tablist" aria-label="Terminal tabs">
+              {tabs.map((tab) => (
+                <div
+                  key={tab.id}
+                  className={[
+                    'terminal-tab',
+                    tab.id === activeId && !splitView ? 'is-active' : '',
+                    splitView && splitIncludesTab(splitView, tab.id) ? 'is-split-member' : '',
+                    tab.ready ? '' : 'is-pending',
+                  ].filter(Boolean).join(' ')}
+                  onContextMenu={(e) => {
+                    if (tabs.length < 2) return
+                    e.preventDefault()
+                    setTabMenu({ tabId: tab.id, x: e.clientX, y: e.clientY })
                   }}
                 >
-                  ×
-                </button>
-              </div>
-            ))}
-            <button
-              type="button"
-              className="terminal-tab-add"
-              aria-label="New terminal tab"
-              title="New tab"
-              onClick={() => addTab()}
-            >
-              +
-            </button>
-          </div>
+                  <button
+                    type="button"
+                    className="terminal-tab-select"
+                    role="tab"
+                    aria-selected={tab.id === activeId && !splitView}
+                    title={[
+                      tab.title,
+                      tab.shell,
+                      tab.contextName,
+                      tab.namespace || tab.shellNamespace,
+                      tabs.length >= 2 ? 'Right-click to split' : '',
+                    ].filter(Boolean).join(' · ')}
+                    onClick={() => handleSelectTab(tab.id)}
+                  >
+                    <span className="terminal-tab-label">{tab.title}</span>
+                    {tab.shell && (
+                      <span className="terminal-tab-shell">{tab.shell}</span>
+                    )}
+                    {!tab.ready && !tab.error && <span className="terminal-tab-dot" aria-hidden="true" />}
+                  </button>
+                  <button
+                    type="button"
+                    className="terminal-tab-close"
+                    aria-label={`Close ${tab.title}`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleCloseTab(tab.id)
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                className="terminal-tab-add"
+                aria-label="New terminal tab"
+                title="New tab"
+                onClick={() => addTab()}
+              >
+                +
+              </button>
+            </div>
+          )}
 
           <div className="stream-body terminal-body">
             <TerminalFindBar
@@ -448,8 +463,8 @@ export function TerminalPanel({
             >
               {tabs.map((tab) => {
                 const visible = isTerminalPaneVisible(splitView, tab.id, activeId)
-                const paneActive = splitView ? visible : tab.id === activeId
-                const focused = splitView ? splitView.focusId === tab.id : tab.id === activeId
+                const paneActive = (splitView ? visible : tab.id === activeId) && activePane
+                const focused = (splitView ? splitView.focusId === tab.id : tab.id === activeId) && activePane
                 return (
                   <div
                     key={tab.id}
@@ -470,7 +485,7 @@ export function TerminalPanel({
                       open={isOpen && !minimized}
                       cluster={cluster}
                       shellPref={shellPref}
-                      appearance={appearanceId}
+                      appTheme={appTheme}
                       onStateChange={handleTabState}
                       onSearchRegister={(api) => registerTabSearch(tab.id, api)}
                     />
@@ -480,7 +495,7 @@ export function TerminalPanel({
             </div>
           </div>
 
-          {tabMenu && (
+          {!ideDock && tabMenu && (
             <div
               ref={tabMenuRef}
               className="terminal-tab-menu"
@@ -538,7 +553,72 @@ function TerminalIcon() {
   )
 }
 
-function SplitRightIcon() {
+/** Shell / Find / Restart as icon buttons, shared by the dock header and the standalone panel. */
+export function TerminalActionButtons({ onChangeShell, onFind, onRestart, canFind, canRestart }) {
+  return (
+    <>
+      <button
+        type="button"
+        className="stream-icon-btn"
+        onClick={onChangeShell}
+        title="Change shell"
+        aria-label="Change shell"
+      >
+        <ShellPickIcon />
+      </button>
+      <button
+        type="button"
+        className="stream-icon-btn"
+        onClick={onFind}
+        disabled={!canFind}
+        title="Find in terminal (⌘F)"
+        aria-label="Find in terminal"
+      >
+        <FindIcon />
+      </button>
+      <button
+        type="button"
+        className="stream-icon-btn"
+        onClick={onRestart}
+        disabled={!canRestart}
+        title="Restart active shell"
+        aria-label="Restart active shell"
+      >
+        <RestartIcon />
+      </button>
+    </>
+  )
+}
+
+/** Change shell — a bare prompt, distinct from the boxed terminal glyph. */
+export function ShellPickIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 4.5L6.5 8 3 11.5" />
+      <path d="M8.5 12h4.5" />
+    </svg>
+  )
+}
+
+export function FindIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
+      <circle cx="7" cy="7" r="4.25" />
+      <path d="M10.25 10.25L13.5 13.5" />
+    </svg>
+  )
+}
+
+export function RestartIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M13 8a5 5 0 1 1-1.6-3.67" />
+      <path d="M13.2 2.5v2.9h-2.9" />
+    </svg>
+  )
+}
+
+export function SplitRightIcon() {
   return (
     <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.25" aria-hidden="true">
       <rect x="2" y="3" width="12" height="10" rx="1.5" />
@@ -547,7 +627,7 @@ function SplitRightIcon() {
   )
 }
 
-function SplitDownIcon() {
+export function SplitDownIcon() {
   return (
     <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.25" aria-hidden="true">
       <rect x="2" y="3" width="12" height="10" rx="1.5" />
@@ -556,7 +636,7 @@ function SplitDownIcon() {
   )
 }
 
-function CloseSplitIcon() {
+export function CloseSplitIcon() {
   return (
     <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.25" aria-hidden="true">
       <rect x="2" y="3" width="12" height="10" rx="1.5" />

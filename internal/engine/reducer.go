@@ -3,7 +3,6 @@ package engine
 import (
 	"fmt"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -30,6 +29,8 @@ type StateStore struct {
 	prevConfidence float64
 	hasPrev        bool
 	lastPatternsAt time.Time
+	// rulesFor is the snapshot the rules last ran on; rules run once per snapshot.
+	rulesFor model.Timestamp
 }
 
 // Reducer is retained as an alias for the InvestigationStateStore.
@@ -142,42 +143,6 @@ func (r *StateStore) KeepLogsForPods(podNames []string) {
 	r.state.LastUpdatedAt = model.TimestampFrom(time.Now().UTC())
 }
 
-// ClearLogsForPods removes buffered log lines for the given pods only.
-func (r *StateStore) ClearLogsForPods(podNames []string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.ring.ClearLogsForPods(podNames)
-	r.recompute()
-	r.state.LastUpdatedAt = model.TimestampFrom(time.Now().UTC())
-}
-
-// ClearLogs removes all log lines from the live evidence buffer.
-func (r *StateStore) ClearLogs() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.ring.ClearLogs()
-	r.recompute()
-	r.state.LastUpdatedAt = model.TimestampFrom(time.Now().UTC())
-}
-
-// SetLogTailPods sets the pod allowlist for live log tail display (empty clears).
-func (r *StateStore) SetLogTailPods(podNames []string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if len(podNames) == 0 {
-		r.state.LogTailPods = nil
-		return
-	}
-	r.state.LogTailPods = append([]string(nil), podNames...)
-}
-
-// SetLogTailPaused marks whether log follows are paused while retaining scope.
-func (r *StateStore) SetLogTailPaused(v bool) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.state.LogTailPaused = v
-}
-
 func (r *StateStore) SetWatches(w []model.ActiveWatch) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -189,7 +154,16 @@ func (r *StateStore) recompute() {
 	events := r.ring.Snapshot()
 	agg := SignalAggregator{Window: model.DurationFromMS(r.state.Window)}
 	evSignals := agg.Aggregate(events, now)
+	if r.rulesFor == "" || !r.rulesFor.Equal(r.state.Snapshot.CollectedAt) {
+		res := ActiveRegistry().Evaluate(r.state.Snapshot)
+		r.corr.Findings = res.Findings
+		r.state.Problems = BuildProblems(r.state.Snapshot, res.Findings)
+		r.state.Warnings = appendUniqueStrings(r.state.Warnings, res.Warnings)
+		r.rulesFor = r.state.Snapshot.CollectedAt
+	}
 	corr := r.corr.Correlate(r.state.Snapshot, evSignals, events)
+	leadWithWorstProblem(&corr, r.state.Problems)
+	r.state.Headline = ProblemsHeadline(r.state.Problems)
 	r.state.Incidents = BuildIncidents(r.state.Snapshot, now)
 	r.state.PinnedChange = PinChange(r.state.Snapshot.WorkloadChanges, r.state.Incidents, now, r.liveWindow())
 	if corr.HypothesisLabel == HealthyLabel {
@@ -375,19 +349,9 @@ func serviceNames(svcs []model.ServiceSummary) []string {
 	return names
 }
 
-// ClassifyLogSeverity heuristically scores log lines.
+// ClassifyLogSeverity scores log lines; see logpatterns.ClassifyLogSeverity.
 func ClassifyLogSeverity(line string) model.Severity {
-	l := strings.ToLower(line)
-	switch {
-	case strings.Contains(l, "oom"), strings.Contains(l, "fatal"), strings.Contains(l, "panic"):
-		return model.SeverityCritical
-	case strings.Contains(l, "error"), strings.Contains(l, "failed"), strings.Contains(l, "refused"):
-		return model.SeverityHigh
-	case strings.Contains(l, "warn"), logpatterns.MentionsTimeout(l):
-		return model.SeverityWarning
-	default:
-		return model.SeverityInfo
-	}
+	return logpatterns.ClassifyLogSeverity(line)
 }
 
 // incidentWindow is how far back incidents can come from: the recorded-history

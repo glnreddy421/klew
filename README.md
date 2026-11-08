@@ -26,7 +26,8 @@ When something breaks in a cluster you need three answers fast: **what failed**,
 - **Resources** — a full read-only cluster catalog with a live inspector, connection trace, and manifest view. Works without an investigation.
 - **Graph** — ingress → service → workload → pod relationships, colored by health.
 - **Event history** — Kubernetes keeps Events for about an hour; Klew records them locally while it runs, so you can see what happened before you started looking.
-- **Built in** — cluster terminal pinned to the active context, multi-pod live logs, and one window per cluster.
+- **Live logs** — select pods, workloads or Services and stream their logs together, stern-style: one merged, time-ordered stream with a colour per pod. Workloads follow their selector, so new pods join. Works with or without an investigation.
+- **Built in** — cluster terminal pinned to the active context, and one window per cluster.
 
 Klew is **read-only**: it lists and watches resources and never changes your cluster.
 
@@ -73,42 +74,58 @@ Each release also has an SPDX SBOM, a `SHA256SUMS` file, and signed build proven
 
 ```bash
 gh attestation verify Klew-x.y.z-macos-arm64.dmg --repo glnreddy421/klew          # desktop app
-gh attestation verify klew-mcp-x.y.z-darwin-arm64.tar.gz --repo glnreddy421/klew   # MCP server
+gh attestation verify klew-cli-x.y.z-darwin-arm64.tar.gz --repo glnreddy421/klew   # klew command
 shasum -a 256 -c --ignore-missing Klew-x.y.z-SHA256SUMS.txt                        # checksums of what you downloaded
 ```
 
 ## Quick start
 
-**Browse** — pick a context and namespace in the top bar, open **Resources**, choose a category, and select a row. The inspector loads live details, the connection trace, and the manifest.
+Everything happens on **Resources**, which has two modes.
 
-**Investigate** — set a single namespace, optionally search for a workload, and click **Investigate**. Move through **Overview → Failures → Patterns → Evidence** as signals arrive.
+**Watch** — pick a context in the top bar and namespaces in the Resources toolbar, choose a category, and select a row. The inspector loads live details, the connection trace, and the manifest.
 
-> **The namespace is the boundary.** Klew investigates workloads inside the selected namespace. Overview, Failures, Patterns, Evidence, and Graph need an active investigation; Resources does not.
+**Investigate** — switch to **Investigate** (⌘K), pick one namespace, and optionally pick a **Target**: **All resources** in the namespace, or any resources in it (searchable, grouped by type). Untick **Logs** to investigate without reading container logs. Or select any resource in the table and click **Investigate** in the inspector to investigate exactly that object. Click **Investigate**: the results open as tabs on the same screen (**Overview, Patterns, Failures, Evidence, Graph**) and update as signals arrive. Switch back to **Watch** to keep browsing; the investigation keeps running until you click **Stop**.
+
+> **The namespace is the boundary.** Klew investigates workloads inside the selected namespace.
 
 ## Keyboard shortcuts
 
 | Shortcut | Action |
 | --- | --- |
-| ⌘K | Focus search |
+| ⌘K | Investigate mode |
 | ⌘R | Refresh the investigation, or sync kubeconfig when idle |
 | ⌘N | New window (another cluster) |
 | ⌘, | Settings |
 | ⌘\` | Terminal |
-| ⌘⇧L | Live logs |
-| ⌘⇧\` | Split terminal and logs |
+| ⌘⇧L | Stream logs from the selected resources (or open Live logs) |
+
+## Command line
+
+The `klew` command runs the same engine in a terminal, on macOS and Linux, without the desktop app.
+
+```bash
+brew install glnreddy421/klew/klew-cli
+klew investigate -n shop            # or: klew investigate -n shop checkout
+```
+
+`klew investigate` prints what the desktop app shows in Overview, Failures, Patterns and Evidence (no graph): the verdict, problems and causal chain, failing pods with their containers and events, log and event patterns, correlated evidence and next checks. It is read-only, has `-o json` for scripts, and exits 3 on a warning and 4 when critical, so CI can act on it. Its output is not redacted, like `kubectl logs`. See [docs/cli.md](docs/cli.md).
 
 ## MCP server
 
-`klew-mcp` gives AI assistants (Claude Code, Claude Desktop, Cursor, …) Klew's verdicts, failure triage, patterns, event history and workload changes over the Model Context Protocol. It is read-only, runs without the desktop app, and works on macOS and Linux.
+`klew mcp` gives AI assistants (Claude Code, Claude Desktop, Cursor, …) Klew's verdicts, failure triage, patterns, event history and workload changes over the Model Context Protocol, plus plain lookups (list any resource type, get one object, read a container's logs) that never return Secret values. It is read-only, runs without the desktop app, and works on macOS and Linux.
 
 ```bash
-go install github.com/glnreddy421/klew/cmd/klew-mcp@latest   # or download a signed binary from Releases
-claude mcp add klew -- klew-mcp
+brew install glnreddy421/klew/klew-cli
+claude mcp add --scope user klew -- klew mcp
 ```
 
-**Where your data goes.** `klew-mcp` runs on your machine and sends nothing anywhere itself. But tool results — object names, event messages, and samples of container log lines — become part of the conversation, which your MCP client sends to its AI provider (Anthropic, OpenAI, …). `klew-mcp` masks common credential shapes and email addresses first, **on a best-effort basis: it can miss sensitive values your applications log.** Run it with `-no-log-samples` to never send raw log lines, and only connect it to clusters whose data you are allowed to share with your provider.
+Desktop app users need nothing else: **Set up MCP** on the Home screen shows a ready-to-copy configuration for the server built into the app. Signed release downloads and `go install` are in [docs/mcp.md](docs/mcp.md#other-ways).
+
+**Where your data goes.** `klew mcp` runs on your machine and sends nothing anywhere itself. But tool results — object names, event messages, object summaries, and container log lines — become part of the conversation, which your MCP client sends to its AI provider (Anthropic, OpenAI, …). `klew mcp` masks common credential shapes and email addresses first, **on a best-effort basis: it can miss sensitive values your applications log.** Run it with `-no-log-samples` to leave raw log text out (generalised log patterns are still sent; see [docs/mcp.md](docs/mcp.md#-no-log-samples)), and only connect it to clusters whose data you are allowed to share with your provider.
 
 See [docs/mcp.md](docs/mcp.md) for tools, client setup, and data handling, and [SECURITY.md](SECURITY.md) for the security model.
+
+**Custom collectors and rules.** Add your own checks as YAML (a resource to list, a CEL condition) and they apply in the desktop app, `klew investigate` and `klew mcp`. See [docs/extensions.md](docs/extensions.md).
 
 ## Privacy
 

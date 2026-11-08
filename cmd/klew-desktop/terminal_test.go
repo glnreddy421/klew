@@ -2,63 +2,73 @@ package main
 
 import (
 	"errors"
-	"os/exec"
+	goruntime "runtime"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/glnreddy421/klew/internal/kube"
 )
 
-func TestShellQuoteRoundTrip(t *testing.T) {
-	for _, v := range []string{"", "plain", "it's", "a'b'c", `%s "x" $HOME`} {
-		out, err := exec.Command("/bin/sh", "-c", "printf %s "+shellQuote(v)).Output()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if string(out) != v {
-			t.Fatalf("shellQuote(%q) round-tripped to %q", v, out)
+func envValue(env []string, key string) (string, bool) {
+	for _, e := range env {
+		if k, v, ok := strings.Cut(e, "="); ok && k == key {
+			return v, true
 		}
 	}
+	return "", false
 }
 
-func TestPsQuote(t *testing.T) {
-	if got := psQuote("o'brien"); got != "'o''brien'" {
-		t.Fatalf("psQuote = %s", got)
+func TestBuildClusterShellCommandRunsLoginShellDirectly(t *testing.T) {
+	if goruntime.GOOS == "windows" {
+		t.Skip("unix shell layout")
 	}
-}
-
-func TestBuildUnixInitScriptQuotesNames(t *testing.T) {
-	script := buildUnixInitScript("/bin/zsh", kube.TerminalShellKube{
+	cmd, err := buildClusterShellCommand("/bin/zsh", kube.TerminalShellKube{
 		KubeconfigPath: "/tmp/k",
-		Context:        "ctx'%s",
+		Context:        "ctx",
 		Namespace:      "ns",
 		Isolated:       true,
-	})
-	// Run everything except the final exec to verify the banner renders verbatim.
-	banner := script[:strings.LastIndex(script, "exec ")]
-	out, err := exec.Command("/bin/sh", "-c", banner).Output()
+	}, "/opt/kubectl")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(out), "context: ctx'%s · namespace: ns") {
-		t.Fatalf("banner = %q", out)
+	if !slices.Equal(cmd.Args, []string{"/bin/zsh", "-l"}) {
+		t.Fatalf("args = %v", cmd.Args)
 	}
-	if strings.Contains(string(out), "session copy unavailable") {
-		t.Fatal("isolated session should not show fallback notice")
+	if v, _ := envValue(cmd.Env, "KUBECONFIG"); v != "/tmp/k" {
+		t.Fatalf("KUBECONFIG = %q", v)
+	}
+	if v, _ := envValue(cmd.Env, "KLEW_CONTEXT"); v != "ctx" {
+		t.Fatalf("KLEW_CONTEXT = %q", v)
+	}
+	if v, _ := envValue(cmd.Env, "PATH"); !strings.HasPrefix(v, "/opt/kubectl") {
+		t.Fatalf("PATH = %q", v)
 	}
 }
 
-func TestBuildUnixInitScriptPlainShellShowsNotice(t *testing.T) {
-	script := buildUnixInitScript("/bin/zsh", kube.PlainTerminalShellKube(errors.New("kubeconfig has no current context")))
-	if strings.Contains(script, "export KUBECONFIG") {
-		t.Fatal("plain shell must not override KUBECONFIG")
+func TestBuildClusterShellCommandPlainShellKeepsUserKubeconfig(t *testing.T) {
+	if goruntime.GOOS == "windows" {
+		t.Skip("unix shell layout")
 	}
-	banner := script[:strings.LastIndex(script, "exec ")]
-	out, err := exec.Command("/bin/sh", "-c", banner).Output()
+	t.Setenv("KUBECONFIG", "/home/me/.kube/config")
+	tk := kube.PlainTerminalShellKube(errors.New("kubeconfig has no current context"))
+	cmd, err := buildClusterShellCommand("/bin/bash", tk, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(out), "no cluster context") || !strings.Contains(string(out), "no current context") {
-		t.Fatalf("banner = %q", out)
+	if v, _ := envValue(cmd.Env, "KUBECONFIG"); v != "/home/me/.kube/config" {
+		t.Fatalf("plain shell must not override KUBECONFIG, got %q", v)
+	}
+	if _, ok := envValue(cmd.Env, "KLEW_CONTEXT"); ok {
+		t.Fatal("plain shell must not set KLEW_CONTEXT")
+	}
+	if tk.Notice == "" {
+		t.Fatal("plain shell should carry a notice")
+	}
+}
+
+func TestBuildClusterShellCommandRequiresShell(t *testing.T) {
+	if _, err := buildClusterShellCommand("  ", kube.TerminalShellKube{}, ""); err == nil {
+		t.Fatal("expected error without a shell")
 	}
 }

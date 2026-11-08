@@ -16,7 +16,6 @@ export const WORKSPACE_LAYOUTS = [
     tableDensity: 'standard',
     inspectMode: 'stacked',
     defaultListWidth: 560,
-    showFocusButton: false,
     showEmptyToggle: false,
     sortBySignal: false,
   },
@@ -31,7 +30,6 @@ export const WORKSPACE_LAYOUTS = [
     tableDensity: 'standard',
     inspectMode: 'stacked',
     defaultListWidth: 580,
-    showFocusButton: false,
     showEmptyToggle: true,
     sortBySignal: false,
   },
@@ -46,7 +44,6 @@ export const WORKSPACE_LAYOUTS = [
     tableDensity: 'dense',
     inspectMode: 'stacked',
     defaultListWidth: 660,
-    showFocusButton: false,
     showEmptyToggle: false,
     sortBySignal: false,
   },
@@ -61,7 +58,6 @@ export const WORKSPACE_LAYOUTS = [
     tableDensity: 'standard',
     inspectMode: 'detail-tabs',
     defaultListWidth: 400,
-    showFocusButton: true,
     showEmptyToggle: false,
     sortBySignal: true,
   },
@@ -153,11 +149,9 @@ export function saveListWidth(px) {
 export function listChromeForMode(layoutMode) {
   const cfg = layoutConfig(layoutMode)
   return {
-    showFocusButton: cfg.showFocusButton,
     dense: cfg.entityView === 'list',
     statusLed: cfg.entityView === 'list',
     allowHoverInspect: cfg.entityView === 'list',
-    focusChevron: false,
     entityView: cfg.entityView,
     tableDensity: cfg.tableDensity,
     showEmptyToggle: cfg.showEmptyToggle,
@@ -166,11 +160,6 @@ export function listChromeForMode(layoutMode) {
 
 export function inspectPanelMode(layoutMode) {
   return layoutConfig(layoutMode).inspectMode
-}
-
-/** Whether the detail panel should expose a Focus chain CTA in its header. */
-export function inspectShowsFocusCta(layoutMode) {
-  return layoutConfig(layoutMode).id === 'investigation-flow'
 }
 
 /** Pull up to 3 compact stats from existing inspect model (no invented telemetry). */

@@ -18,8 +18,8 @@ func TestCountReadyEndpointSliceAddresses(t *testing.T) {
 			{Addresses: []string{"10.0.0.4"}, Conditions: discoveryv1.EndpointConditions{}},
 		},
 	}})
-	if gotReady != 3 || gotTotal != 3 {
-		t.Fatalf("got ready=%d total=%d, want 3/3", gotReady, gotTotal)
+	if gotReady != 3 || gotTotal != 4 {
+		t.Fatalf("got ready=%d total=%d, want 3/4", gotReady, gotTotal)
 	}
 }
 

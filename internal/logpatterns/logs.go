@@ -20,7 +20,7 @@ type SnapshotInput struct {
 func LogRecordToEvidence(lr model.LogRecord, line string, lineIndex, lineCount int, namespace string) model.EvidenceEvent {
 	msg := strings.TrimSpace(line)
 	ts := lineTimestamp(lr.CollectedAt.Time(), lineIndex, lineCount, lr.Previous)
-	sev := classifyLogSeverity(msg)
+	sev := ClassifyLogSeverity(msg)
 	return model.EvidenceEvent{
 		Timestamp:  model.TimestampFrom(ts),
 		SourceType: model.SourceLog,
@@ -141,7 +141,13 @@ func lineTimestamp(collectedAt time.Time, lineIndex, lineCount int, previous boo
 	return end.Add(-offset)
 }
 
-func classifyLogSeverity(line string) model.Severity {
+// ClassifyLogSeverity scores a log line. A level the line states itself
+// ("INFO", "[notice]", "level=warn") wins; otherwise keywords decide, so
+// "INFO flushed errors=0" stays info.
+func ClassifyLogSeverity(line string) model.Severity {
+	if sev, ok := LogLevel(line); ok {
+		return sev
+	}
 	l := strings.ToLower(line)
 	switch {
 	case strings.Contains(l, "oom"), strings.Contains(l, "fatal"), strings.Contains(l, "panic"):
@@ -153,6 +159,54 @@ func classifyLogSeverity(line string) model.Severity {
 	default:
 		return model.SeverityInfo
 	}
+}
+
+// levelWords maps log level names to severities.
+var levelWords = map[string]model.Severity{
+	"trace": model.SeverityInfo, "debug": model.SeverityInfo, "dbug": model.SeverityInfo,
+	"info": model.SeverityInfo, "inf": model.SeverityInfo, "notice": model.SeverityInfo,
+	"warn": model.SeverityWarning, "warning": model.SeverityWarning, "wrn": model.SeverityWarning,
+	"error": model.SeverityHigh, "err": model.SeverityHigh, "eror": model.SeverityHigh,
+	"fatal": model.SeverityCritical, "crit": model.SeverityCritical, "critical": model.SeverityCritical,
+	"panic": model.SeverityCritical, "alert": model.SeverityCritical, "emerg": model.SeverityCritical,
+}
+
+// LogLevel returns the level a line states: a level=/lvl=/severity= field
+// (also JSON "level":"…"), or, in its first four words, an upper-case or
+// bracketed level name such as INFO, WARN: or [notice].
+func LogLevel(line string) (model.Severity, bool) {
+	l := strings.ToLower(line)
+	for _, key := range []string{"level=", "lvl=", "severity=", `"level":`, `"lvl":`, `"severity":`} {
+		i := strings.Index(l, key)
+		if i < 0 || (i > 0 && isWordByte(l[i-1])) {
+			continue
+		}
+		v := strings.TrimLeft(l[i+len(key):], ` "`)
+		if end := strings.IndexFunc(v, func(r rune) bool { return r < 'a' || r > 'z' }); end >= 0 {
+			v = v[:end]
+		}
+		if sev, ok := levelWords[v]; ok {
+			return sev, true
+		}
+	}
+	for i, f := range strings.Fields(line) {
+		if i == 4 {
+			break
+		}
+		bracketed := strings.HasPrefix(f, "[") || strings.HasPrefix(f, "<")
+		w := strings.Trim(f, "[]<>():,|")
+		if w == "" || (!bracketed && w != strings.ToUpper(w)) {
+			continue
+		}
+		if sev, ok := levelWords[strings.ToLower(w)]; ok {
+			return sev, true
+		}
+	}
+	return "", false
+}
+
+func isWordByte(b byte) bool {
+	return b == '_' || b == '-' || (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9')
 }
 
 func classifyLogReason(line string) string {
@@ -169,7 +223,18 @@ func classifyLogReason(line string) string {
 	case strings.Contains(l, "memory leak"), strings.Contains(l, "heap growth"):
 		return "Memory leak"
 	case MentionsTimeout(l):
-		return "Redis timeout"
+		return "Timeout"
+	}
+	if sev, ok := LogLevel(line); ok {
+		switch sev {
+		case model.SeverityCritical, model.SeverityHigh:
+			return "Error"
+		case model.SeverityWarning:
+			return "Warning"
+		}
+		return ""
+	}
+	switch {
 	case strings.Contains(l, "error"), strings.Contains(l, "failed"):
 		return "Error"
 	case strings.Contains(l, "warn"):

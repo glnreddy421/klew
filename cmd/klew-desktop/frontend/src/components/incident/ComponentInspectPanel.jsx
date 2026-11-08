@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { StreamLogsGlyph } from '../DockLauncher.jsx'
+import { useLogStreamActions } from '../../context/LogStreamContext.jsx'
+import { streamLogsTitle } from '../../lib/logStream.js'
 import { StatusBadge, RowStatusBadge } from './StatusBadge'
 import { KindIcon } from '../KindIcon'
-import { canonicalInspectKey, formatReady } from '../../lib/matches'
+import { formatReady } from '../../lib/matches'
 import {
   deriveSignalStats,
   hasAnomalyIssues,
@@ -40,10 +43,7 @@ export function ComponentInspectPanel({
   inspect,
   emptyHint,
   layoutMode = 'detail-tabs',
-  onFocus,
   onInspect,
-  focusPinned = false,
-  showFocusCta = false,
   browseMode = false,
   loading = false,
   error = null,
@@ -113,13 +113,11 @@ export function ComponentInspectPanel({
   }
 
   const unhealthy = hasAnomalyIssues(inspect)
-  const focusKey = canonicalInspectKey(inspect.key, inspect.namespace) || inspect.key
 
   const relatedPodsBlock = relatedPods.length > 0 ? (
     <RelatedPodsSection
       pods={relatedPods}
       onInspect={onInspect}
-      onOpenPodLogs={shellInspector?.onOpenPodLogs}
     />
   ) : null
   const hidePodsTable = relatedPods.length > 0 && isWorkloadWithPods(inspect?.kind)
@@ -145,8 +143,6 @@ export function ComponentInspectPanel({
   const header = (
     <InspectIdentityHeader
       inspect={inspect}
-      showFocusCta={showFocusCta && !focusPinned}
-      onFocus={() => onFocus?.(focusKey)}
       onInspect={onInspect}
       loading={loading}
       error={error}
@@ -256,7 +252,7 @@ function fallbackGroups(inspect) {
   return groups
 }
 
-function InspectIdentityHeader({ inspect, showFocusCta, onFocus, onInspect, loading, error }) {
+function InspectIdentityHeader({ inspect, onInspect, loading, error }) {
   const namespaceRef = inspect.namespace
     ? resolveInspectRef(inspect.namespace, {
       fieldKey: 'Namespace',
@@ -264,7 +260,7 @@ function InspectIdentityHeader({ inspect, showFocusCta, onFocus, onInspect, load
     })
     : null
   const showToolbar = Boolean(
-    loading || showFocusCta || inspect.adhoc || error
+    loading || inspect.adhoc || error
       || (namespaceRef && onInspect && inspect.namespace),
   )
   if (!showToolbar) return null
@@ -288,18 +284,6 @@ function InspectIdentityHeader({ inspect, showFocusCta, onFocus, onInspect, load
           </button>
         ) : null}
       </div>
-      {showFocusCta && (
-        <div className="inspect-toolbar-end">
-          <button
-            type="button"
-            className="btn btn-outline inspect-focus-cta"
-            onClick={onFocus}
-            aria-label={`Focus chain for ${inspect.kind}/${inspect.name}`}
-          >
-            Focus chain
-          </button>
-        </div>
-      )}
       {error && (
         <div
           className={`inspect-fetch-error${isRbacForbiddenMessage(error) ? ' inspect-fetch-error-denied' : ''}`}
@@ -714,7 +698,8 @@ function DetailTabsPanel({
   )
 }
 
-function RelatedPodsSection({ pods, onInspect, onOpenPodLogs }) {
+function RelatedPodsSection({ pods, onInspect }) {
+  const logStreamActions = useLogStreamActions()
   if (!pods?.length) return null
   return (
     <section className="inspect-section inspect-related-pods">
@@ -737,20 +722,18 @@ function RelatedPodsSection({ pods, onInspect, onOpenPodLogs }) {
               )}
               <RowStatusBadge status={pod.status} />
             </button>
-            {onOpenPodLogs && (
+            {logStreamActions && pod.namespace ? (
               <button
                 type="button"
-                className="btn btn-ghost btn-sm inspect-pod-logs-btn"
-                onClick={() => onOpenPodLogs?.({
-                  podName: pod.name,
-                  namespace: pod.namespace,
-                })}
-                title={`Tail logs for ${pod.name}`}
-                aria-label={`Tail logs for pod ${pod.name}`}
+                className="btn btn-ghost btn-sm inspect-pod-logs-btn inspect-pod-stream-btn"
+                onClick={() => logStreamActions.streamResources([{ kind: 'Pod', name: pod.name, namespace: pod.namespace }])}
+                title={streamLogsTitle('Pod', pod.name)}
+                aria-label={`Stream logs for pod ${pod.name}`}
               >
-                Logs
+                <StreamLogsGlyph size={14} />
+                <span>Logs</span>
               </button>
-            )}
+            ) : null}
           </li>
         ))}
       </ul>

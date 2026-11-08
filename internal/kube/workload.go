@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -20,6 +21,9 @@ import (
 
 const maxLogLines = 200
 
+// maxConcurrentLogFetches bounds parallel log requests during a snapshot.
+const maxConcurrentLogFetches = 8
+
 // CollectOptions tunes evidence gathering.
 type CollectOptions struct {
 	Namespace string
@@ -27,6 +31,8 @@ type CollectOptions struct {
 	LogLines  int
 	// CheckAdmissionPerimeter lists webhook configs when workloads expect pods but none exist (opt-in).
 	CheckAdmissionPerimeter bool
+	// Collectors run in order after the scope is resolved; nil runs DefaultCollectors.
+	Collectors []EvidenceCollector
 }
 
 // Collector gathers read-only evidence from a cluster.
@@ -34,7 +40,8 @@ type Collector struct {
 	Client *Client
 }
 
-// Collect builds an EvidenceBundle for the query.
+// Collect resolves the investigation scope, then runs each collector in order
+// on one EvidenceBundle.
 func (col *Collector) Collect(ctx context.Context, opts CollectOptions) (model.EvidenceBundle, error) {
 	ns := opts.Namespace
 	if ns == "" {
@@ -51,10 +58,96 @@ func (col *Collector) Collect(ctx context.Context, opts CollectOptions) (model.E
 			Namespace: ns,
 		},
 	}
+	collectors := opts.Collectors
+	if collectors == nil {
+		collectors = DefaultCollectors()
+	}
+	env := col.resolveScope(ctx, ns, opts, collectors, &bundle)
+	for _, c := range collectors {
+		if ctx.Err() != nil {
+			return bundle, ctx.Err()
+		}
+		if p, ok := c.(parallelCollector); ok {
+			p.Collect(ctx, env, &bundle)
+			continue
+		}
+		env.runGated(ctx, c, &bundle)
+	}
+	narrowResourcesToTarget(ctx, env, &bundle)
+	bundle.Coverage = env.coverageList()
+	bundle.Warnings = append(bundle.Warnings, coverageWarning(bundle.Coverage)...)
+	bundle.Warnings = append(bundle.Warnings, targetWarnings(env, collectors, bundle.Target, ns)...)
+	return bundle, nil
+}
 
-	perms, permWarnings := CheckPermissions(ctx, col.Client, ns)
+// targetWarnings says which targets were not investigated and why: no
+// collector reads their kind, or they do not exist in ns.
+func targetWarnings(env *CollectEnv, collectors []EvidenceCollector, t *model.ScopeTarget, ns string) []string {
+	if t == nil {
+		return nil
+	}
+	missing := t.Missing
+	if len(missing) == 0 && !t.Found {
+		missing = []string{t.Ref.Kind + "/" + t.Ref.Name}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	kinds, known := collectedKinds(env, collectors)
+	var notFound, unsupported []string
+	var unsupportedKinds []string
+	for _, key := range missing {
+		kind, _, _ := strings.Cut(key, "/")
+		if known && !kinds[kind] {
+			unsupported = append(unsupported, key)
+			unsupportedKinds = appendUnique(unsupportedKinds, kind)
+			continue
+		}
+		notFound = append(notFound, key)
+	}
+	var out []string
+	if len(unsupported) > 0 {
+		out = append(out, fmt.Sprintf("Not investigated: %s. Klew has no collector for %s; add a Collector extension to read it",
+			strings.Join(unsupported, ", "), strings.Join(unsupportedKinds, ", ")))
+	}
+	switch {
+	case len(notFound) == 1 && len(t.Missing) == 0:
+		out = append(out, fmt.Sprintf("%s was not found in %s", notFound[0], ns))
+	case len(notFound) > 0:
+		out = append(out, fmt.Sprintf("Not found in %s: %s", ns, strings.Join(notFound, ", ")))
+	}
+	return out
+}
+
+// safeCollect runs one collector, turning a panic into a warning so a faulty
+// collector cannot stop the investigation.
+func safeCollect(ctx context.Context, c EvidenceCollector, env *CollectEnv, b *model.EvidenceBundle) {
+	defer func() {
+		if p := recover(); p != nil {
+			b.Warnings = append(b.Warnings, fmt.Sprintf("collector %s failed and was skipped: %v", c.Name(), p))
+		}
+	}()
+	c.Collect(ctx, env, b)
+}
+
+// resolveScope checks permissions and finds the Deployments the query names.
+func (col *Collector) resolveScope(ctx context.Context, ns string, opts CollectOptions, collectors []EvidenceCollector, bundle *model.EvidenceBundle) *CollectEnv {
+	// Review every permission the scope and the collectors need, up front.
+	access := checkAccess(ctx, col.Client, ns, declaredAccess(collectors))
+	perms := make([]model.PermissionCheck, 0, len(access))
+	for _, p := range access {
+		perms = append(perms, p)
+		if p.Error != "" {
+			bundle.Warnings = appendUnique(bundle.Warnings, "Could not check permissions ("+p.Error+"); collectors were tried anyway")
+		}
+	}
+	sortPermissions(perms)
 	bundle.Permissions = perms
-	bundle.Warnings = append(bundle.Warnings, permWarnings...)
+	for _, a := range scopeAccess {
+		if p := access[a.key(ns)]; a.Verb == "watch" && !p.Allowed && p.Error == "" {
+			bundle.Warnings = append(bundle.Warnings, fmt.Sprintf("No live updates for %s: needs %s", a.Resource, a))
+		}
+	}
 
 	matches, err := DiscoverMatches(ctx, col.Client, model.NamespaceScope{Primary: ns, Namespaces: []string{ns}}, opts.Query)
 	if err != nil {
@@ -63,11 +156,6 @@ func (col *Collector) Collect(ctx context.Context, opts CollectOptions) (model.E
 		bundle.MatchedObjects = matches
 	}
 
-	if crds, err := DetectCRDs(ctx, col.Client); err == nil && len(crds) > 0 {
-		bundle.DetectedCRDKinds = crds[:min(20, len(crds))]
-	}
-
-	// Resolve primary deployment targets from matches
 	var deployNames []string
 	for _, m := range matches {
 		if m.Ref.Kind == "Deployment" {
@@ -83,138 +171,118 @@ func (col *Collector) Collect(ctx context.Context, opts CollectOptions) (model.E
 		}
 	}
 
-	if allowed(perms, "deployments", "list") {
-		for _, dn := range deployNames {
-			w, err := col.collectDeployment(ctx, ns, dn)
-			if err != nil {
-				bundle.Warnings = append(bundle.Warnings, err.Error())
-				continue
-			}
-			bundle.Workloads = append(bundle.Workloads, w)
+	// Without a query every Deployment matches, but they must not narrow the
+	// investigation: that would drop DaemonSet, StatefulSet, Job and static pods
+	// and anything else no Deployment owns.
+	var scopeNames []string
+	if opts.Query != "" {
+		scopeNames = deployNames
+	}
+	env := &CollectEnv{
+		Collector: col, Client: col.Client, Options: opts, Namespace: ns,
+		Permissions: perms, DeployNames: deployNames, ScopeNames: scopeNames, access: access,
+	}
+	col.scopeToTarget(ctx, env, matches, bundle)
+	return env
+}
+
+// scopeToTarget narrows the investigation to exactly one object when the
+// query names one. Free text that names no object keeps name matching.
+func (col *Collector) scopeToTarget(ctx context.Context, env *CollectEnv, matches []model.MatchedObject, bundle *model.EvidenceBundle) {
+	if parts := splitTargets(env.Options.Query); len(parts) > 1 {
+		col.scopeToTargets(ctx, env, parts, bundle)
+		return
+	}
+	ref, ok := targetRef(env.Options.Query, matches)
+	if !ok {
+		return
+	}
+	lists, ok := col.listScope(ctx, env)
+	if !ok {
+		bundle.Warnings = append(bundle.Warnings, "Cannot list pods, so the investigation falls back to matching names")
+		return
+	}
+	ref.Namespace = env.Namespace
+	matched := false
+	for _, m := range matches {
+		if m.Ref.Kind == ref.Kind && m.Ref.Name == ref.Name {
+			matched = true
 		}
 	}
-
-	if allowed(perms, "replicasets", "list") {
-		bundle.WorkloadChanges = col.collectChangeMarkers(ctx, bundle.Workloads)
-	}
-
-	var selectors []labels.Selector
-	if allowed(perms, "replicasets", "list") {
-		rss, err := col.Client.Clientset.AppsV1().ReplicaSets(ns).List(ctx, metav1.ListOptions{})
-		if err != nil {
-			bundle.Warnings = append(bundle.Warnings, fmt.Sprintf("list replicasets: %v", err))
-		} else {
-			for _, rs := range rss.Items {
-				if !matchesWorkload(deployNames, rs.Name, rs.OwnerReferences) {
-					continue
-				}
-				bundle.ReplicaSets = append(bundle.ReplicaSets, summarizeRS(rs))
-				if s, err := metav1.LabelSelectorAsSelector(rs.Spec.Selector); err == nil {
-					selectors = append(selectors, s)
-				}
-			}
-		}
-	}
-
-	if allowed(perms, "pods", "list") {
-		pods, err := col.Client.Clientset.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{})
-		if err != nil {
-			bundle.Warnings = append(bundle.Warnings, fmt.Sprintf("list pods: %v", err))
-		} else {
-			for _, pod := range pods.Items {
-				if !podMatchesQuery(pod, deployNames, selectors) {
-					continue
-				}
-				ps := summarizePod(pod)
-				bundle.Pods = append(bundle.Pods, ps)
-				bundle.ConfigRefs = append(bundle.ConfigRefs, podConfigRefs(pod)...)
-				bundle.SecretRefs = append(bundle.SecretRefs, podSecretRefs(pod)...)
-				bundle.PVCRefs = append(bundle.PVCRefs, podPVCRefs(pod)...)
+	t := lists.resolveTarget(ref, matched)
+	// A bare name covers every object with exactly that name: "gateway" is
+	// the Deployment and the Service called gateway.
+	if _, name, _ := ParseQuery(env.Options.Query); name == "" {
+		for _, m := range matches {
+			if m.Ref.Name == ref.Name && m.Ref.Kind != ref.Kind && knownTargetKinds[m.Ref.Kind] {
+				t = mergeTargets(t, lists.resolveTarget(model.ObjectRef{Kind: m.Ref.Kind, Name: m.Ref.Name, Namespace: env.Namespace}, true))
 			}
 		}
 	}
-
-	if allowed(perms, "services", "list") {
-		bundle.Services = col.collectServices(ctx, ns, selectors, deployNames, perms)
-	}
-
-	if allowed(perms, "ingresses", "list") {
-		ings, err := col.Client.Clientset.NetworkingV1().Ingresses(ns).List(ctx, metav1.ListOptions{})
-		if err != nil {
-			bundle.Warnings = append(bundle.Warnings, fmt.Sprintf("list ingresses: %v", err))
-		} else {
-			for _, ing := range ings.Items {
-				if !ingressMatches(ing, deployNames) {
-					continue
-				}
-				bundle.Ingresses = append(bundle.Ingresses, summarizeIngress(ing))
-			}
+	bundle.Target = t
+	env.target = newTargetSets(t)
+	env.DeployNames, env.ScopeNames = nil, nil
+	for _, o := range t.Objects {
+		if name, ok := strings.CutPrefix(o, "Deployment/"); ok {
+			env.DeployNames = append(env.DeployNames, name)
 		}
 	}
-
-	{
-		scopePods := make([]string, 0, len(bundle.Pods))
-		for _, p := range bundle.Pods {
-			if p.Name != "" {
-				scopePods = append(scopePods, p.Name)
-			}
+	env.ScopeNames = env.DeployNames
+	var kept []model.MatchedObject
+	for _, m := range matches {
+		if env.target.hasObject(m.Ref.Kind, m.Ref.Name) || (m.Ref.Kind == "Pod" && env.target.hasPod(m.Ref.Name)) {
+			kept = append(kept, m)
 		}
-		bundle.Events, bundle.EventHistory = col.collectEvents(ctx, ns, opts.Query, deployNames, scopePods, allowed(perms, "events", "list"))
 	}
+	if !matched && t.Found {
+		kept = append([]model.MatchedObject{{Ref: ref, MatchBy: "name", Score: 1}}, kept...)
+	}
+	bundle.MatchedObjects = kept
+}
 
-	logLimit := opts.LogLines
-	if logLimit <= 0 {
-		logLimit = maxLogLines
+// collectLogs fetches current and previous logs for every container in the
+// bundle, at most maxConcurrentLogFetches at a time. Results keep pod and
+// container order regardless of which request finishes first.
+func (col *Collector) collectLogs(ctx context.Context, ns string, tailLines int, bundle *model.EvidenceBundle) {
+	type logFetch struct {
+		pod, container string
+		previous       bool
+		rec            model.LogRecord
+		err            error
 	}
-	if allowed(perms, "pods/log", "get") {
-		for _, pod := range bundle.Pods {
-			for _, c := range pod.Containers {
-				if lr, err := col.fetchLogs(ctx, ns, pod.Name, c.Name, false, logLimit); err == nil {
-					bundle.Logs = append(bundle.Logs, lr)
-				} else {
-					bundle.Warnings = append(bundle.Warnings, fmt.Sprintf("logs %s/%s: %v", pod.Name, c.Name, err))
-				}
-				if c.RestartCount > 0 || c.LastReason != "" {
-					if lr, err := col.fetchLogs(ctx, ns, pod.Name, c.Name, true, logLimit); err == nil {
-						bundle.PreviousLogs = append(bundle.PreviousLogs, lr)
-					}
-				}
+	var fetches []*logFetch
+	for _, pod := range bundle.Pods {
+		for _, c := range pod.Containers {
+			fetches = append(fetches, &logFetch{pod: pod.Name, container: c.Name})
+			if c.RestartCount > 0 || c.LastReason != "" {
+				fetches = append(fetches, &logFetch{pod: pod.Name, container: c.Name, previous: true})
 			}
 		}
 	}
 
-	if allowed(perms, "horizontalpodautoscalers", "list") {
-		hpas, err := col.Client.Clientset.AutoscalingV2().HorizontalPodAutoscalers(ns).List(ctx, metav1.ListOptions{})
-		if err != nil {
-			bundle.Warnings = append(bundle.Warnings, fmt.Sprintf("list hpa: %v", err))
-		} else {
-			for _, h := range hpas.Items {
-				if !hpaMatches(h, deployNames) {
-					continue
-				}
-				bundle.HPAs = append(bundle.HPAs, summarizeHPA(h))
-			}
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, maxConcurrentLogFetches)
+	for _, f := range fetches {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			f.rec, f.err = col.fetchLogs(ctx, ns, f.pod, f.container, f.previous, tailLines)
+		}()
+	}
+	wg.Wait()
+
+	for _, f := range fetches {
+		switch {
+		case f.err == nil && f.previous:
+			bundle.PreviousLogs = append(bundle.PreviousLogs, f.rec)
+		case f.err == nil:
+			bundle.Logs = append(bundle.Logs, f.rec)
+		case !f.previous:
+			bundle.Warnings = append(bundle.Warnings, fmt.Sprintf("logs %s/%s: %v", f.pod, f.container, f.err))
 		}
 	}
-
-	if allowed(perms, "nodes", "list") {
-		bundle.Nodes = col.collectNodes(ctx, bundle.Pods)
-	} else {
-		bundle.Warnings = append(bundle.Warnings, "Missing permission: nodes list — node pressure summary unavailable")
-	}
-
-	if allowed(perms, "pods", "list") && len(bundle.Nodes) > 0 {
-		bundle.NodePods = col.collectPodsOnNodes(ctx, bundle.Nodes, bundle.Pods)
-	}
-
-	if opts.CheckAdmissionPerimeter {
-		bundle.AdmissionPerimeter = col.CollectAdmissionPerimeter(ctx, &bundle)
-		if bundle.AdmissionPerimeter != nil && bundle.AdmissionPerimeter.Status == "denied" {
-			bundle.Warnings = append(bundle.Warnings, bundle.AdmissionPerimeter.PermissionNote)
-		}
-	}
-
-	return bundle, nil
 }
 
 func (col *Collector) collectDeployment(ctx context.Context, ns, name string) (model.WorkloadSummary, error) {
@@ -240,6 +308,9 @@ func (col *Collector) collectDeployment(ctx context.Context, ns, name string) (m
 	}
 	for _, c := range d.Status.Conditions {
 		w.Conditions = append(w.Conditions, fmt.Sprintf("%s=%s", c.Type, c.Status))
+		if c.Status == corev1.ConditionFalse {
+			w.FailedConditions = append(w.FailedConditions, fmt.Sprintf("%s: %s: %s", c.Type, c.Reason, c.Message))
+		}
 	}
 	return w, nil
 }
@@ -251,7 +322,7 @@ func summarizeRS(rs appsv1.ReplicaSet) model.ReplicaSetSummary {
 			owner = o.Name
 		}
 	}
-	return model.ReplicaSetSummary{
+	out := model.ReplicaSetSummary{
 		Name:            rs.Name,
 		Namespace:       rs.Namespace,
 		Replicas:        deref32(rs.Spec.Replicas),
@@ -259,6 +330,12 @@ func summarizeRS(rs appsv1.ReplicaSet) model.ReplicaSetSummary {
 		DeploymentOwner: owner,
 		CreatedAt:       model.TimestampFrom(rs.CreationTimestamp.Time),
 	}
+	for _, c := range rs.Status.Conditions {
+		if c.Type == appsv1.ReplicaSetReplicaFailure && c.Status == corev1.ConditionTrue {
+			out.CreateFailure = c.Message
+		}
+	}
+	return out
 }
 
 func summarizePod(pod corev1.Pod) model.PodSummary {
@@ -271,18 +348,53 @@ func summarizePod(pod corev1.Pod) model.PodSummary {
 		Labels:      pod.Labels,
 		Annotations: pod.Annotations,
 		CreatedAt:   model.TimestampFrom(pod.CreationTimestamp.Time),
+
+		ServiceAccount: pod.Spec.ServiceAccountName,
 	}
 	for _, o := range pod.OwnerReferences {
 		ps.OwnerRefs = append(ps.OwnerRefs, model.ObjectRef{Kind: o.Kind, Name: o.Name, UID: string(o.UID)})
 	}
-	ready := true
-	var restarts int32
+	statuses := map[string]corev1.ContainerStatus{}
 	for _, cs := range pod.Status.ContainerStatuses {
+		statuses[cs.Name] = cs
+	}
+	// A pod with no container statuses (not yet scheduled or started) is not
+	// ready. Spec containers without a status are still listed so their
+	// requests and probes are visible.
+	ready := len(pod.Spec.Containers) > 0
+	var restarts int32
+	initStatuses := map[string]corev1.ContainerStatus{}
+	for _, cs := range pod.Status.InitContainerStatuses {
+		initStatuses[cs.Name] = cs
+	}
+	for _, c := range pod.Spec.InitContainers {
+		cs, ok := initStatuses[c.Name]
+		if !ok {
+			continue
+		}
+		restarts += cs.RestartCount
+		ic := containerFromSpec(pod.Name, cs, c)
+		ic.Init = true
+		// A completed init container did its job; only one that has not
+		// finished can hold the pod back.
+		ic.Ready = cs.Ready || (cs.State.Terminated != nil && cs.State.Terminated.ExitCode == 0)
+		ps.Containers = append(ps.Containers, ic)
+	}
+	for _, c := range pod.Spec.Containers {
+		cs, ok := statuses[c.Name]
+		if !ok {
+			cs = corev1.ContainerStatus{Name: c.Name, Image: c.Image}
+		}
 		if !cs.Ready {
 			ready = false
 		}
 		restarts += cs.RestartCount
-		ps.Containers = append(ps.Containers, containerFromStatus(pod.Name, cs, pod))
+		ps.Containers = append(ps.Containers, containerFromSpec(pod.Name, cs, c))
+	}
+	for _, cond := range pod.Status.Conditions {
+		if cond.Type == corev1.PodScheduled && cond.Status == corev1.ConditionFalse {
+			ps.Unschedulable = strings.TrimSpace(cond.Reason + ": " + cond.Message)
+		}
 	}
 	ps.Ready = ready
 	ps.RestartCount = restarts
@@ -331,7 +443,9 @@ func podPVCNames(pod corev1.Pod) []string {
 	return out
 }
 
-func containerFromStatus(podName string, cs corev1.ContainerStatus, pod corev1.Pod) model.ContainerStatus {
+// containerFromSpec combines a container's status with its spec: resources,
+// command, ports, probes and mounts.
+func containerFromSpec(podName string, cs corev1.ContainerStatus, c corev1.Container) model.ContainerStatus {
 	out := model.ContainerStatus{
 		PodName:      podName,
 		Name:         cs.Name,
@@ -339,24 +453,30 @@ func containerFromStatus(podName string, cs corev1.ContainerStatus, pod corev1.P
 		Ready:        cs.Ready,
 		RestartCount: cs.RestartCount,
 	}
-	for _, c := range pod.Spec.Containers {
-		if c.Name == cs.Name {
-			if c.Resources.Requests != nil {
-				out.RequestsCPU = c.Resources.Requests.Cpu().String()
-				out.RequestsMem = c.Resources.Requests.Memory().String()
-			}
-			if c.Resources.Limits != nil {
-				out.LimitsCPU = c.Resources.Limits.Cpu().String()
-				out.LimitsMem = c.Resources.Limits.Memory().String()
-			}
-			if len(c.Command) > 0 {
-				out.Command = append([]string(nil), c.Command...)
-			}
-			if len(c.Args) > 0 {
-				out.Args = append([]string(nil), c.Args...)
-			}
-			break
+	if c.Resources.Requests != nil {
+		out.RequestsCPU = c.Resources.Requests.Cpu().String()
+		out.RequestsMem = c.Resources.Requests.Memory().String()
+	}
+	if c.Resources.Limits != nil {
+		out.LimitsCPU = c.Resources.Limits.Cpu().String()
+		out.LimitsMem = c.Resources.Limits.Memory().String()
+	}
+	if len(c.Command) > 0 {
+		out.Command = append([]string(nil), c.Command...)
+	}
+	if len(c.Args) > 0 {
+		out.Args = append([]string(nil), c.Args...)
+	}
+	for _, p := range c.Ports {
+		out.Ports = append(out.Ports, fmt.Sprintf("%d/%s", p.ContainerPort, p.Protocol))
+	}
+	out.ReadinessProbe = describeProbe(c.ReadinessProbe)
+	out.LivenessProbe = describeProbe(c.LivenessProbe)
+	for _, m := range c.VolumeMounts {
+		if strings.HasPrefix(m.Name, "kube-api-access-") {
+			continue
 		}
+		out.Mounts = append(out.Mounts, fmt.Sprintf("%s (%s)", m.MountPath, m.Name))
 	}
 	switch {
 	case cs.State.Running != nil:
@@ -382,6 +502,24 @@ func containerFromStatus(podName string, cs corev1.ContainerStatus, pod corev1.P
 		out.LastReason = cs.LastTerminationState.Waiting.Reason
 	}
 	return out
+}
+
+// describeProbe renders a probe's action compactly, e.g. "http-get :8080/healthz".
+func describeProbe(p *corev1.Probe) string {
+	if p == nil {
+		return ""
+	}
+	switch h := p.ProbeHandler; {
+	case h.HTTPGet != nil:
+		return fmt.Sprintf("http-get :%s%s", h.HTTPGet.Port.String(), h.HTTPGet.Path)
+	case h.TCPSocket != nil:
+		return "tcp :" + h.TCPSocket.Port.String()
+	case h.GRPC != nil:
+		return fmt.Sprintf("grpc :%d", h.GRPC.Port)
+	case h.Exec != nil:
+		return "exec " + strings.Join(h.Exec.Command, " ")
+	}
+	return ""
 }
 
 func (col *Collector) collectServices(ctx context.Context, ns string, selectors []labels.Selector, deployNames []string, perms []model.PermissionCheck) []model.ServiceSummary {
@@ -432,17 +570,17 @@ func (col *Collector) serviceEndpointCounts(ctx context.Context, ns, svcName str
 	return countReadyEndpointSliceAddresses(slices.Items)
 }
 
-// countReadyEndpointSliceAddresses mirrors legacy Endpoints subset.Addresses counting:
-// only addresses on endpoints that are ready (nil Ready is treated as ready).
+// countReadyEndpointSliceAddresses counts every endpoint address in total and
+// the ready ones (nil Ready is treated as ready) in ready, so a Service whose
+// pods all fail readiness reads 0/N rather than 0/0.
 func countReadyEndpointSliceAddresses(slices []discoveryv1.EndpointSlice) (ready, total int) {
 	for _, sl := range slices {
 		for _, ep := range sl.Endpoints {
-			if ep.Conditions.Ready != nil && !*ep.Conditions.Ready {
-				continue
-			}
 			n := len(ep.Addresses)
-			ready += n
 			total += n
+			if ep.Conditions.Ready == nil || *ep.Conditions.Ready {
+				ready += n
+			}
 		}
 	}
 	return ready, total
@@ -450,6 +588,12 @@ func countReadyEndpointSliceAddresses(slices []discoveryv1.EndpointSlice) (ready
 
 func summarizeIngress(ing networkingv1.Ingress) model.IngressSummary {
 	s := model.IngressSummary{Name: ing.Name, Namespace: ing.Namespace}
+	if ing.Spec.IngressClassName != nil {
+		s.ClassName = *ing.Spec.IngressClassName
+	}
+	if d := ing.Spec.DefaultBackend; d != nil && d.Service != nil {
+		s.Backends = append(s.Backends, d.Service.Name)
+	}
 	for _, r := range ing.Spec.Rules {
 		if r.Host != "" {
 			s.Hosts = append(s.Hosts, r.Host)
