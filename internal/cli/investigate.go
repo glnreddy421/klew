@@ -46,6 +46,7 @@ const (
 // investigateOpts are the parsed flags; run is replaced in tests.
 type investigateOpts struct {
 	kubeconfig, context, namespace, workload, historyDir, output string
+	extensionsDir                                                string
 	observe                                                      time.Duration
 	limit                                                        int
 	show                                                         map[string]bool
@@ -62,7 +63,7 @@ func Investigate(args []string, stdout, stderr io.Writer) int {
 	}
 	o.color = o.output == "text" && colorFor(stdout)
 
-	engine.SetRegistry(loadRegistry(stderr))
+	engine.SetRegistry(loadRegistry(o.extensionsDir, stderr))
 	kube.InitNetworkProxyFromEnv()
 
 	client, err := kube.NewFromFlags(o.kubeconfig, o.context, o.namespace)
@@ -140,6 +141,7 @@ func parseInvestigate(args []string, stderr io.Writer) (investigateOpts, int) {
 	fs.BoolVar(&o.noLogs, "no-logs", false, "do not read container logs")
 	fs.StringVar(&o.historyDir, "history-dir", defaultHistoryDir(), "directory with the Klew desktop app's recorded events")
 	noHistory := fs.Bool("no-history", false, "do not read recorded event history")
+	fs.StringVar(&o.extensionsDir, "extensions-dir", "", "directory of collector and rule YAML files to use instead of Klew's extensions folder and the folders linked in the desktop app")
 	fs.Usage = func() { investigateHelp(fs.Output(), fs) }
 
 	var rest []string
@@ -163,6 +165,8 @@ func parseInvestigate(args []string, stderr io.Writer) (investigateOpts, int) {
 		return usageErr(stderr, "-o must be text or json, not %q", o.output)
 	case o.observe < 0 || o.observe > maxObserve:
 		return usageErr(stderr, "-observe must be between 0s and %s", maxObserve)
+	case o.extensionsDir != "" && !isDir(o.extensionsDir):
+		return usageErr(stderr, "-extensions-dir %s is not a directory", o.extensionsDir)
 	}
 	if len(rest) == 1 {
 		o.workload = rest[0]
@@ -224,6 +228,7 @@ Examples:
   klew investigate -n shop checkout -observe 30s
   klew investigate -n shop -only failures,patterns
   klew investigate -n shop -o json | jq .overview.problems
+  klew investigate -n shop -extensions-dir ./team-rules
 `)
 }
 
@@ -237,8 +242,13 @@ func exitFor(s model.VerdictStatus) int {
 	return ExitHealthy
 }
 
-func loadRegistry(stderr io.Writer) *engine.Registry {
+// loadRegistry reads Klew's extensions folder and the linked folders, or
+// only dir when -extensions-dir names one.
+func loadRegistry(dir string, stderr io.Writer) *engine.Registry {
 	reg := engine.LoadConfiguredExtensions()
+	if dir != "" {
+		reg = engine.LoadExtensions(dir)
+	}
 	for _, w := range reg.Warnings {
 		fmt.Fprintf(stderr, "warning: %s\n", w)
 	}
@@ -268,4 +278,9 @@ func namespaceMissing(ctx context.Context, client *kube.Client, ns string) bool 
 	defer cancel()
 	_, err := client.Clientset.CoreV1().Namespaces().Get(ctx, ns, metav1.GetOptions{})
 	return apierrors.IsNotFound(err)
+}
+
+func isDir(path string) bool {
+	fi, err := os.Stat(path)
+	return err == nil && fi.IsDir()
 }

@@ -22,7 +22,7 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 
 ### Command line
 
-- **`klew investigate`** — a new `klew` command for macOS and Linux prints an investigation in the terminal: the verdict, problems, causal chain, incidents and warning timeline (Overview); failing pods with container states, exit codes and events (Failures); log and event patterns (Patterns); and event ↔ log correlations, claims, observations, gaps and next checks (Evidence). Read-only; `-only` picks sections, `-all` lifts the top-10 limits, `-o json` prints every field, and the exit status is 0 healthy, 3 warning, 4 critical. Reads the desktop app's recorded events when present. Repeats of one reason on the same objects, such as a rejected pod retried every 15 minutes, are shown as one incident with a count. Output is not redacted. See [docs/cli.md](docs/cli.md).
+- **`klew investigate`** — a new `klew` command for macOS and Linux prints an investigation in the terminal: the verdict, problems, causal chain, incidents and warning timeline (Overview); failing pods with container states, exit codes and events (Failures); log and event patterns (Patterns); and event ↔ log correlations, claims, observations, gaps and next checks (Evidence). Read-only; `-only` picks sections, `-all` lifts the top-10 limits, `-o json` prints every field, `-extensions-dir` reads one folder of custom collectors and rules, and the exit status is 0 healthy, 3 warning, 4 critical. Reads the desktop app's recorded events when present. Repeats of one reason on the same objects, such as a rejected pod retried every 15 minutes, are shown as one incident with a count. Output is not redacted. See [docs/cli.md](docs/cli.md).
 
 ### MCP server
 
