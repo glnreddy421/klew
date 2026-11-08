@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 func field(k, v string) Field {

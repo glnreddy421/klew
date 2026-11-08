@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 // ErrNamespaceRequired means the caller must select a namespace interactively

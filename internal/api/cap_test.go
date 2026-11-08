@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 func TestCapEventsPrefersWarnings(t *testing.T) {

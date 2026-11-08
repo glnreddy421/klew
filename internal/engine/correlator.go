@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 // buildCausalChain distills the timeline into a compact, time-ordered story of

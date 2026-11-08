@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 func marker(name string, rev int64, at time.Time, areas ...string) model.WorkloadChangeMarker {

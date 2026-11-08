@@ -3,7 +3,7 @@ package details
 import (
 	"strings"
 
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 // Canonical section group IDs. Not every Kind emits every group.

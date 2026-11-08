@@ -13,7 +13,7 @@ import (
 
 	"k8s.io/client-go/kubernetes"
 
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 // Settings control recording. Stored in history/settings.json and shared by

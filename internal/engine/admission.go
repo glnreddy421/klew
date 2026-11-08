@@ -3,7 +3,7 @@ package engine
 import (
 	"fmt"
 
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 // admissionTimelineEvents surfaces perimeter checks ahead of workload-scoped timeline entries.

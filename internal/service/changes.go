@@ -3,9 +3,9 @@ package service
 import (
 	"context"
 
-	"github.com/glnreddy421/klew/internal/changes"
-	"github.com/glnreddy421/klew/internal/kube"
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/changes"
+	"github.com/glnreddy421/klew/v2/internal/kube"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 // WorkloadChanges returns a workload's revision history, newest first

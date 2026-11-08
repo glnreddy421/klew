@@ -1,6 +1,6 @@
 package mcpserver
 
-import "github.com/glnreddy421/klew/internal/model"
+import "github.com/glnreddy421/klew/v2/internal/model"
 
 const maxProblems = 20
 

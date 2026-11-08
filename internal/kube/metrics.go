@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 // MetricsPoller reports whether metrics.k8s.io is available. Aggregate usage is

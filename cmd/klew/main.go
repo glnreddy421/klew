@@ -9,9 +9,9 @@ import (
 	"io"
 	"os"
 
-	"github.com/glnreddy421/klew/internal/cli"
-	"github.com/glnreddy421/klew/internal/mcpcli"
-	"github.com/glnreddy421/klew/internal/version"
+	"github.com/glnreddy421/klew/v2/internal/cli"
+	"github.com/glnreddy421/klew/v2/internal/mcpcli"
+	"github.com/glnreddy421/klew/v2/internal/version"
 )
 
 func main() {

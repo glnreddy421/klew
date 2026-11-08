@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/glnreddy421/klew/internal/kube"
+	"github.com/glnreddy421/klew/v2/internal/kube"
 
 	"github.com/creack/pty"
 	"github.com/google/uuid"

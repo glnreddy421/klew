@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/glnreddy421/klew/internal/engine"
+	"github.com/glnreddy421/klew/v2/internal/engine"
 )
 
 func main() {

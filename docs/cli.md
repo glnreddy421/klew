@@ -13,7 +13,7 @@ Both are **read-only**: they list, get and watch cluster objects and never chang
 brew install glnreddy421/klew/klew-cli
 ```
 
-Release downloads and `go install github.com/glnreddy421/klew/cmd/klew@latest` are described in [mcp.md](mcp.md#other-ways); they install the same `klew` binary.
+Release downloads and `go install github.com/glnreddy421/klew/v2/cmd/klew@latest` are described in [mcp.md](mcp.md#other-ways); they install the same `klew` binary.
 
 ## klew investigate
 

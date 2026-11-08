@@ -3,7 +3,7 @@ package kube
 import (
 	"testing"
 
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 func TestWorkloadMissingPods(t *testing.T) {

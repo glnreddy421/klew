@@ -11,14 +11,14 @@ import (
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
-	"github.com/glnreddy421/klew/internal/api"
-	"github.com/glnreddy421/klew/internal/details"
-	"github.com/glnreddy421/klew/internal/engine"
-	"github.com/glnreddy421/klew/internal/kube"
-	"github.com/glnreddy421/klew/internal/logstream"
-	"github.com/glnreddy421/klew/internal/model"
-	"github.com/glnreddy421/klew/internal/service"
-	"github.com/glnreddy421/klew/internal/version"
+	"github.com/glnreddy421/klew/v2/internal/api"
+	"github.com/glnreddy421/klew/v2/internal/details"
+	"github.com/glnreddy421/klew/v2/internal/engine"
+	"github.com/glnreddy421/klew/v2/internal/kube"
+	"github.com/glnreddy421/klew/v2/internal/logstream"
+	"github.com/glnreddy421/klew/v2/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/service"
+	"github.com/glnreddy421/klew/v2/internal/version"
 )
 
 // bootOptions seeds a window from CLI flags (used when cloning a window).

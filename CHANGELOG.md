@@ -2,7 +2,13 @@
 
 All notable changes to Klew are documented here. Version tags follow [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [2.0.0] — unreleased
+
+### Upgrading to 2.0
+
+- **Go module path** — the module is now `github.com/glnreddy421/klew/v2`, as Go requires for version 2 and later. Install the command with `go install github.com/glnreddy421/klew/v2/cmd/klew@latest`; the path without `/v2` only reaches 1.x releases.
+- **New `klew` command** — the command line and the MCP server ship as one `klew` binary (`klew investigate`, `klew mcp`), installed with `brew install glnreddy421/klew/klew-cli`. The desktop app is unchanged in how it installs.
+- **Desktop layout** — the left sidebar, the top bar's search box and Focus chain are gone; ⌘K opens Investigate, and Terminal and Live logs open from the corner launcher. Details under Desktop below.
 
 ### Security
 
@@ -10,11 +16,13 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 - **Release provenance** — releases include a `SHA256SUMS` file and one SPDX SBOM per front end (the desktop app; the `klew` command), each built from what ships. Every artifact has signed build provenance and SBOM attestations (`gh attestation verify <file> --repo glnreddy421/klew`).
 - **`klew` command release binaries** — signed and notarized macOS binaries and Linux binaries, for arm64 and amd64, are published with each release alongside the desktop app.
 - **Hardened workflows** — every GitHub Action is pinned to a commit SHA, workflows get no token permissions by default, and the release job asks only for what it uses.
+- **Extension files stay in their folder** — adding a rule file in Settings writes it through a handle confined to Klew's extensions folder, so no file name can place it elsewhere.
+- **`golang.org/x/net` 0.62.0** — fixes CVE-2026-78661 (denial of service in `x/net/html`).
 - **Go toolchain** — builds use Go 1.26.10, which fixes standard-library vulnerabilities in `net/http`, `crypto/tls`, `crypto/x509` and `encoding/asn1` that earlier toolchains left in release binaries.
 
 ### Command line
 
-- **`klew investigate`** — a new `klew` command for macOS and Linux prints an investigation in the terminal: the verdict, problems, causal chain, incidents and warning timeline (Overview); failing pods with container states, exit codes and events (Failures); log and event patterns (Patterns); and event ↔ log correlations, claims, observations, gaps and next checks (Evidence). Read-only; `-only` picks sections, `-all` lifts the top-10 limits, `-o json` prints every field, and the exit status is 0 healthy, 3 warning, 4 critical. Reads the desktop app's recorded events when present. Output is not redacted. See [docs/cli.md](docs/cli.md).
+- **`klew investigate`** — a new `klew` command for macOS and Linux prints an investigation in the terminal: the verdict, problems, causal chain, incidents and warning timeline (Overview); failing pods with container states, exit codes and events (Failures); log and event patterns (Patterns); and event ↔ log correlations, claims, observations, gaps and next checks (Evidence). Read-only; `-only` picks sections, `-all` lifts the top-10 limits, `-o json` prints every field, and the exit status is 0 healthy, 3 warning, 4 critical. Reads the desktop app's recorded events when present. Repeats of one reason on the same objects, such as a rejected pod retried every 15 minutes, are shown as one incident with a count. Output is not redacted. See [docs/cli.md](docs/cli.md).
 
 ### MCP server
 
@@ -58,6 +66,8 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 
 - **Pending pods count as unready** — a pod with no container statuses yet (for example one that cannot be scheduled) was counted as ready. It now counts as unready and its containers' requests are shown.
 - **Service endpoint totals include unready pods** — a Service whose pods all fail readiness showed 0/0 endpoints, so endpoint-loss signals never fired. It now shows 0/N.
+- **Log lines rated by their own level** — a line that states its level (`INFO`, `WARN:`, `[notice]`, `level=warn`, JSON `"level"`) is rated by it, so `INFO flushed errors=0` is no longer an error and `WARN … (non-fatal)` no longer critical. Lines without a level are rated by their words as before.
+- **Correlations stay within a pod** — an event pattern is linked to a log pattern only when both name a pod they share, so lines from another workload that happen to log in the same minutes are no longer offered as evidence.
 - **Timeouts are not labelled Redis** — any log line with a timeout was labelled "Redis timeout". It is now "Timeout", and only timeouts (not lines that merely mention redis) count as a dependency failure.
 - **Suggested fixes name the failing workload** — commands target the workload and container that own the failing pod instead of the first workload found and a container named `app`. `rollout undo` is suggested only when a Deployment has a previous revision. Lab cleanup scripts and the crash-loop patch that removed the container command are no longer suggested.
 
@@ -88,6 +98,8 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 ### Tooling
 
 - Bump **Wails** to v2.17.1 (CLI, module, release CI).
+- Bump the **Kubernetes client libraries** to 0.37, **modernc.org/sqlite** to 1.61, **Vite** to 8 and **React** to 19.3.
+- **Pull request lint** compares new code with the base branch in git, so large pull requests are judged on what they add instead of every existing finding.
 
 ## [1.5.0] — 2026-10-24
 

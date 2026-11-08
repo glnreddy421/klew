@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 // HealthyLabel is the hypothesis label when nothing is failing now.

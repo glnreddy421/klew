@@ -4,7 +4,7 @@ import (
 	"context"
 	"sort"
 
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 // InvestigableTypes lists the namespaced resource types an investigation can

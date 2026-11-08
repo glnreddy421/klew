@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 // SignalAggregator turns raw evidence into ranked, de-duplicated signals grouped

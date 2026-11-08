@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/glnreddy421/klew/internal/engine"
+	"github.com/glnreddy421/klew/v2/internal/engine"
 )
 
 const testExtensions = `apiVersion: klew.dev/v1alpha1

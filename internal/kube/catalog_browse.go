@@ -3,7 +3,7 @@ package kube
 import (
 	"context"
 
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 // Ephemeral auth review APIs are create-only machinery — not useful in the resource browser.

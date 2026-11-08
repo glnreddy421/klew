@@ -17,10 +17,10 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/glnreddy421/klew/internal/engine"
-	"github.com/glnreddy421/klew/internal/kube"
-	"github.com/glnreddy421/klew/internal/mcpserver"
-	"github.com/glnreddy421/klew/internal/version"
+	"github.com/glnreddy421/klew/v2/internal/engine"
+	"github.com/glnreddy421/klew/v2/internal/kube"
+	"github.com/glnreddy421/klew/v2/internal/mcpserver"
+	"github.com/glnreddy421/klew/v2/internal/version"
 )
 
 // Main parses args (without the program name) and runs the command, returning

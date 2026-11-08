@@ -7,8 +7,8 @@ import (
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
-	"github.com/glnreddy421/klew/internal/history"
-	"github.com/glnreddy421/klew/internal/kube"
+	"github.com/glnreddy421/klew/v2/internal/history"
+	"github.com/glnreddy421/klew/v2/internal/kube"
 )
 
 // eventHistory owns this window's local event recorder. Each Klew window is a

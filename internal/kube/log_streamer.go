@@ -15,8 +15,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
 
-	"github.com/glnreddy421/klew/internal/logpatterns"
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/logpatterns"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 // ANSI CSI / OSC sequences from colored container logs (klog, zap, kyverno, …).

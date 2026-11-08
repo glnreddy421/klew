@@ -46,7 +46,7 @@ sudo install -m 0755 klew /usr/local/bin/klew
 **Build from source** (Go 1.26+):
 
 ```bash
-go install github.com/glnreddy421/klew/cmd/klew@latest
+go install github.com/glnreddy421/klew/v2/cmd/klew@latest
 ```
 
 The binary lands in `$(go env GOPATH)/bin`.

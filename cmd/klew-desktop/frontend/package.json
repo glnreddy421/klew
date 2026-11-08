@@ -1,7 +1,7 @@
 {
   "name": "klew-desktop-frontend",
   "private": true,
-  "version": "1.5.0",
+  "version": "2.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -23,6 +23,6 @@
   "devDependencies": {
     "@vitejs/plugin-react": "^6.2.1",
     "vite": "^8.3.5",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.0"
   }
 }

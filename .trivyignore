@@ -1,3 +1,13 @@
 # Trivy findings accepted after review, one CVE/AVD ID per line with a reason.
 # Example:
 # CVE-2026-00000  # not reachable: only used in tests; revisit when fixed upstream
+
+# github.com/labstack/echo/v4: only Wails' dev server (wails dev, `dev` build
+# tag) uses it; neither the klew command nor the release desktop app compiles
+# it. No fixed version yet.
+CVE-2026-118651 exp:2027-05-08
+CVE-2026-118653 exp:2027-05-08
+
+# golang.org/x/crypto/openpgp is unmaintained: nothing imports it, and no
+# golang.org/x/crypto package is compiled into either binary.
+GO-2026-5932 exp:2027-05-08

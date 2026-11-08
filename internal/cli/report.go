@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/glnreddy421/klew/internal/engine"
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/engine"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 // Report is what klew investigate prints: the desktop app's Overview,

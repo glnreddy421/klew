@@ -8,9 +8,9 @@ import (
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
-	"github.com/glnreddy421/klew/internal/kube"
-	"github.com/glnreddy421/klew/internal/logstream"
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/kube"
+	"github.com/glnreddy421/klew/v2/internal/logstream"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 // MaxLogStreams caps concurrent open log tabs so per-tab follow budgets stay bounded.

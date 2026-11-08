@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 func TestPatternID_TableDrivenWhitespaceStability(t *testing.T) {

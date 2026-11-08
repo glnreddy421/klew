@@ -1,7 +1,7 @@
 package engine
 
 import (
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 // IncidentSummary is the flat set of fields shown in the top-left panel and web UI.

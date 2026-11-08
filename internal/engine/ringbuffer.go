@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 // RingBuffer is a bounded, newest-first store of live evidence.

@@ -9,7 +9,7 @@ import (
 
 	"k8s.io/client-go/kubernetes/fake"
 
-	"github.com/glnreddy421/klew/internal/model"
+	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
 func TestCollectLogsKeepsPodOrder(t *testing.T) {
