@@ -50,18 +50,18 @@ func BuildEvidenceBoard(
 	cards := make([]model.EvidenceCard, 0, len(eventTemplates))
 	correlatedLogs := 0
 
-	for ei := range eventTemplates {
-		evVol := volumeSeries(eventTemplates[ei])
+	for _, ev := range eventTemplates {
+		evVol := volumeSeries(ev)
 		if !hasActiveSlot(evVol) {
 			continue
 		}
 
 		links := make([]link, 0, 4)
-		for li := range logTemplates {
-			if !sharePod(eventTemplates[ei].Pods, logTemplates[li].Pods) {
+		for li, lt := range logTemplates {
+			if !sharePod(ev.Pods, lt.Pods) {
 				continue
 			}
-			logVol := volumeSeries(logTemplates[li])
+			logVol := volumeSeries(lt)
 			score := jaccardActiveSlots(evVol, logVol)
 			if score >= threshold {
 				links = append(links, link{logIdx: li, score: score})
@@ -80,7 +80,7 @@ func BuildEvidenceBoard(
 
 		triggered := make([]model.LogTemplate, 0, len(links))
 		ids := make([]string, 0, len(links)+1)
-		ids = append(ids, eventTemplates[ei].ID)
+		ids = append(ids, ev.ID)
 		maxConf := 0.0
 		for _, l := range links {
 			cp := cloneLogTemplate(logTemplates[l.logIdx])
@@ -95,7 +95,7 @@ func BuildEvidenceBoard(
 		cards = append(cards, model.EvidenceCard{
 			EvidenceID:    evidenceID(ids...),
 			Confidence:    round4(maxConf),
-			RootEvent:     cloneLogTemplate(eventTemplates[ei]),
+			RootEvent:     cloneLogTemplate(ev),
 			TriggeredLogs: triggered,
 		})
 	}

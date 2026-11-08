@@ -3,6 +3,7 @@ package kube
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sort"
@@ -197,7 +198,7 @@ func ReadPodLogs(ctx context.Context, client *Client, namespace, pod string, opt
 		t, text := splitLogTimestamp(raw, time.Time{})
 		lines = append(lines, PodLogLine{Time: t, Text: text})
 	}
-	if err := sc.Err(); err != nil && err != io.EOF {
+	if err := sc.Err(); err != nil && !errors.Is(err, io.EOF) {
 		return lines, true, err
 	}
 	return lines, opts.LimitBytes > 0 && read >= opts.LimitBytes, nil

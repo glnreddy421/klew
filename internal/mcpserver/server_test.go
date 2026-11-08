@@ -572,6 +572,19 @@ func TestUnreadableHistoryDoesNotStopTheServer(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "events.db"), []byte(strings.Repeat("garbage", 2000)), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// klew_list_contexts reads only the kubeconfig; give it one so the test
+	// does not depend on the machine's.
+	kubeconfig := filepath.Join(t.TempDir(), "config")
+	if err := os.WriteFile(kubeconfig, []byte(`apiVersion: v1
+kind: Config
+current-context: test
+clusters: [{name: test, cluster: {server: "https://127.0.0.1:6443"}}]
+users: [{name: test, user: {}}]
+contexts: [{name: test, context: {cluster: test, user: test}}]
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("KUBECONFIG", kubeconfig)
 	s := New(Options{HistoryDir: dir})
 	defer s.Close()
 	if s.history != nil {

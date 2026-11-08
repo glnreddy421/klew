@@ -42,7 +42,7 @@ func TestRulesScaleToLargeNamespaces(t *testing.T) {
 	if len(problems) != 5000 { // 2500 Deployments + 2500 Services
 		t.Fatalf("problems = %d", len(problems))
 	}
-	if elapsed > 2*time.Second {
+	if elapsed > 2*time.Second && !raceEnabled {
 		t.Fatalf("rules took %s for 5000 pods", elapsed)
 	}
 }
@@ -71,7 +71,7 @@ func TestRulesScaleWithSelectorsPoliciesAndCEL(t *testing.T) {
 	BuildProblems(b, res.Findings)
 	elapsed := time.Since(start)
 	t.Logf("5000 pods, 1250 empty Services, 500 policies, 1 CEL rule: %d findings in %s", len(res.Findings), elapsed)
-	if elapsed > 5*time.Second {
+	if elapsed > 5*time.Second && !raceEnabled {
 		t.Fatalf("rules took %s", elapsed)
 	}
 }

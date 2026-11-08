@@ -44,7 +44,10 @@ jobs:
         with:
           version: v2.15.0
           # Existing findings are tracked separately; a PR must not add new ones.
-          only-new-issues: true
+          # Compared with git against the base branch (fetch-depth: 0 above):
+          # only-new-issues fetches the PR diff from the API, which fails over
+          # 20,000 lines and then reports every existing finding.
+          args: --new-from-merge-base=origin/${{ github.base_ref }}
 
   workflows:
     name: Workflow and script lint

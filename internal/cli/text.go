@@ -168,19 +168,7 @@ func (p *printer) overview(r Report) {
 		p.line("  No significant failure chain detected.")
 	}
 	if o.Hypothesis != "" && o.Hypothesis != r.Summary {
-		p.line("  %s %s", p.style(bold, "Hypothesis:"), o.Hypothesis)
-		for _, reason := range o.HypothesisReasons {
-			p.line("    - %s", reason)
-		}
-		var alts []string
-		for _, a := range o.Alternatives {
-			if !a.Leading {
-				alts = append(alts, fmt.Sprintf("%s %.0f%%", a.Label, a.Confidence*100))
-			}
-		}
-		if len(alts) > 0 {
-			p.line("    %s", p.style(dim, "Alternatives: "+strings.Join(alts, ", ")))
-		}
+		p.hypothesis(o)
 	}
 	if len(o.Incidents) > 0 {
 		p.sub("Incidents", len(o.Incidents), o.IncidentsTotal)
@@ -207,13 +195,30 @@ func (p *printer) overview(r Report) {
 	}
 }
 
+func (p *printer) hypothesis(o Overview) {
+	p.line("  %s %s", p.style(bold, "Hypothesis:"), o.Hypothesis)
+	for _, reason := range o.HypothesisReasons {
+		p.line("    - %s", reason)
+	}
+	var alts []string
+	for _, a := range o.Alternatives {
+		if !a.Leading {
+			alts = append(alts, fmt.Sprintf("%s %.0f%%", a.Label, a.Confidence*100))
+		}
+	}
+	if len(alts) > 0 {
+		p.line("    %s", p.style(dim, "Alternatives: "+strings.Join(alts, ", ")))
+	}
+}
+
 func (p *printer) failures(f Failures) {
 	p.heading("Failures")
-	if f.PodsTotal == 0 {
+	switch {
+	case f.PodsTotal == 0:
 		p.line("  No pods in scope.")
-	} else if f.FailingTotal == 0 {
+	case f.FailingTotal == 0:
 		p.line("  All %d pods stable.", f.PodsTotal)
-	} else {
+	default:
 		p.line("  %d of %d pods failing", f.FailingTotal, f.PodsTotal)
 	}
 	if a := f.Admission; a != nil {

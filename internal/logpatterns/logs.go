@@ -182,7 +182,7 @@ func LogLevel(line string) (model.Severity, bool) {
 			continue
 		}
 		v := strings.TrimLeft(l[i+len(key):], ` "`)
-		if end := strings.IndexFunc(v, func(r rune) bool { return !(r >= 'a' && r <= 'z') }); end >= 0 {
+		if end := strings.IndexFunc(v, func(r rune) bool { return r < 'a' || r > 'z' }); end >= 0 {
 			v = v[:end]
 		}
 		if sev, ok := levelWords[v]; ok {

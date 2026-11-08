@@ -209,14 +209,20 @@ func addExtensionFile(src, dir string) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	dst := filepath.Join(dir, filepath.Base(src))
-	if existing, err := os.ReadFile(dst); err == nil {
+	// os.Root keeps the file inside dir whatever the name is.
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	name := filepath.Base(src)
+	if existing, err := root.ReadFile(name); err == nil {
 		if bytes.Equal(existing, data) {
 			return nil
 		}
-		return fmt.Errorf("Klew already has a file named %s; remove it first or rename yours", filepath.Base(src))
+		return fmt.Errorf("the extensions folder already has a file named %s; remove it first or rename yours", name)
 	}
-	return os.WriteFile(dst, data, 0o600)
+	return root.WriteFile(name, data, 0o600)
 }
 
 // checkExtensionData loads data on its own and fails when no document in it
@@ -227,7 +233,12 @@ func checkExtensionData(name string, data []byte) error {
 		return err
 	}
 	defer os.RemoveAll(tmp)
-	if err := os.WriteFile(filepath.Join(tmp, name), data, 0o600); err != nil {
+	root, err := os.OpenRoot(tmp)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	if err := root.WriteFile(name, data, 0o600); err != nil {
 		return err
 	}
 	reg := engine.LoadExtensions(tmp)
