@@ -7,15 +7,87 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 ### Security
 
 - **Verified kubectl downloads** — the version-matched kubectl Klew downloads from `dl.k8s.io` is now checked against the SHA-256 published next to it before it is used, and so is the kubectl bundled into releases. A missing checksum or a mismatch stops the download. kubectl binaries cached by earlier versions are downloaded and verified again once.
-- **Release provenance** — releases include a `SHA256SUMS` file and one SPDX SBOM per front end (the desktop app; `klew-mcp`), each built from what ships. Every artifact has signed build provenance and SBOM attestations (`gh attestation verify <file> --repo glnreddy421/klew`).
-- **`klew-mcp` release binaries** — signed and notarized macOS binaries and Linux binaries, for arm64 and amd64, are published with each release alongside the desktop app.
+- **Release provenance** — releases include a `SHA256SUMS` file and one SPDX SBOM per front end (the desktop app; the `klew` command), each built from what ships. Every artifact has signed build provenance and SBOM attestations (`gh attestation verify <file> --repo glnreddy421/klew`).
+- **`klew` command release binaries** — signed and notarized macOS binaries and Linux binaries, for arm64 and amd64, are published with each release alongside the desktop app.
 - **Hardened workflows** — every GitHub Action is pinned to a commit SHA, workflows get no token permissions by default, and the release job asks only for what it uses.
 - **Go toolchain** — builds use Go 1.26.10, which fixes standard-library vulnerabilities in `net/http`, `crypto/tls`, `crypto/x509` and `encoding/asn1` that earlier toolchains left in release binaries.
 
+### Command line
+
+- **`klew investigate`** — a new `klew` command for macOS and Linux prints an investigation in the terminal: the verdict, problems, causal chain, incidents and warning timeline (Overview); failing pods with container states, exit codes and events (Failures); log and event patterns (Patterns); and event ↔ log correlations, claims, observations, gaps and next checks (Evidence). Read-only; `-only` picks sections, `-all` lifts the top-10 limits, `-o json` prints every field, and the exit status is 0 healthy, 3 warning, 4 critical. Reads the desktop app's recorded events when present. Output is not redacted. See [docs/cli.md](docs/cli.md).
+
 ### MCP server
 
-- **`klew-mcp`** — a new read-only MCP server that gives AI assistants Klew's analysis over stdio. Tools: `klew_list_contexts`, `klew_investigate` (verdict, causal chain, failing pods, patterns, incidents, related change, next checks), `klew_investigation_details` (paged sections of an investigation), `klew_event_history` (live plus recorded events with coverage), and `klew_workload_changes` (revisions with field-level diffs). Runs without the desktop app, on macOS and Linux; reads the desktop app's recorded events when present. See [docs/mcp.md](docs/mcp.md).
-- **Data handling** — `klew-mcp` masks common credential formats (authorization headers, JWTs, `password=`-style pairs, URL credentials, known token prefixes, private keys) and email addresses in every result before it reaches the AI provider. This is best effort and can miss sensitive values. `-no-log-samples` leaves raw container log lines out entirely while keeping patterns and counts. Tool inputs are validated against Kubernetes name rules.
+- **`klew mcp`** — a new read-only MCP server that gives AI assistants Klew's analysis over stdio, run by the new `klew` command (or the desktop app as `Klew mcp`). Tools: `klew_list_contexts`, `klew_investigate` (verdict, causal chain, failing pods, patterns, incidents, related change, next checks), `klew_investigation_details` (paged sections of an investigation), `klew_event_history` (live plus recorded events with coverage), and `klew_workload_changes` (revisions with field-level diffs). Runs without the desktop app, on macOS and Linux; reads the desktop app's recorded events when present. See [docs/mcp.md](docs/mcp.md).
+- **Homebrew** — `brew install glnreddy421/klew/klew-cli` installs the `klew` command on macOS and Linux; the release workflow updates the formula alongside the app cask.
+- **Set up MCP in the desktop app** — a Home card (and **Tools → Set Up MCP…**) shows ready-to-copy configuration for Claude Code, Claude Desktop, Cursor and other clients, with a default context, `-no-log-samples` and `-no-history`. The app's own binary serves MCP as `Klew mcp`, with the same flags and behaviour as `klew mcp` (both run one implementation), so desktop users need no separate install; the dialog also offers a standalone `klew` command it finds on the machine. It only shows text to copy and changes no client configuration.
+- **Lookups without an investigation** — `klew_list_resources` lists any resource type the cluster serves, custom resources included, as compact rows with label and field selectors; `klew_get_resource` returns one object's summary, conditions, pod container states or ConfigMap data, and optionally its YAML; `klew_pod_logs` reads a container's recent or previous log lines. All three call the API directly (no `kubectl`), never return Secret values (only type, key names and sizes), drop `managedFields` and `last-applied-configuration`, and mask credential-named env and ConfigMap values. `klew_pod_logs` is not offered with `-no-log-samples`. Two prompts, `troubleshoot_namespace` and `troubleshoot_workload`, give clients a ready starting point. `klew_event_history` gains `reason` (comma-separated) and `object_kind` filters, applied to recorded events before the row cap so frequent events cannot push matches out.
+- **Data handling** — `klew mcp` masks common credential formats (authorization headers, JWTs, `password=`-style pairs, URL credentials, known token prefixes, private keys) and email addresses in every result before it reaches the AI provider. This is best effort and can miss sensitive values. `-no-log-samples` leaves raw container log text out while keeping generalised patterns and counts; patterns can still contain fixed words from log lines. Tool inputs are validated against Kubernetes name rules.
+- **Every problem in one call** — `klew_investigate` returns the engine's `problems` list: each unhealthy workload or object with its state, the facts behind it, and the rules that found it. Pods also report probes, ports and mounts, and unschedulable pods their scheduler message and requests.
+
+### Desktop
+
+- **Settings → Extensions** — add a rule file, link a folder of rules (read in place, so edits in your own repository apply on **Reload**), see every collector and rule as loaded or skipped with the reason, and test every rule against a namespace. No restart needed. `klew mcp` reads the same folders, recorded in `extension-sources.json`.
+- **Help shortcuts updated** — the list now matches the menu (⌘K Investigate, ⌘` terminal, ⇧⌘L live logs, ⇧⌘` split, ⌘N, ⌘R, ⌘,).
+- **No sidebar** — the left navigation rail (Home, Resources, Terminal, Live logs) is gone. Home stays on the top bar's house button, choosing a cluster on Home opens Resources, and **Terminal** and **Live logs** are toggle buttons in the top bar (the Live logs button shows the stream's live dot).
+- **Focus chain removed** — the Focus buttons, the inspector's **Focus chain** button and the pinned chain view are gone. Investigate covers the same need: it scopes to an object and what it uses. The inspector's Connection trace stays.
+- **Inspector status on the meta line** — status such as *No ready replicas* now reads after kind and namespace ("Deployment · holdout · No ready replicas") instead of a badge that crowded the header buttons.
+- **Breadcrumb follows the object** — it shows the object's own namespace, and investigating an object selects it, so the breadcrumb no longer names a different, stale row.
+- **Investigable types from collectors** — the collectors alone decide what can be investigated. The inspector's **Investigate** button is now a telescope icon. It is enabled only for types a collector reads; for any other type it is disabled and says Klew has no collector for it, instead of starting an investigation that would report "not found". Investigations of such a type now say "Klew has no collector for …". ReplicaSets can now be picked as targets.
+- **Investigate any resource** — select a namespaced resource and click **Investigate** in the inspector. In Investigate mode the **Target** picker is a searchable multi-select, grouped by type, filled from the engine's collectors (custom ones included); types you may not list are named with the reason.
+- **Investigate from Resources** — Resources has a **Watch | Investigate** switch. Investigate mode picks one namespace, optionally narrows to one **Target** resource, and has a **Logs** toggle to investigate without reading container logs. Results open as tabs on the same screen (Overview, Patterns, Failures, Evidence, Graph) instead of separate sidebar entries; switching back to Watch keeps the investigation running until Stop. The top bar's search box is gone, and ⌘K opens Investigate mode.
+
+### Investigations
+
+- **Extension mistakes are reported, not hidden** — a rule whose `resource` names nothing it can read is skipped with a suggestion (*Did you mean "certificates"?*); a `when` that returns something other than true or false, a fact that fails, and a rule that stops at 200 findings now each add a warning instead of passing silently.
+- **Test extensions** — `klew mcp -check-extensions` lists what loaded and every problem; `klew mcp -dry-run RULE -object FILE` or `-namespace NS` runs one rule and prints each object's result; `klew mcp -dry-run-all -namespace NS` runs every rule in the folder against one namespace, read once, with a summary and a failing exit status for CI. All are read-only.
+- **Permissions checked first, gaps stated** — before any collector runs, Klew reviews every permission it needs with the API server and skips collectors you may not use. Each investigation records what every collector did (collected, no permission, not installed, failed, off) and says plainly what was not checked; `klew mcp` returns it as `not_collected`. Fixes permission checks that named no API group, which made Roles granting `apps` Deployments, `batch` Jobs or `networking.k8s.io` Ingresses look like missing permissions to non-admin users.
+- **Several targets** — investigate several resources at once (`Deployment/api,Service/web`); targets that do not exist are named.
+
+- **Investigate exactly one object** — an investigation of `Kind/name` now covers that object, the pods it reaches through owners, selectors, Ingress backends or ConfigMap, Secret and PVC references, and the objects related to them. Names are no longer matched by substring, so `deployment/api` no longer pulls in `payment-api`. Any kind can be the target, including custom collectors' kinds. A bare name covers every object with exactly that name. Live events and pods follow the same scope, including pods of a new rollout.
+
+- **Recent live events only** — rules that read events (probe failures, CronJob schedule problems, claim provisioning errors) ignore events recorded from history and events older than an hour, so recovered problems are not reported as current.
+
+- **Collectors and rules** — the engine is now built from collectors (what is read from the cluster) and rules (what is wrong), shared by the desktop app and `klew mcp`. Rules produce a `problems` list: every unhealthy workload or object in scope, grouped by owner, with the facts behind its state.
+- **Custom collectors and rules** — add YAML files to the `extensions` folder of Klew's data directory: collectors list one resource type (never Secrets), rules are CEL expressions over one object. See [docs/extensions.md](docs/extensions.md).
+- **More resource types** — built-in collectors and rules for PersistentVolumeClaims, StorageClasses and PersistentVolumes; PodDisruptionBudgets; NetworkPolicies; ServiceAccounts, Roles and RoleBindings; Gateway API Gateways, GatewayClasses and HTTPRoutes; ValidatingAdmissionPolicies and bindings; ResourceClaims; and OLM ClusterServiceVersions, Subscriptions, InstallPlans, CatalogSources, OperatorGroups, ClusterExtensions and ClusterCatalogs. They list in parallel, skip APIs the cluster does not have, and report missing list permissions once. A claim's findings appear under the workload that mounts it.
+- **Workloads, configuration, Ingress and webhooks** — CronJobs (suspended, failing, missed schedules), StatefulSets (stalled rollouts, missing governing Service), DaemonSets (no matching nodes, unavailable pods), ConfigMaps (missing ones used by unready pods; only key names are read, never values), Ingresses (missing or unset IngressClass, missing or unready backends), and admission webhooks served from the namespace whose Service is down.
+- **Headline** — investigations carry a one-line summary of every problem ("7 problems: 4 critical, 3 high. Worst: …"). When the leading signal only says that something was logged, it now names the worst problem instead.
+- **Robustness** — a rule or collector that fails, even by crashing, is skipped with a warning instead of stopping the investigation. Grouping problems scales linearly: 5,000 failing pods take milliseconds, not the better part of a minute.
+- **New checks** — pods rejected at creation (LimitRange, ResourceQuota, webhooks) even when no pod exists; failed Jobs and CronJobs, with their pods grouped under them; failing init containers; Services whose selector matches no pods, naming the closest pod's mismatched labels; containers restarted by their liveness probe, including pods that look Ready between restarts; and False Deployment conditions such as `ProgressDeadlineExceeded`.
+
+- **Pending pods count as unready** — a pod with no container statuses yet (for example one that cannot be scheduled) was counted as ready. It now counts as unready and its containers' requests are shown.
+- **Service endpoint totals include unready pods** — a Service whose pods all fail readiness showed 0/0 endpoints, so endpoint-loss signals never fired. It now shows 0/N.
+- **Timeouts are not labelled Redis** — any log line with a timeout was labelled "Redis timeout". It is now "Timeout", and only timeouts (not lines that merely mention redis) count as a dependency failure.
+- **Suggested fixes name the failing workload** — commands target the workload and container that own the failing pod instead of the first workload found and a container named `app`. `rollout undo` is suggested only when a Deployment has a previous revision. Lab cleanup scripts and the crash-loop patch that removed the container command are no longer suggested.
+
+### Live logs
+
+- **Stream logs from what you select** — select a pod, workload or Service in Resources and click **Stream logs** in the inspector, or ⌘-click (shift-click for a range) several rows and click **Stream logs** or press ⌘⇧L. Workloads and Services follow their label selector, so pods from a rollout or restart join automatically. Works in Watch mode as well as during an investigation; Failures has **Stream logs** for the selected pod and **Stream failing pods**.
+- **One merged stream** — lines from every pod are merged in the order the kubelet logged them, with a colour per pod, `pod/container` on each line, and the date for lines from earlier days. Filter by text or regex to show or hide lines, show errors only, hide individual pods, and toggle timestamps. Pause closes the log connections; Resume replays what was logged meanwhile.
+- **Investigations still learn from logs** — lines streamed from pods an investigation covers feed its Patterns and signals, unless the investigation was started without logs.
+- **Max concurrent log follows** (Settings) now applies to Live logs streams.
+- The Live logs button in the top bar and the pod checklist in the panel are gone; ⌘⇧L and the **Stream logs** actions replace them.
+- **One panel at a time in the dock** — the Terminal / Live logs / Split strip at the bottom of the window is gone, along with the split view (⌘⇧\`). ⌘\` opens the terminal and ⌘⇧L Live logs; maximize, hide and close sit in each panel's header.
+- **Corner launcher** — while the dock is hidden, a pill in the bottom-left corner opens the terminal or Live logs, with a dot when a shell or stream keeps running in the background. It replaces the terminal button in the top bar. With the dock open, the panel header has a button to switch between the two.
+
+### Settings
+
+- **Settings opens as a dialog** over the page you are on instead of replacing it: a section list with icons on the left, the section on the right. It pops in, and closes with Esc, the close button or a click outside. ⌘, and the links that open a section (for example Kubernetes from a connection error) still go straight there.
+
+### Investigate
+
+- **Target picker refresh** — the Target dropdown has a rounded card, a focused search field, type icons in its headings, rounded rows with clearer checkboxes and an **Apply** button that counts your picks. "Whole namespace" is now **All resources**.
+- **Investigate query bar** — Namespace, Target and Logs now sit together in one field group, each with an icon, a small label and its value, and clicking anywhere in a field opens it. Logs is a switch (Included / Off) instead of a checkbox, and Watch / Investigate, the field group and the Investigate button share one height.
+- **No terminal or logs dock on Home** — the dock, its top-bar button and ⌘\` / ⌘⇧L only work once you are in a cluster (Resources and the investigation tabs). An open dock reappears when you leave Home.
+
+### Motion
+
+- **Calm, consistent transitions** — page changes, switching resource type, opening the inspector, the dock and menus now fade in over about 180 ms with a small rise, using one shared set of timings. Switching context keeps the current page in place, dimmed under a thin progress line, until the new cluster's page fades in, instead of jumping to empty placeholders. Hover feedback eases instead of snapping. All of it turns off with macOS **Reduce motion**.
+
+### Tooling
+
+- Bump **Wails** to v2.17.1 (CLI, module, release CI).
 
 ## [1.5.0] — 2026-10-24
 

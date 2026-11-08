@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
 import { KindIcon } from '../KindIcon.jsx'
-import { StatusBadge } from '../incident/StatusBadge.jsx'
 import { LoadingBar } from '../LoadingSpinner.jsx'
 import { useScopeBrowse } from '../../context/ScopeBrowseContext.jsx'
 import { prefetchResourceManifest } from '../../lib/manifestCache.js'
 import { buildManifestTarget } from '../../lib/manifestTarget.js'
-import { resolvePodLogsTarget, podLogsTerminalEnabled } from '../../lib/podLogsTerminal.js'
+import { resolvePodLogsTarget } from '../../lib/podLogsTerminal.js'
 import { useResourcesWorkbench } from '../../views/ResourcesWorkbenchView.jsx'
 import { InspectorHeaderActions } from './InspectorHeaderActions.jsx'
+import { useInvestigable } from '../../context/InvestigableContext.jsx'
+import { rowInvestigateState } from '../../lib/investigable.js'
 import { inspectScope } from '../../lib/inspectScope.js'
+import { canStreamKind, streamLogsTitle } from '../../lib/logStream.js'
+import { useLogStreamActions } from '../../context/LogStreamContext.jsx'
 import { ResourceManifestView } from './ResourceManifestView.jsx'
 
 function statusTone(inspect, inspectRow) {
@@ -23,7 +26,7 @@ export function InspectorPanel({
   placement = 'right',
   onPlacementChange,
   onClose,
-  onOpenPodLogs,
+  onInvestigate,
   children,
   cluster,
 }) {
@@ -48,20 +51,32 @@ export function InspectorPanel({
     || (inspectRow?.status === 'healthy' ? 'Ready' : inspectRow?.signal)
     || null
 
+  const investigable = useInvestigable()
+  const investigate = rowInvestigateState(investigable?.index, inspectRow, kindGroup, { loaded: investigable?.loaded !== false })
   const manifestTarget = useMemo(
     () => buildManifestTarget(inspectRow, kindGroup),
     [inspectRow, kindGroup],
   )
   const manifestEnabled = Boolean(manifestTarget)
-  const podLogsTarget = useMemo(
-    () => resolvePodLogsTarget(inspectRow, workbench?.view),
-    [inspectRow, workbench?.view],
-  )
-  const podLogsEnabled = podLogsTerminalEnabled(inspectRow)
+  const podStreamContainers = useMemo(() => {
+    const t = resolvePodLogsTarget(inspectRow, workbench?.view)
+    return t?.containers || []
+  }, [inspectRow, workbench?.view])
 
   useEffect(() => {
     setManifestOpen(false)
   }, [inspectRow?.key])
+
+  const logStreamActions = useLogStreamActions()
+  const streamResource = useMemo(() => {
+    if (!inspectRow?.kind || !inspectRow?.name || !scope.namespace || !canStreamKind(inspectRow.kind)) return null
+    return { kind: inspectRow.kind, name: inspectRow.name, namespace: scope.namespace }
+  }, [inspectRow?.kind, inspectRow?.name, scope.namespace])
+
+  // ⌘⇧L streams the inspected resource when no table rows are picked.
+  useEffect(() => {
+    logStreamActions?.setSelection('inspector', streamResource ? [streamResource] : [])
+  }, [logStreamActions, streamResource])
 
   useEffect(() => {
     if (!manifestTarget) return undefined
@@ -94,11 +109,14 @@ export function InspectorPanel({
                       <span className={scope.namespaced ? 'mono' : undefined}>{scope.label}</span>
                     </>
                   ) : null}
+                  {statusLabel && !detailLoading ? (
+                    <>
+                      <span className="inspect-meta-sep">·</span>
+                      <span className={`inspector-header-status tone-${tone}`} title={statusLabel}>{statusLabel}</span>
+                    </>
+                  ) : null}
                 </p>
               </div>
-              {statusLabel && !detailLoading ? (
-                <StatusBadge status={inspect?.status?.tone || inspectRow.status} label={statusLabel} />
-              ) : null}
             </>
           ) : (
             <>
@@ -114,12 +132,21 @@ export function InspectorPanel({
           manifestOpen={manifestOpen}
           manifestEnabled={manifestEnabled}
           onToggleManifest={() => setManifestOpen((v) => !v)}
-          podLogsEnabled={podLogsEnabled}
-          podLogsContainers={podLogsTarget?.containers || []}
-          onOpenPodLogs={({ container } = {}) => {
-            if (!podLogsTarget) return
-            onOpenPodLogs?.({ ...podLogsTarget, container: container || '' })
-          }}
+          podStreamContainers={podStreamContainers}
+          investigateEnabled={Boolean(onInvestigate && inspectRow?.kind && inspectRow?.name && investigate.ok)}
+          investigateTitle={investigate.title}
+          onInvestigate={() => onInvestigate?.(inspectRow)}
+          streamLogsEnabled={Boolean(streamResource)}
+          streamLogsTitle={streamResource ? streamLogsTitle(streamResource.kind, streamResource.name) : ''}
+          onStreamLogs={
+            logStreamActions && streamResource
+              ? (container) => (
+                streamResource.kind === 'Pod' && container
+                  ? logStreamActions.streamPodLogs({ ...streamResource, container })
+                  : logStreamActions.streamResources([streamResource])
+              )
+              : undefined
+          }
         />
       </header>
       {detailLoading ? (

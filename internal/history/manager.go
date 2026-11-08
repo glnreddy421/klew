@@ -560,7 +560,8 @@ func recordedEvents(ctx context.Context, store *Store, settings Settings, now ti
 	}
 	rows, err := store.Events(ctx, EventQuery{
 		ClusterKey: key, Namespace: q.Namespace, Since: since,
-		RegardingName: q.RegardingName, NamePrefix: q.NamePrefix, Limit: limit,
+		RegardingName: q.RegardingName, NamePrefix: q.NamePrefix, Type: q.Type,
+		Reasons: q.Reasons, RegardingKind: q.RegardingKind, Limit: limit,
 	})
 	if err != nil {
 		return nil, model.EventHistoryCoverage{}, err
@@ -576,6 +577,12 @@ func recordedEvents(ctx context.Context, store *Store, settings Settings, now ti
 	mc := model.EventHistoryCoverage{Gaps: toRanges(cov.Gaps)}
 	if cov.Recorded() {
 		mc.Since = model.TimestampFrom(cov.Since)
+	} else {
+		last, err := store.LastRecorded(ctx, key)
+		if err != nil {
+			return nil, model.EventHistoryCoverage{}, err
+		}
+		mc.LastRecorded = model.TimestampFrom(last)
 	}
 	return out, mc, nil
 }

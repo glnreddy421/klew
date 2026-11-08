@@ -15,6 +15,8 @@ const DefaultJaccardThreshold = 0.6
 
 // BuildEvidenceBoard correlates Event templates against Log templates using
 // synchronized volume_history / sparkline series (Jaccard on active minutes).
+// When both templates name their pods, they must share one: lines from another
+// workload that happen to log in the same minutes are not evidence.
 //
 // Isolation: operates only on already-built template payloads — never touches
 // live Miner / MetaStore state. Returned cards deep-copy constituent templates.
@@ -56,6 +58,9 @@ func BuildEvidenceBoard(
 
 		links := make([]link, 0, 4)
 		for li := range logTemplates {
+			if !sharePod(eventTemplates[ei].Pods, logTemplates[li].Pods) {
+				continue
+			}
 			logVol := volumeSeries(logTemplates[li])
 			score := jaccardActiveSlots(evVol, logVol)
 			if score >= threshold {
@@ -109,6 +114,21 @@ func BuildEvidenceBoard(
 		CardCount:      len(cards),
 		CorrelatedLogs: correlatedLogs,
 	}
+}
+
+// sharePod reports whether a and b have a pod in common, or either is empty.
+func sharePod(a, b []string) bool {
+	if len(a) == 0 || len(b) == 0 {
+		return true
+	}
+	for _, x := range a {
+		for _, y := range b {
+			if x == y {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // jaccardActiveSlots computes |A∩B| / |A∪B| over minutes where volume > 0.

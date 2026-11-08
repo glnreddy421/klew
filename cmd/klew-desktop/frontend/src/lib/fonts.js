@@ -6,30 +6,30 @@ import {
   writeFontCache,
 } from './fontCache.js'
 
-export const DEFAULT_UI_FONT = 'jakarta'
+export const DEFAULT_UI_FONT = 'inter'
 
 /** @typedef {{ id: string, name: string, description: string, sans: string, mono: string, googleFonts?: string | null, sample?: string }} UiFontPreset */
 
 /** @type {UiFontPreset[]} */
 export const UI_FONT_PRESETS = [
   {
+    id: 'inter',
+    name: 'Inter',
+    description: 'Clear at small sizes — default',
+    sans: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    mono: "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
+    googleFonts:
+      'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap',
+    sample: 'Overview 142m',
+  },
+  {
     id: 'jakarta',
     name: 'Jakarta',
-    description: 'Modern & friendly — default',
+    description: 'Modern & friendly',
     sans: "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
     mono: "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
     googleFonts:
       'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap',
-    sample: 'Overview 142m',
-  },
-  {
-    id: 'inter',
-    name: 'Inter',
-    description: 'Neutral, widely used UI sans',
-    sans: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-    mono: "'IBM Plex Mono', ui-monospace, Menlo, Monaco, Consolas, monospace",
-    googleFonts:
-      'https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap',
     sample: 'Overview 142m',
   },
   {
@@ -116,7 +116,7 @@ export function applyUiFontShell(id) {
 async function fetchAndCachePreset(preset) {
   if (!preset.googleFonts) return null
   const css = await downloadFontCss(preset.googleFonts)
-  await writeFontCache(preset.id, css)
+  await writeFontCache(preset.id, css, preset.googleFonts)
   return css
 }
 
@@ -158,10 +158,12 @@ export async function applyUiFont(id, { forceRefresh = false } = {}) {
   }
 
   const cached = forceRefresh ? null : await readFontCache(preset.id)
+  // A preset whose font list changed must not keep serving the old CSS.
+  const cacheMatches = cached?.css && (!cached.src || cached.src === preset.googleFonts)
 
-  if (cached?.css) {
+  if (cacheMatches) {
     injectFontStyle(preset.id, cached.css)
-    if (isFontCacheStale(cached.updatedAt)) {
+    if (isFontCacheStale(cached.updatedAt) || !cached.src) {
       refreshFontCache(preset).catch(() => {})
     }
     return preset.id

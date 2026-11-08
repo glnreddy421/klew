@@ -4,84 +4,60 @@ import (
 	"context"
 	"fmt"
 
-	authorizationv1 "k8s.io/api/authorization/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	"github.com/glnreddy421/klew/internal/model"
 )
 
-// requiredPermissions are probed before collection.
-var requiredPermissions = []struct {
-	Resource  string
-	Verb      string
-	Namespace bool
-}{
-	{"deployments", "get", true},
-	{"deployments", "list", true},
-	{"deployments", "watch", true},
-	{"replicasets", "list", true},
-	{"replicasets", "watch", true},
-	{"pods", "list", true},
-	{"pods", "get", true},
-	{"pods", "watch", true},
-	{"pods/log", "get", true},
-	{"services", "list", true},
-	{"services", "watch", true},
-	{"endpointslices", "list", true},
-	{"events", "list", true},
-	{"events", "watch", true},
-	{"ingresses", "list", true},
-	{"horizontalpodautoscalers", "list", true},
-	{"nodes", "list", false},
-	{"configmaps", "list", true},
-	{"secrets", "list", true},
-	{"persistentvolumeclaims", "list", true},
+// scopeAccess is what resolving the scope and the pod-centric collectors read.
+// Each names its API group: a review without one asks about the core group,
+// which a Role granting apps/deployments does not cover.
+var scopeAccess = []Access{
+	{Group: "apps", Resource: "deployments", Verb: "get"},
+	{Group: "apps", Resource: "deployments", Verb: "list"},
+	{Group: "apps", Resource: "deployments", Verb: "watch"},
+	{Group: "apps", Resource: "replicasets", Verb: "list"},
+	{Group: "apps", Resource: "replicasets", Verb: "watch"},
+	{Resource: "pods", Verb: "list"},
+	{Resource: "pods", Verb: "get"},
+	{Resource: "pods", Verb: "watch"},
+	{Resource: "pods", Subresource: "log", Verb: "get"},
+	{Resource: "services", Verb: "list"},
+	{Resource: "services", Verb: "watch"},
+	{Group: "discovery.k8s.io", Resource: "endpointslices", Verb: "list"},
+	{Resource: "events", Verb: "list"},
+	{Resource: "events", Verb: "watch"},
+	{Group: "networking.k8s.io", Resource: "ingresses", Verb: "list"},
+	{Group: "autoscaling", Resource: "horizontalpodautoscalers", Verb: "list"},
+	{Group: "batch", Resource: "jobs", Verb: "list"},
+	{Resource: "nodes", Verb: "list", ClusterScoped: true},
+	{Resource: "configmaps", Verb: "list"},
+	{Resource: "persistentvolumeclaims", Verb: "list"},
 }
 
-// CheckPermissions runs SelfSubjectAccessReview for read operations.
+// CheckPermissions reviews scopeAccess in namespace, in order, and describes
+// each denied or unreviewable permission.
 func CheckPermissions(ctx context.Context, c *Client, namespace string) ([]model.PermissionCheck, []string) {
-	var checks []model.PermissionCheck
-	var warnings []string
-	auth := c.Clientset.AuthorizationV1()
-
-	for _, p := range requiredPermissions {
-		ns := namespace
-		if !p.Namespace {
-			ns = ""
-		}
-		sar := &authorizationv1.SelfSubjectAccessReview{
-			Spec: authorizationv1.SelfSubjectAccessReviewSpec{
-				ResourceAttributes: &authorizationv1.ResourceAttributes{
-					Namespace: ns,
-					Verb:      p.Verb,
-					Resource:  p.Resource,
-				},
-			},
-		}
-		result, err := auth.SelfSubjectAccessReviews().Create(ctx, sar, metav1.CreateOptions{})
-		allowed := false
+	results := checkAccess(ctx, c, namespace, scopeAccess)
+	checks := make([]model.PermissionCheck, 0, len(scopeAccess))
+	var notes []string
+	for _, a := range scopeAccess {
+		check := results[a.key(namespace)]
+		checks = append(checks, check)
 		switch {
-		case err != nil:
-			warnings = append(warnings, fmt.Sprintf("permission check failed for %s/%s: %v", p.Resource, p.Verb, err))
-		case result.Status.Allowed:
-			allowed = true
-		default:
-			warnings = append(warnings, fmt.Sprintf("Missing permission: %s %s (namespace=%s)", p.Verb, p.Resource, ns))
+		case check.Error != "":
+			notes = append(notes, fmt.Sprintf("permission check failed for %s: %s", a, check.Error))
+		case !check.Allowed:
+			notes = append(notes, fmt.Sprintf("Missing permission: %s (namespace=%s)", a, check.Namespace))
 		}
-		checks = append(checks, model.PermissionCheck{
-			Resource:  p.Resource,
-			Verb:      p.Verb,
-			Namespace: ns,
-			Allowed:   allowed,
-		})
 	}
-	return checks, warnings
+	return checks, notes
 }
 
+// allowed reports whether verb on resource may be tried: allowed, or unknown
+// because the review itself failed.
 func allowed(checks []model.PermissionCheck, resource, verb string) bool {
 	for _, c := range checks {
 		if c.Resource == resource && c.Verb == verb {
-			return c.Allowed
+			return c.Allowed || c.Error != ""
 		}
 	}
 	return false

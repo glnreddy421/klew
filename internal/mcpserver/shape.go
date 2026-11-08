@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
@@ -17,32 +18,38 @@ import (
 const maxTextLen = 400
 
 type containerBrief struct {
-	Name         string `json:"name"`
-	Image        string `json:"image,omitempty"`
-	Ready        bool   `json:"ready"`
-	Restarts     int32  `json:"restarts"`
-	State        string `json:"state"`
-	Reason       string `json:"reason,omitempty"`
-	Message      string `json:"message,omitempty"`
-	ExitCode     int32  `json:"exit_code,omitempty"`
-	LastState    string `json:"last_state,omitempty"`
-	LastReason   string `json:"last_reason,omitempty"`
-	LastExitCode int32  `json:"last_exit_code,omitempty"`
-	RequestsCPU  string `json:"requests_cpu,omitempty"`
-	RequestsMem  string `json:"requests_mem,omitempty"`
-	LimitsCPU    string `json:"limits_cpu,omitempty"`
-	LimitsMem    string `json:"limits_mem,omitempty"`
+	Name           string   `json:"name"`
+	Image          string   `json:"image,omitempty"`
+	Ready          bool     `json:"ready"`
+	Restarts       int32    `json:"restarts"`
+	State          string   `json:"state"`
+	Reason         string   `json:"reason,omitempty"`
+	Message        string   `json:"message,omitempty"`
+	ExitCode       int32    `json:"exit_code,omitempty"`
+	LastState      string   `json:"last_state,omitempty"`
+	LastReason     string   `json:"last_reason,omitempty"`
+	LastExitCode   int32    `json:"last_exit_code,omitempty"`
+	RequestsCPU    string   `json:"requests_cpu,omitempty"`
+	RequestsMem    string   `json:"requests_mem,omitempty"`
+	LimitsCPU      string   `json:"limits_cpu,omitempty"`
+	LimitsMem      string   `json:"limits_mem,omitempty"`
+	Ports          []string `json:"ports,omitempty"`
+	ReadinessProbe string   `json:"readiness_probe,omitempty"`
+	LivenessProbe  string   `json:"liveness_probe,omitempty"`
+	Mounts         []string `json:"mounts,omitempty"`
 }
 
 type podBrief struct {
-	Name       string           `json:"name"`
-	Phase      string           `json:"phase"`
-	Ready      bool             `json:"ready"`
-	Restarts   int32            `json:"restarts"`
-	Node       string           `json:"node,omitempty"`
-	Owner      string           `json:"owner,omitempty"`
-	CreatedAt  model.Timestamp  `json:"created_at,omitempty"`
-	Containers []containerBrief `json:"containers"`
+	Name      string          `json:"name"`
+	Phase     string          `json:"phase"`
+	Ready     bool            `json:"ready"`
+	Restarts  int32           `json:"restarts"`
+	Node      string          `json:"node,omitempty"`
+	Owner     string          `json:"owner,omitempty"`
+	CreatedAt model.Timestamp `json:"created_at,omitempty"`
+	// Unschedulable is the scheduler's reason when the pod cannot be placed.
+	Unschedulable string           `json:"unschedulable,omitempty"`
+	Containers    []containerBrief `json:"containers"`
 }
 
 type signalBrief struct {
@@ -132,6 +139,27 @@ func clean(s string) string {
 	return string(r[:maxTextLen]) + "…"
 }
 
+const maxWarnings = 20
+
+// briefWarnings cleans and de-duplicates warnings, keeping the first maxWarnings
+// and saying how many were left out.
+func briefWarnings(lists ...[]string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, list := range lists {
+		for _, w := range list {
+			if !seen[w] {
+				seen[w] = true
+				out = append(out, clean(w))
+			}
+		}
+	}
+	if extra := len(out) - maxWarnings; extra > 0 {
+		out = append(out[:maxWarnings], fmt.Sprintf("…and %d more warnings.", extra))
+	}
+	return out
+}
+
 func refString(r model.ObjectRef) string {
 	if r.Name == "" {
 		return r.Kind
@@ -145,7 +173,8 @@ func refString(r model.ObjectRef) string {
 func briefPod(p model.PodSummary) podBrief {
 	out := podBrief{
 		Name: p.Name, Phase: p.Phase, Ready: p.Ready, Restarts: p.RestartCount,
-		Node: p.Node, CreatedAt: p.CreatedAt, Containers: make([]containerBrief, 0, len(p.Containers)),
+		Node: p.Node, CreatedAt: p.CreatedAt, Unschedulable: clean(p.Unschedulable),
+		Containers: make([]containerBrief, 0, len(p.Containers)),
 	}
 	if len(p.OwnerRefs) > 0 {
 		out.Owner = refString(p.OwnerRefs[0])
@@ -156,6 +185,7 @@ func briefPod(p model.PodSummary) podBrief {
 			State: c.State, Reason: c.Reason, Message: clean(c.Message), ExitCode: c.ExitCode,
 			LastState: c.LastState, LastReason: c.LastReason, LastExitCode: c.LastExitCode,
 			RequestsCPU: c.RequestsCPU, RequestsMem: c.RequestsMem, LimitsCPU: c.LimitsCPU, LimitsMem: c.LimitsMem,
+			Ports: c.Ports, ReadinessProbe: clean(c.ReadinessProbe), LivenessProbe: clean(c.LivenessProbe), Mounts: c.Mounts,
 		})
 	}
 	return out
@@ -201,11 +231,27 @@ func allSignals(v model.Verdict) []model.Signal {
 }
 
 // shaper projects engine state for tool results. With noLogSamples it leaves
-// out raw container log text: pattern samples, log evidence messages, and log
-// excerpts in signals, the timeline and the causal chain. Templates, counts,
-// trends and every non-log signal are kept.
+// out raw container log text: pattern samples, log evidence messages,
+// termination messages, log templates that merged no differing lines, and log
+// excerpts in signals, the timeline and the causal chain. Generalised templates,
+// counts, trends and every non-log signal are kept.
 type shaper struct {
 	noLogSamples bool
+}
+
+// pod drops terminated containers' messages when log samples are off: they are
+// written by the application, and with FallbackToLogsOnError are the log tail.
+// Waiting messages come from the kubelet and stay.
+func (sh shaper) pod(p model.PodSummary) podBrief {
+	out := briefPod(p)
+	if sh.noLogSamples {
+		for i, c := range p.Containers {
+			if c.State == "terminated" {
+				out.Containers[i].Message = ""
+			}
+		}
+	}
+	return out
 }
 
 func (sh shaper) signal(s model.Signal) signalBrief {
@@ -219,11 +265,25 @@ func (sh shaper) signal(s model.Signal) signalBrief {
 	return out
 }
 
+// withheldTemplate replaces a log template that is not a real generalisation.
+const withheldTemplate = "‹log text withheld›"
+
+// isGeneralised reports whether Drain merged differing lines into t. Only then
+// has anything been abstracted: a line that never varied, or was seen once,
+// is its own template, with at most its numbers and addresses masked.
+func isGeneralised(t model.LogTemplate) bool {
+	return t.Count >= 2 && strings.Contains(t.Template, "<*>")
+}
+
 func (sh shaper) pattern(t model.LogTemplate, samples int) patternBrief {
-	if sh.noLogSamples {
-		samples = 0
+	if !sh.noLogSamples {
+		return briefPattern(t, samples)
 	}
-	return briefPattern(t, samples)
+	out := briefPattern(t, 0)
+	if !isGeneralised(t) {
+		out.Template = withheldTemplate
+	}
+	return out
 }
 
 func (sh shaper) evidence(e model.EvidenceEvent) evidenceBrief {
@@ -281,7 +341,8 @@ func (sh shaper) causalChain(chain []string, tl []model.TimelineEvent) []string 
 	var logText []string
 	for _, e := range tl {
 		if e.Type == string(model.SourceLog) && e.Reason == "" && e.Message != "" {
-			logText = append(logText, e.Message)
+			// Chain labels are whitespace-normalised (engine firstWords).
+			logText = append(logText, strings.Join(strings.Fields(e.Message), " "))
 		}
 	}
 	var out []string

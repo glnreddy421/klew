@@ -1,4 +1,4 @@
-/** Live tail — multipod container logs only. Events/correlation live in Timeline. */
+/** Log line helpers shared by the Live logs panel and Patterns. */
 
 export const StreamMode = {
   Logs: 'logs',
@@ -41,31 +41,6 @@ export function resolveEventPod(e) {
   return ''
 }
 
-/** Needle used for pod-name matching (supports kind/name queries). */
-export function queryNeedle(query) {
-  const q = String(query || '').trim()
-  if (!q) return ''
-  if (q.includes('/')) {
-    const parts = q.split('/').map((p) => p.trim()).filter(Boolean)
-    return parts[parts.length - 1] || q
-  }
-  return q
-}
-
-/**
- * Pod matches investigation search (regex if valid, else case-insensitive substring).
- */
-export function podMatchesQuery(podName, query) {
-  const name = String(podName || '')
-  const needle = queryNeedle(query)
-  if (!needle) return true
-  try {
-    return new RegExp(needle, 'i').test(name)
-  } catch {
-    return name.toLowerCase().includes(needle.toLowerCase())
-  }
-}
-
 /** Log line matches the live-tail text filter (regex if valid). */
 export function logMatchesSearch(text, search) {
   const q = String(search || '').trim()
@@ -76,152 +51,6 @@ export function logMatchesSearch(text, search) {
   } catch {
     return hay.toLowerCase().includes(q.toLowerCase())
   }
-}
-
-export function matchedPodNames(snapshotPods = [], query = '') {
-  return (snapshotPods || [])
-    .map((p) => p?.name)
-    .filter(Boolean)
-    .filter((name) => podMatchesQuery(name, query))
-    .sort((a, b) => a.localeCompare(b))
-}
-
-export function buildStreamGroups(evidence, mode, search, meta = {}) {
-  const selected = normalizePodSelection(meta.pods)
-  let filtered = Array.isArray(evidence) ? evidence : []
-  filtered = filterLogsOnly(filtered, mode)
-  filtered = filterByPods(filtered, selected)
-  filtered = filterBySearch(filtered, search)
-
-  const sorted = [...filtered].sort(
-    (a, b) => new Date(b.timestamp || b.Timestamp || 0) - new Date(a.timestamp || a.Timestamp || 0),
-  )
-  return buildGroupedStream(sorted, meta)
-}
-
-/**
- * Pods available in the filter: snapshot pods + any pods seen in log lines.
- * Matched = query regex/substring hit (default selection).
- */
-export function collectStreamPods(evidence, snapshotPods = [], query = '') {
-  const all = new Set()
-  for (const p of snapshotPods || []) {
-    if (p?.name) all.add(p.name)
-  }
-  for (const e of evidence || []) {
-    if ((e.sourceType || e.SourceType) !== SOURCE_LOG) continue
-    const name = resolveEventPod(e)
-    if (name) all.add(name)
-  }
-  const names = [...all].sort((a, b) => a.localeCompare(b))
-  const matched = names.filter((n) => podMatchesQuery(n, query))
-  const other = names.filter((n) => !podMatchesQuery(n, query))
-  return { all: names, matched, other }
-}
-
-export function streamFilterSummary(mode, selectedPods, matchedCount = 0) {
-  const parts = [streamModeLabel(mode)]
-  const list = normalizePodSelection(selectedPods)
-  if (!list.length) {
-    parts.push(matchedCount ? `all pods (${matchedCount} matched)` : 'all pods')
-  } else if (list.length === 1) {
-    parts.push(`pod=${list[0]}`)
-  } else {
-    parts.push(`${list.length} pods`)
-  }
-  return parts.join(' · ')
-}
-
-/** True when a text search or an explicit pod subset is narrowing the live tail. */
-export function hasActiveStreamFilters(mode, selectedPods, matchedPods = [], search = '') {
-  if (String(search || '').trim()) return true
-  const list = normalizePodSelection(selectedPods)
-  // Empty selection = all pods (no filter).
-  if (!list.length) return false
-  if (mode === StreamMode.ErrorsOnly) return true
-  const matched = normalizePodSelection(matchedPods)
-  if (list.length !== matched.length) return true
-  const set = new Set(matched)
-  return list.some((p) => !set.has(p))
-}
-
-function filterLogsOnly(events, mode) {
-  return events.filter((e) => {
-    const t = e.sourceType || e.SourceType
-    if (t !== SOURCE_LOG) return false
-    // Patterns mode analyzes errors-only atoms separately; keep groups empty here.
-    if (mode === StreamMode.Patterns) return false
-    if (mode === StreamMode.ErrorsOnly) {
-      const sev = e.severity || e.Severity || ''
-      return sev === 'high' || sev === 'critical'
-    }
-    return true
-  })
-}
-
-function filterByPods(events, selected) {
-  // Empty selection means show every tailed pod (no pod filter).
-  if (!selected.length) return events
-  const set = new Set(selected)
-  return events.filter((e) => {
-    const name = resolveEventPod(e)
-    return name && set.has(name)
-  })
-}
-
-function filterBySearch(events, search) {
-  const q = String(search || '').trim()
-  if (!q) return events
-  return events.filter((e) => {
-    const hay = [
-      e.pod || e.Pod,
-      e.container || e.Container,
-      e.message || e.Message,
-      e.raw || e.Raw,
-      resolveEventPod(e),
-    ].join(' ')
-    return logMatchesSearch(hay, q)
-  })
-}
-
-function buildGroupedStream(evs, meta) {
-  const groups = []
-  let cur = null
-
-  for (const e of evs) {
-    const obj = streamObject(e)
-    const msg = streamMessage(e)
-    const groupKey = obj || 'log'
-    const row = {
-      id: e.id || e.ID || `${groupKey}-${e.timestamp || e.Timestamp}-${msg.slice(0, 24)}`,
-      time: formatTime(e.timestamp || e.Timestamp),
-      type: 'LOG',
-      object: obj,
-      severity: e.severity || e.Severity || 'info',
-      message: msg,
-      count: e.count || e.Count || 1,
-      hypothesis: false,
-      fresh: isFreshEvidence(e, meta),
-    }
-
-    if (!cur || cur.key !== groupKey) {
-      if (cur) groups.push(cur)
-      cur = { key: groupKey, kind: 'LOG', rows: [row] }
-      continue
-    }
-    cur.rows.push(row)
-  }
-  if (cur) groups.push(cur)
-
-  const rowCount = groups.reduce((n, g) => n + g.rows.length, 0)
-  return { groups, rowCount }
-}
-
-function streamObject(e) {
-  const pod = resolveEventPod(e)
-  const container = e.container || e.Container
-  if (pod) return container ? `${pod}/${container}` : pod
-  return '—'
 }
 
 /** Strip CSI/OSC color codes from klog/kyverno-style container logs. */
@@ -357,23 +186,6 @@ export function matchEvidenceToTemplate(evidence, templateOrRow, selectedPods = 
   return out
 }
 
-function streamMessage(e) {
-  let m = stripAnsi(e.message || e.Message || e.raw || e.Raw || '')
-  const pod = resolveEventPod(e)
-  const container = e.container || e.Container
-  if (pod && container) m = m.replace(`${pod}/${container}: `, '')
-  if (pod) m = m.replace(`${pod}: `, '')
-  return m.trim() || '—'
-}
-
-function isFreshEvidence(e, meta) {
-  const ref = meta.lastEventAt || meta.updatedAt
-  const ts = e.timestamp || e.Timestamp
-  if (!ref || !ts) return false
-  const age = new Date(ref) - new Date(ts)
-  return age >= 0 && age <= 12_000
-}
-
 function formatTime(ts) {
   if (!ts) return '—'
   return new Date(ts).toLocaleTimeString(undefined, {
@@ -384,6 +196,3 @@ function formatTime(ts) {
   })
 }
 
-export function streamModeLabel(mode) {
-  return STREAM_MODES.find((m) => m.id === mode)?.label || 'All logs'
-}

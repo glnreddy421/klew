@@ -21,12 +21,28 @@ export function HomeView({
   onToggleFavoriteContext,
   onReconnect,
   onOpenProxySettings,
-  onOpenSettings,
+  onOpenMcpSetup,
 }) {
   return (
     <div className="klew-home">
       <section className="klew-home-hero welcome welcome-orbit" aria-label="Klew">
         <CollectingMatchesSplash variant="home" />
+        {onOpenMcpSetup && (
+          <div className="klew-home-mcp">
+            <span className="klew-home-mcp-icon" aria-hidden="true">
+              <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M6 2.5v3M10 2.5v3" />
+                <path d="M4 5.5h8v2.25a4 4 0 0 1-8 0V5.5z" />
+                <path d="M8 11.75v1.75" />
+              </svg>
+            </span>
+            <div className="klew-home-mcp-text">
+              <strong>Use Klew from AI assistants</strong>
+              <span className="muted">Read-only MCP server for Claude, Cursor and others.</span>
+            </div>
+            <button type="button" className="btn btn-sm" onClick={onOpenMcpSetup}>Set up MCP</button>
+          </div>
+        )}
       </section>
 
       <section className="klew-home-clusters" aria-labelledby="klew-home-clusters-title">
@@ -57,39 +73,8 @@ export function HomeView({
             onOpenProxySettings={onOpenProxySettings}
           />
         </div>
-
-        <footer className="klew-home-footer">
-          <button
-            type="button"
-            className="klew-home-settings-btn"
-            onClick={onOpenSettings}
-            title="Kubernetes settings"
-            aria-label="Kubernetes settings"
-          >
-            <KubernetesSettingsIcon />
-          </button>
-        </footer>
       </section>
     </div>
   )
 }
 
-function KubernetesSettingsIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="18"
-      height="18"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M12 3.5 18.5 7v10L12 20.5 5.5 17V7L12 3.5z" />
-      <circle cx="12" cy="12" r="2.25" />
-      <path d="M12 9.75V6.5M12 17.5v-3.25M14.25 10.5l2.83-1.63M9.75 13.5l-2.83 1.63M14.25 13.5l2.83 1.63M9.75 10.5l-2.83-1.63" />
-    </svg>
-  )
-}

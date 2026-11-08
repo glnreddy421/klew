@@ -2,11 +2,18 @@ package kube
 
 import (
 	"bytes"
+	"context"
+	"log/slog"
 	"os"
 	"os/exec"
 	"runtime"
 	"strings"
+	"time"
 )
+
+// loginShellTimeout bounds reading the login shell's environment: it runs
+// before anything else starts, so a slow or hanging profile must not block it.
+const loginShellTimeout = 10 * time.Second
 
 // BootstrapLoginShellEnv merges credential-related variables from the user's
 // login shell into the process environment. macOS GUI apps start with a minimal
@@ -17,8 +24,9 @@ func BootstrapLoginShellEnv() {
 	if runtime.GOOS == "windows" {
 		return
 	}
-	env, err := loginShellEnvironment()
+	env, err := loginShellEnvironment(loginShellTimeout)
 	if err != nil {
+		slog.Warn("login shell environment unavailable; using the process environment", "err", err)
 		return
 	}
 	for key, val := range env {
@@ -50,12 +58,16 @@ func mergeLoginShellVar(key string) bool {
 	return strings.HasPrefix(key, "KUBE")
 }
 
-func loginShellEnvironment() (map[string]string, error) {
+func loginShellEnvironment(timeout time.Duration) (map[string]string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
 	shell := os.Getenv("SHELL")
 	if shell == "" {
 		shell = "/bin/zsh"
 	}
-	cmd := exec.Command(shell, "-lc", "env -0") //nolint:gosec // G702: runs the user's own login shell ($SHELL) with a fixed script to read its environment
+	cmd := exec.CommandContext(ctx, shell, "-lc", "env -0") //nolint:gosec // G702: runs the user's own login shell ($SHELL) with a fixed script to read its environment
+	// A background process from the profile can hold stdout open after the shell dies.
+	cmd.WaitDelay = time.Second
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, err

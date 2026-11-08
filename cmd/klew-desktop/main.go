@@ -4,8 +4,10 @@ import (
 	"embed"
 	"flag"
 	"fmt"
+	"os"
 
 	"github.com/glnreddy421/klew/internal/kube"
+	"github.com/glnreddy421/klew/internal/mcpcli"
 	"github.com/glnreddy421/klew/internal/version"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -17,6 +19,13 @@ import (
 var assets embed.FS
 
 func main() {
+	// "Klew mcp" serves MCP over stdio. It returns before any Wails or app
+	// setup, so it opens no window and adds no Dock icon, and stdout carries
+	// only the protocol.
+	if len(os.Args) > 1 && os.Args[1] == "mcp" {
+		os.Exit(mcpcli.Main(mcpcli.AppProg, os.Args[2:], os.Stdout, os.Stderr))
+	}
+
 	contextName := flag.String("context", "", "initial kube context for this window")
 	namespace := flag.String("namespace", "", "initial namespace for this window")
 	kubeconfig := flag.String("kubeconfig", "", "kubeconfig path override for this window")

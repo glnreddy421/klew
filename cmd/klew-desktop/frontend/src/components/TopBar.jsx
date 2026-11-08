@@ -1,16 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { BrandWordmark, LogoMark } from './Logo'
-import { WindowIsMaximised, WindowToggleMaximise, Environment, EventsOn } from '../../wailsjs/runtime/runtime'
-import {
-  isBlankInvestigationQuery,
-  normalizeInvestigationQuery,
-} from '../lib/investigationQuery'
-import { ContextPopover, NamespacePopover } from './shell/ClusterNamespacePopover.jsx'
+import { TerminalGlyph } from './DockLauncher'
+import { WindowIsMaximised, WindowToggleMaximise, Environment } from '../../wailsjs/runtime/runtime'
+import { ContextPopover } from './shell/ClusterNamespacePopover.jsx'
 import { ClusterConnectionDot } from './shell/ClusterConnectionDot.jsx'
 import { EventRecordingDot } from './shell/EventRecordingDot.jsx'
 import { TimeWindowPopover } from './shell/TimeWindowPopover.jsx'
-import { scopeSupportsInvestigate } from '../lib/browseScope.js'
 import { activeContextLabel } from '../lib/clusterConnection.js'
 import {
   applyTopbarScale,
@@ -23,23 +19,11 @@ import {
 
 export function TopBar({
   cluster,
-  scope,
-  scopeLocked = false,
-  savedScopeLabel = '',
-  investigationNs = '',
-  onScopeChange,
-  scopeVariant = 'browse',
   syncing,
   onSync,
   onContextChange,
-  query,
-  onQueryChange,
-  onQueryClear,
   running,
   starting = false,
-  activeQuery = '',
-  onStart,
-  onStop,
   onNewWindow,
   onOpenSettings,
   onOpenHelp,
@@ -62,42 +46,17 @@ export function TopBar({
   onToggleFavoriteContext,
   connecting = false,
   connectingTarget = null,
+  panelOpen = false,
+  panelRunning = false,
+  onTogglePanel,
 }) {
-  const inputRef = useRef(null)
   const [windowMaximized, setWindowMaximized] = useState(false)
   const [isMac, setIsMac] = useState(false)
-  const [searchExpanded, setSearchExpanded] = useState(false)
-
-  const q = normalizeInvestigationQuery(query)
-  const canInvestigate = scopeSupportsInvestigate(scope) && !starting
-  const queryChanged = running && !isBlankInvestigationQuery(q) && q !== normalizeInvestigationQuery(activeQuery)
   const contextLocked = running || starting
 
   useEffect(() => {
     WindowIsMaximised().then(setWindowMaximized).catch(() => {})
     Environment().then((env) => setIsMac(env.platform === 'darwin')).catch(() => {})
-  }, [])
-
-  useEffect(() => {
-    const off = EventsOn('menu:focus-search', () => {
-      setSearchExpanded(true)
-      inputRef.current?.focus()
-      inputRef.current?.select()
-    })
-    return () => off?.()
-  }, [])
-
-  useEffect(() => {
-    function onKeyDown(e) {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault()
-        setSearchExpanded(true)
-        inputRef.current?.focus()
-        inputRef.current?.select()
-      }
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
 
   async function onToggleWindowMaximize() {
@@ -181,93 +140,6 @@ export function TopBar({
         </div>
       </div>
 
-      <div className="topbar-center">
-        <div className="topbar-search-group">
-          <NamespacePopover
-            cluster={cluster}
-            scope={scope}
-            disabled={starting}
-            locked={scopeLocked}
-            lockedNamespace={investigationNs}
-            savedScopeLabel={savedScopeLabel}
-            onScopeChange={onScopeChange}
-            variant={scopeVariant}
-            compact
-            inline
-          />
-          <form
-            className={`topbar-search ${searchExpanded || query ? 'expanded' : ''}`}
-            onSubmit={(e) => {
-              e.preventDefault()
-              onStart?.(e)
-            }}
-          >
-            <div className="topbar-search-divider" aria-hidden="true" />
-          <button
-            type="button"
-            className="topbar-search-toggle"
-            onClick={() => {
-              setSearchExpanded(true)
-              inputRef.current?.focus()
-            }}
-            aria-label="Search"
-            title="Search (⌘K)"
-          >
-            <SearchIcon />
-          </button>
-          <input
-            ref={inputRef}
-            className="topbar-search-input"
-            value={query}
-            onChange={(e) => onQueryChange(e.target.value)}
-            onBlur={() => { if (!query) setSearchExpanded(false) }}
-            placeholder="Search to investigate…"
-            disabled={starting}
-            aria-label="Search"
-            spellCheck={false}
-            autoComplete="off"
-          />
-          {!query && <kbd className="topbar-search-kbd" aria-hidden="true">⌘K</kbd>}
-          {query && !starting && (
-            <button type="button" className="topbar-search-clear" onClick={onQueryClear} aria-label="Clear">
-              ×
-            </button>
-          )}
-          <div className="topbar-search-actions">
-            <button
-              type="submit"
-              className="topbar-search-investigate"
-              disabled={!canInvestigate}
-              title={investigateTitle({ running, starting, queryChanged, scope })}
-            >
-              {investigateLabel({ running, starting, queryChanged })}
-            </button>
-            <button
-              type="button"
-              className="topbar-search-new-window"
-              onClick={() => onNewWindow?.()}
-              title="Open a new window for another cluster (⌘N)"
-              aria-label="New window"
-            >
-              <span className="topbar-search-new-window-label">New window</span>
-              <kbd className="topbar-search-kbd" aria-hidden="true">⌘N</kbd>
-            </button>
-            {running && (
-              <button
-                type="button"
-                className="topbar-search-stop-icon"
-                onClick={onStop}
-                disabled={starting}
-                title="Stop investigation"
-                aria-label="Stop investigation"
-              >
-                <StopIcon />
-              </button>
-            )}
-          </div>
-        </form>
-        </div>
-      </div>
       </div>
 
       <div className="topbar-right">
@@ -288,6 +160,15 @@ export function TopBar({
         <button
           type="button"
           className="topbar-icon-btn"
+          onClick={() => onNewWindow?.()}
+          title="Open a new window for another cluster (⌘N)"
+          aria-label="New window"
+        >
+          <NewWindowIcon />
+        </button>
+        <button
+          type="button"
+          className="topbar-icon-btn"
           onClick={onSync}
           disabled={syncing || starting}
           title={running ? 'Refresh investigation snapshot' : 'Sync kubeconfig'}
@@ -295,6 +176,19 @@ export function TopBar({
         >
           <SyncIcon spinning={syncing} />
         </button>
+        {onTogglePanel && (
+          <button
+            type="button"
+            className={`topbar-icon-btn topbar-panel-toggle ${panelOpen ? 'is-active' : ''}`}
+            onClick={() => onTogglePanel()}
+            aria-pressed={panelOpen}
+            title={panelOpen ? 'Hide terminal (⌘`)' : panelRunning ? 'Show terminal — sessions running (⌘`)' : 'Terminal (⌘`)'}
+            aria-label={panelOpen ? 'Hide terminal' : 'Show terminal'}
+          >
+            <TerminalGlyph size={15} />
+            {panelRunning && !panelOpen && <span className="topbar-panel-dot" aria-hidden="true" />}
+          </button>
+        )}
         <button
           type="button"
           className="topbar-icon-btn"
@@ -478,37 +372,6 @@ function ZoomInIcon() {
   )
 }
 
-function investigateLabel({ running, starting, queryChanged }) {
-  if (starting) return '…'
-  if (running && queryChanged) return 'Re-run'
-  if (running) return 'Restart'
-  return 'Investigate'
-}
-
-function investigateTitle({ running, starting, queryChanged, scope }) {
-  if (starting) return 'Starting investigation…'
-  if (!scopeSupportsInvestigate(scope)) return 'Select one namespace to investigate'
-  if (running && queryChanged) return 'Re-run with updated query in current scope'
-  if (running) return 'Restart investigation in current scope'
-  return 'Start investigation in current scope'
-}
-
-function StopIcon() {
-  return (
-    <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true">
-      <rect x="3" y="3" width="10" height="10" rx="1" />
-    </svg>
-  )
-}
-
-function SearchIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-      <circle cx="11" cy="11" r="7" /><path d="M20 20l-3-3" />
-    </svg>
-  )
-}
-
 function SyncIcon({ spinning }) {
   return (
     <svg className={`sync-icon ${spinning ? 'spin' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
@@ -578,3 +441,13 @@ function HomeIcon() {
     </svg>
   )
 }
+
+function NewWindowIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+      <rect x="2.5" y="4.5" width="9" height="9" rx="1.5" />
+      <path d="M5.5 2.5h7a1 1 0 011 1v7" strokeLinecap="round" />
+    </svg>
+  )
+}
+

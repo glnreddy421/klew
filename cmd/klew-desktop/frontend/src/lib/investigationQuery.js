@@ -1,8 +1,8 @@
 /** Control chars, zero-width, and other non-printing noise. */
 const INVISIBLE = /[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/g
 
-/** Keep chars useful for kind/name and free-text workload search. */
-const UNUSUAL = /[^\w./\-:@]+/g
+/** Keep chars useful for kind/name (comma-separated for several) and free-text workload search. */
+const UNUSUAL = /[^\w./\-:@,]+/g
 
 /**
  * Normalize the investigation search string: trim, drop invisible chars,

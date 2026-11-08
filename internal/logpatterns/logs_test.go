@@ -91,3 +91,24 @@ func TestMergeSnapshotLogsDedupesRingLines(t *testing.T) {
 		t.Fatalf("deduped count=%d want 2 (live + one new snapshot line)", logCount)
 	}
 }
+
+func TestClassifyLogSeverityTrustsStatedLevel(t *testing.T) {
+	for line, want := range map[string]model.Severity{
+		"2026-11-08T17:16:54+00:00 INFO flushed batch=25198 events=0 errors=0":                  model.SeverityInfo,
+		"2026-11-08T17:17:14+00:00 WARN slow flush detected took=1.2s threshold=1s (non-fatal)": model.SeverityWarning,
+		"2026/11/08 17:14:18 [notice] 1#1: worker process 41 exited with code 0":                model.SeverityInfo,
+		`time=2026-11-08T17:00:00Z level=info msg="retry failed earlier, now ok"`:               model.SeverityInfo,
+		`{"level":"error","msg":"db down"}`:                                                     model.SeverityHigh,
+		"2026-11-08T17:14:21+00:00 FATAL required_version file not found":                       model.SeverityCritical,
+		"dial tcp 10.0.0.5:5432: connect: connection refused":                                   model.SeverityHigh,
+		"Info: we do not trust lower-case words, so this error counts":                          model.SeverityHigh,
+		"hello": model.SeverityInfo,
+	} {
+		if got := ClassifyLogSeverity(line); got != want {
+			t.Errorf("ClassifyLogSeverity(%q)=%s want %s", line, got, want)
+		}
+	}
+	if r := classifyLogReason("INFO flushed batch=1 errors=0"); r != "" {
+		t.Errorf("reason for an INFO line = %q, want none", r)
+	}
+}

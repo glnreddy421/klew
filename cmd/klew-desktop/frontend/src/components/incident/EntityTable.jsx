@@ -28,14 +28,21 @@ import { runPointerColResize } from '../../lib/paneDragResize.js'
 import { EntityTableColumnPicker } from './EntityTableColumnPicker.jsx'
 import { NodeConditionsCell, NodeNameCell, NodeResourceCell } from './NodeTableCells.jsx'
 import { PodMetricCell } from '../metrics/ResourceMetricDisplay.jsx'
+import { useLogStreamActions } from '../../context/LogStreamContext.jsx'
+import { canStreamKind } from '../../lib/logStream.js'
+import { animateIn } from '../../lib/motion.js'
 import { buildPodCpuMetric, buildPodMemMetric } from '../../lib/metricDisplay.js'
 import { SchedulingTableCell } from './SchedulingTableCells.jsx'
 import { ContainerStatusIndicators } from './ContainerStatusIndicators.jsx'
 import { DeploymentConditionIndicators } from './DeploymentConditionIndicators.jsx'
+import { StreamLogsGlyph } from '../DockLauncher.jsx'
 import { LoadingBar, ResourcePaneLoading } from '../LoadingSpinner.jsx'
 import { ClusterFetchActions } from '../ClusterFetchPanel.jsx'
 import { ResourceAccessPanel } from './ResourceAccessPanel.jsx'
 import { rowKeysMatch } from '../../lib/matches.js'
+
+/** Fixed width for the log-stream checkbox column (not in column picker / persisted widths). */
+const STREAM_PICK_COLUMN_PX = 40
 
 function StatusCell({ row }) {
   const tone = row.status || 'unknown'
@@ -137,7 +144,6 @@ function SortableColumnHeader({ col, sort, onSort, width, resize }) {
   )
 }
 
-const ACTIONS_COL_ID = '__actions'
 
 function TableCellClip({ value, className = '', mono = false }) {
   const text = value ?? '—'
@@ -332,33 +338,26 @@ function ControlledByCell({ row, onInspect }) {
   )
 }
 
-const FOCUSABLE_KINDS = new Set([
-  'Deployment', 'StatefulSet', 'DaemonSet', 'Job', 'CronJob', 'ReplicaSet',
-  'Pod', 'Service', 'Ingress', 'ConfigMap', 'Secret', 'PersistentVolumeClaim',
-])
-
 function TableRow({
   row,
   selected,
-  focusKey,
+  picked = false,
+  streamPickEnabled = false,
+  onToggleStreamPick,
   columns,
   onSelect,
   onInspect,
-  onFocus,
-  showFocusButton,
   browseScope,
   onBrowseScopeChange,
 }) {
-  const isRoot = rowKeysMatch(focusKey, row.key)
-  const canFocus = showFocusButton && onFocus && FOCUSABLE_KINDS.has(row.kind)
   return (
     <tr
       className={[
         'entity-table-row',
         selected ? 'selected' : '',
-        isRoot ? 'focus-root' : '',
+        picked ? 'picked' : '',
       ].filter(Boolean).join(' ')}
-      onClick={() => onSelect?.(row.key)}
+      onClick={(e) => onSelect?.(row.key, e)}
       tabIndex={0}
       role="row"
       aria-selected={selected}
@@ -369,6 +368,25 @@ function TableRow({
         }
       }}
     >
+      {streamPickEnabled && (
+        <td
+          className="entity-table-col-stream-pick"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
+          <label className="entity-table-stream-pick">
+            <input
+              type="checkbox"
+              checked={picked}
+              onChange={(e) => {
+                e.stopPropagation()
+                onToggleStreamPick?.(row.key, e)
+              }}
+              aria-label={`Include ${row.kind}/${row.name} in live log stream`}
+            />
+          </label>
+        </td>
+      )}
       {columns.map((col) => {
         switch (col.id) {
           case 'name':
@@ -615,24 +633,6 @@ function TableRow({
           }
         }
       })}
-      {showFocusButton && onFocus && (
-        <td className="entity-table-actions">
-          {canFocus ? (
-            <button
-              type="button"
-              className="entity-list-focus entity-table-focus"
-              title={`Focus ${row.name}`}
-              aria-label={`Focus ${row.name}`}
-              onClick={(e) => {
-                e.stopPropagation()
-                onFocus?.(row.key)
-              }}
-            >
-              Focus
-            </button>
-          ) : null}
-        </td>
-      )}
     </tr>
   )
 }
@@ -657,12 +657,9 @@ export function EntityTable({
   refreshing = false,
   pods = [],
   inspectKey,
-  focusKey,
-  showFocusButton = false,
   browseScope,
   onBrowseScopeChange,
   onSelect,
-  onFocus,
   hasSearchQuery = '',
 }) {
   const label = kindGroup?.label || (kind ? kindDisplayLabel(kind) : 'Resources')
@@ -675,10 +672,9 @@ export function EntityTable({
   const [sort, setSort] = useState({ columnId: 'name', direction: 'asc' })
   const tableRef = useRef(null)
   const { widths, previewWidths, commitWidths, setWidths, resetWidths } = useEntityTableColumnWidths(resolvedKind)
-  const showActionsColumn = showFocusButton && !!onFocus
   const layoutIds = useMemo(
-    () => [...columns.map((c) => c.id), ...(showActionsColumn ? [ACTIONS_COL_ID] : [])],
-    [columns, showActionsColumn],
+    () => columns.map((c) => c.id),
+    [columns],
   )
   const manualWidths = hasColumnWidths(widths)
 
@@ -729,6 +725,15 @@ export function EntityTable({
     setSort({ columnId: 'name', direction: 'asc' })
   }, [resolvedKind])
 
+  // Switching resource type fades the table in rather than swapping it.
+  const sectionRef = useRef(null)
+  const kindShown = useRef(resolvedKind)
+  useEffect(() => {
+    if (kindShown.current === resolvedKind) return
+    kindShown.current = resolvedKind
+    animateIn(sectionRef.current?.querySelector('.entity-table-body'), { y: 3 })
+  }, [resolvedKind])
+
   const rows = useMemo(
     () => enrichEntitiesForTable(filteredEntities, pods, resolvedKind),
     [filteredEntities, pods, resolvedKind],
@@ -737,6 +742,100 @@ export function EntityTable({
     () => sortEntitiesForTable(rows, sort.columnId, sort.direction),
     [rows, sort.columnId, sort.direction],
   )
+
+  // ⌘-click and shift-click pick several pods to stream together.
+  const logStreamActions = useLogStreamActions()
+  const multiPick = Boolean(logStreamActions) && canStreamKind(resolvedKind)
+  const tableWidthPx = useMemo(
+    () => (manualWidths ? STREAM_PICK_COLUMN_PX * (multiPick ? 1 : 0) + totalColumnWidth(widths, layoutIds) : undefined),
+    [manualWidths, multiPick, widths, layoutIds],
+  )
+  const [picked, setPicked] = useState(() => new Set())
+  const pickAnchor = useRef('')
+  useEffect(() => {
+    setPicked(new Set())
+    pickAnchor.current = ''
+  }, [resolvedKind])
+  useEffect(() => {
+    setPicked((prev) => {
+      if (!prev.size) return prev
+      const live = new Set(sortedRows.map((r) => r.key))
+      const next = new Set([...prev].filter((k) => live.has(k)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [sortedRows])
+  const pickedResources = useMemo(
+    () => sortedRows
+      .filter((r) => picked.has(r.key))
+      .map((r) => ({ kind: r.kind || resolvedKind, name: r.name, namespace: r.namespace === '—' ? '' : r.namespace })),
+    [sortedRows, picked, resolvedKind],
+  )
+  useEffect(() => {
+    logStreamActions?.setSelection('table', pickedResources)
+  }, [logStreamActions, pickedResources])
+  useEffect(() => () => logStreamActions?.setSelection('table', []), [logStreamActions])
+  useEffect(() => {
+    if (!picked.size) return undefined
+    function onKey(e) {
+      if (e.key === 'Escape') setPicked(new Set())
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [picked.size])
+
+  const toggleStreamPick = useCallback((key, e) => {
+    if (!multiPick) return
+    if (e?.shiftKey && pickAnchor.current) {
+      const anchor = pickAnchor.current
+      const from = sortedRows.findIndex((r) => r.key === anchor)
+      const to = sortedRows.findIndex((r) => r.key === key)
+      if (from >= 0 && to >= 0) {
+        const [a, b] = from < to ? [from, to] : [to, from]
+        setPicked(new Set(sortedRows.slice(a, b + 1).map((r) => r.key)))
+      }
+      return
+    }
+    setPicked((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+    pickAnchor.current = key
+  }, [multiPick, sortedRows])
+
+  function handleRowClick(key, e) {
+    if (multiPick && e && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault()
+      setPicked((prev) => {
+        const next = new Set(prev)
+        // Starting a pick includes the row already being inspected.
+        if (!next.size && inspectKey && !rowKeysMatch(inspectKey, key)) {
+          const current = sortedRows.find((r) => rowKeysMatch(inspectKey, r.key))
+          if (current) next.add(current.key)
+        }
+        if (next.has(key)) next.delete(key)
+        else next.add(key)
+        return next
+      })
+      pickAnchor.current = key
+      return
+    }
+    if (multiPick && e?.shiftKey) {
+      e.preventDefault()
+      const anchor = pickAnchor.current || sortedRows.find((r) => rowKeysMatch(inspectKey, r.key))?.key || key
+      const from = sortedRows.findIndex((r) => r.key === anchor)
+      const to = sortedRows.findIndex((r) => r.key === key)
+      if (from >= 0 && to >= 0) {
+        const [a, b] = from < to ? [from, to] : [to, from]
+        setPicked(new Set(sortedRows.slice(a, b + 1).map((r) => r.key)))
+      }
+      return
+    }
+    if (picked.size) setPicked(new Set())
+    pickAnchor.current = key
+    onSelect?.(key)
+  }
 
   function handleSort(columnId) {
     setSort((prev) => {
@@ -758,7 +857,7 @@ export function EntityTable({
   const toneClass = resourceCategoryToneClass(categoryId)
 
   return (
-    <section className="entity-table" aria-label={`${label} entities`}>
+    <section ref={sectionRef} className="entity-table" aria-label={`${label} entities`}>
       <header className={`entity-table-header ${toneClass}`.trim()}>
         <div className="entity-table-heading">
           {kind ? (
@@ -829,17 +928,46 @@ export function EntityTable({
           </ResourcePaneLoading>
         ) : (
           <div className="entity-table-scroll">
+            {picked.size > 0 && (
+              <div className="entity-table-pickbar" role="toolbar" aria-label="Selected resources">
+                <span className="entity-table-pickbar-count">
+                  {picked.size} selected
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm entity-table-stream-logs-btn"
+                  onClick={() => logStreamActions?.streamResources(pickedResources)}
+                  title="Stream logs from the selected pods (⌘⇧L)"
+                >
+                  {resolvedKind === 'Pod' ? (
+                    <>
+                      <StreamLogsGlyph size={14} />
+                      <span>Stream logs</span>
+                    </>
+                  ) : (
+                    'Stream logs'
+                  )}
+                </button>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPicked(new Set())}>
+                  Clear
+                </button>
+                <span className="entity-table-pickbar-hint muted">
+                  Use the checkboxes or ⌘-click to add/remove · Shift-click a checkbox for a range · Esc to clear
+                </span>
+              </div>
+            )}
             {refreshing && sortedRows.length > 0 && (
               <LoadingBar className="resource-pane-refresh-bar" label="Refreshing resources" />
             )}
             <table
               ref={tableRef}
               className={['entity-table-grid', manualWidths ? 'is-sized' : ''].filter(Boolean).join(' ')}
-              style={manualWidths ? { width: `${totalColumnWidth(widths, layoutIds)}px` } : undefined}
+              style={manualWidths && tableWidthPx != null ? { width: `${tableWidthPx}px` } : undefined}
               data-inspector-keep
             >
               {manualWidths && (
                 <colgroup>
+                  {multiPick && <col className="col-stream-pick" style={{ width: `${STREAM_PICK_COLUMN_PX}px` }} />}
                   {layoutIds.map((id) => (
                     <col key={id} style={{ width: `${completeColumnWidths(widths, [id])[id]}px` }} />
                   ))}
@@ -847,6 +975,11 @@ export function EntityTable({
               )}
               <thead>
                 <tr>
+                  {multiPick && (
+                    <th className="entity-table-col-stream-pick" scope="col">
+                      <span className="sr-only">Pick for log stream</span>
+                    </th>
+                  )}
                   {columns.map((col) => (
                     <SortableColumnHeader
                       key={col.id}
@@ -857,13 +990,6 @@ export function EntityTable({
                       resize={columnResize}
                     />
                   ))}
-                  {showActionsColumn && (
-                    <th
-                      data-col-id={ACTIONS_COL_ID}
-                      className="entity-table-actions col-actions"
-                      aria-label="Focus actions"
-                    />
-                  )}
                 </tr>
               </thead>
               <tbody>
@@ -873,11 +999,11 @@ export function EntityTable({
                     row={row}
                     columns={columns}
                     selected={rowKeysMatch(inspectKey, row.key)}
-                    focusKey={focusKey}
-                    onSelect={onSelect}
+                    picked={picked.has(row.key)}
+                    streamPickEnabled={multiPick}
+                    onToggleStreamPick={toggleStreamPick}
+                    onSelect={handleRowClick}
                     onInspect={onSelect}
-                    onFocus={onFocus}
-                    showFocusButton={showFocusButton}
                     browseScope={browseScope}
                     onBrowseScopeChange={onBrowseScopeChange}
                   />

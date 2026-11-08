@@ -3,12 +3,14 @@ package mcpserver
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/glnreddy421/klew/internal/engine"
 	"github.com/glnreddy421/klew/internal/kube"
@@ -20,10 +22,20 @@ import (
 const (
 	defaultObserveSeconds = 10
 	maxObserveSeconds     = 60
+	// maxConcurrentInvestigations caps cluster load from parallel tool calls.
+	maxConcurrentInvestigations = 3
+	// progressInterval spaces progress notifications during klew_investigate.
+	progressInterval = 5 * time.Second
+	// maxDiffsPerRevision caps field diffs per revision in klew_workload_changes.
+	maxDiffsPerRevision = 30
 	// collectTimeout bounds the initial snapshot (pods, events, logs, changes).
 	collectTimeout = 2 * time.Minute
 	changesTimeout = 20 * time.Second
-	eventsTimeout  = 30 * time.Second
+	// namespaceCheckTimeout bounds the existence check before a tool runs.
+	namespaceCheckTimeout = 5 * time.Second
+	eventsTimeout         = 30 * time.Second
+	// maxRecordedEvents caps rows read from local history per call.
+	maxRecordedEvents = 5000
 )
 
 func readOnly(title string, openWorld bool) *mcp.ToolAnnotations {
@@ -62,6 +74,35 @@ const (
 	objectNamePattern = `^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$`
 )
 
+var validNamespace = regexp.MustCompile(namespacePattern)
+
+// parseNamespace validates a namespace here rather than in the input schema:
+// the SDK reports schema failures as raw regex errors, which give an assistant
+// that passed a list or wildcard nothing to act on.
+func parseNamespace(in string) (string, error) {
+	ns := strings.TrimSpace(in)
+	if ns == "" {
+		return "", fmt.Errorf("namespace is required")
+	}
+	if len(ns) > 63 || !validNamespace.MatchString(ns) {
+		return "", fmt.Errorf("invalid namespace %q: pass one Kubernetes namespace name, not a list or wildcard. Tools cover one namespace per call; to check several, call once for each", clean(in))
+	}
+	return ns, nil
+}
+
+// namespaceMissing reports whether the API says ns does not exist. Any other
+// result, such as no permission to get namespaces, is not treated as missing.
+func namespaceMissing(ctx context.Context, client *kube.Client, ns string) bool {
+	ctx, cancel := context.WithTimeout(ctx, namespaceCheckTimeout)
+	defer cancel()
+	_, err := client.Clientset.CoreV1().Namespaces().Get(ctx, ns, metav1.GetOptions{})
+	return apierrors.IsNotFound(err)
+}
+
+func errNamespaceNotFound(ns, kubeContext string) error {
+	return fmt.Errorf("namespace %q not found in context %q; check the name. Tools cover one namespace per call", ns, kubeContext)
+}
+
 func pattern(re string, maxLen int) func(*jsonschema.Schema) {
 	return func(p *jsonschema.Schema) {
 		p.Pattern = re
@@ -98,12 +139,15 @@ func (s *Server) registerTools(srv *mcp.Server) {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "klew_investigate",
 		Description: "Investigate a Kubernetes namespace or workload and return a verdict: status, leading signal, likely trigger, confidence, causal chain, " +
-			"failing pods (exit codes, OOMKilled, limits), top log and event patterns, warning-event incidents, a related workload change, and next checks. " +
-			"Collects a snapshot (pods, events, recent logs, revisions), then watches live for observe_seconds. " +
+			"problems (every unhealthy workload or Service with its state and key facts: exit reason, limits, probe, ports, requests, image, mounts), " +
+			"failing pods, top log and event patterns, warning-event incidents, a related workload change, and next checks. " +
+			"The leading signal and suggested actions follow the strongest problem only; read problems for the full list. " +
+			"not_collected lists collectors that were skipped (no permission, logs off) or failed; treat what they cover as unchecked, not healthy. " +
+			"Collects a snapshot (pods, events, recent logs, revisions), then watches live for observe_seconds; 0 skips the watch for a fast snapshot-only verdict. " +
+			"Covers one namespace per call; to check several, call once for each. " +
 			"Returns an investigation_id for klew_investigation_details. For raw event lists use klew_event_history; for revision diffs use klew_workload_changes.",
 		Annotations: readOnly("Investigate namespace or workload", true),
 		InputSchema: schemaFor[investigateIn](map[string]func(*jsonschema.Schema){
-			"namespace":       pattern(namespacePattern, 63),
 			"observe_seconds": intRange(0, maxObserveSeconds, defaultObserveSeconds),
 		}),
 	}, s.investigate)
@@ -128,11 +172,13 @@ func (s *Server) registerTools(srv *mcp.Server) {
 		Name: "klew_event_history",
 		Description: "List Kubernetes events for a namespace or one object, newest first. Merges live events from the API with events the Klew desktop app " +
 			"recorded locally, so it can include events Kubernetes already expired (the API keeps them about an hour). " +
+			"Filter by object_name, object_kind (all Node or PersistentVolumeClaim events), reason (BackOff, FailedScheduling, …) or warnings_only. " +
 			"Reports recording coverage and gaps. Without the desktop app's history only live events are returned.",
 		Annotations: readOnly("Event history", true),
 		InputSchema: schemaFor[eventHistoryIn](map[string]func(*jsonschema.Schema){
-			"namespace":     pattern(namespacePattern, 63),
 			"object_name":   pattern(objectNamePattern, 253),
+			"reason":        pattern(`^[A-Za-z0-9, ]*$`, 256),
+			"object_kind":   pattern(`^[A-Za-z0-9]*$`, 63),
 			"since_minutes": intRange(1, 43200, 1440),
 			"limit":         intRange(1, 500, 100),
 		}),
@@ -144,7 +190,6 @@ func (s *Server) registerTools(srv *mcp.Server) {
 			"summary, and field-level diffs (image, env, resources, probes, …). Use it to answer what changed before a failure.",
 		Annotations: readOnly("Workload changes", true),
 		InputSchema: schemaFor[workloadChangesIn](map[string]func(*jsonschema.Schema){
-			"namespace":     pattern(namespacePattern, 63),
 			"name":          pattern(objectNamePattern, 253),
 			"kind":          enum("Deployment", "StatefulSet", "DaemonSet", "HelmRelease"),
 			"max_revisions": intRange(1, 50, 5),
@@ -180,7 +225,7 @@ func (s *Server) listContexts(_ context.Context, _ *mcp.CallToolRequest, _ listC
 	}
 	out := listContextsOut{
 		Kubeconfig: cs.KubeconfigPath, CurrentContext: cs.CurrentContext, DefaultContext: cs.SelectedContext,
-		EventHistory: s.history != nil, Contexts: make([]contextItem, 0, len(cs.Contexts)),
+		EventHistory: s.recordedHistory() != nil, Contexts: make([]contextItem, 0, len(cs.Contexts)),
 	}
 	if s.opts.Context != "" {
 		out.DefaultContext = s.opts.Context
@@ -195,9 +240,9 @@ func (s *Server) listContexts(_ context.Context, _ *mcp.CallToolRequest, _ listC
 
 type investigateIn struct {
 	KubeContext    string `json:"kube_context,omitempty" jsonschema:"Kube context name from klew_list_contexts. Omit to use the server default (kubeconfig current-context)."`
-	Namespace      string `json:"namespace" jsonschema:"Namespace to investigate. Klew investigates inside one namespace."`
-	Workload       string `json:"workload,omitempty" jsonschema:"Workload name or search text, matched against names, labels and owners. Omit to investigate the whole namespace."`
-	ObserveSeconds int    `json:"observe_seconds,omitempty" jsonschema:"Seconds to watch live events after the snapshot. Longer catches more restarts and warnings."`
+	Namespace      string `json:"namespace" jsonschema:"One namespace name to investigate. Lists and wildcards are rejected; to cover several namespaces, call once for each."`
+	Workload       string `json:"workload,omitempty" jsonschema:"What to investigate: Kind/name for exactly one object (Deployment/api, Service/web, ConfigMap/settings, PersistentVolumeClaim/data, or any kind a collector lists), several separated by commas, or a bare name for every object with exactly that name. Text that names no object is matched loosely against names. Omit to investigate the whole namespace."`
+	ObserveSeconds *int   `json:"observe_seconds,omitempty" jsonschema:"Seconds to watch live events after the snapshot. Longer catches more restarts and warnings; 0 returns the snapshot verdict without watching."`
 }
 
 type podCounts struct {
@@ -219,6 +264,9 @@ type investigateOut struct {
 	LeadingSignal     string              `json:"leading_signal,omitempty"`
 	LikelyTrigger     string              `json:"likely_trigger,omitempty"`
 	Summary           string              `json:"summary,omitempty"`
+	Headline          string              `json:"headline,omitempty"`
+	Problems          []problemBrief      `json:"problems,omitempty"`
+	ProblemsTotal     int                 `json:"problems_total,omitempty"`
 	Hypothesis        string              `json:"hypothesis,omitempty"`
 	HypothesisReasons []string            `json:"hypothesis_reasons,omitempty"`
 	Alternatives      []model.Hypothesis  `json:"alternatives,omitempty"`
@@ -239,19 +287,74 @@ type investigateOut struct {
 	LogPatterns       []patternBrief      `json:"log_patterns,omitempty"`
 	EventPatterns     []patternBrief      `json:"event_patterns,omitempty"`
 	EventHistory      *coverageBrief      `json:"event_history,omitempty"`
-	Warnings          []string            `json:"warnings,omitempty"`
+	// NotCollected lists collectors that did not run or failed, and why, so the
+	// verdict is read knowing what was not checked.
+	NotCollected []model.CollectorStatus `json:"not_collected,omitempty"`
+	Warnings     []string                `json:"warnings,omitempty"`
 }
 
-func (s *Server) investigate(ctx context.Context, _ *mcp.CallToolRequest, in investigateIn) (*mcp.CallToolResult, investigateOut, error) {
-	ns := strings.TrimSpace(in.Namespace)
-	if ns == "" {
-		return nil, investigateOut{}, fmt.Errorf("namespace is required")
+// observeFor is the watch length: the default when unset, 0 for snapshot only.
+func observeFor(seconds *int) time.Duration {
+	if seconds == nil {
+		return defaultObserveSeconds * time.Second
+	}
+	return time.Duration(max(min(*seconds, maxObserveSeconds), 0)) * time.Second
+}
+
+// reportProgress sends periodic progress notifications when the client asked
+// for them, so hosts that reset their timeout on progress keep waiting. The
+// returned func stops them; none is sent after it returns.
+func (s *Server) reportProgress(ctx context.Context, req *mcp.CallToolRequest, message string) func() {
+	token := req.Params.GetProgressToken()
+	if token == nil {
+		return func() {}
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		start := time.Now()
+		tick := time.NewTicker(s.progressEvery)
+		defer tick.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-tick.C:
+				elapsed := time.Since(start)
+				_ = req.Session.NotifyProgress(ctx, &mcp.ProgressNotificationParams{
+					ProgressToken: token, Progress: elapsed.Seconds(),
+					Message: fmt.Sprintf("%s: %s elapsed", message, elapsed.Round(time.Second)),
+				})
+			}
+		}
+	}()
+	return func() {
+		cancel()
+		<-done
+	}
+}
+
+func (s *Server) investigate(ctx context.Context, req *mcp.CallToolRequest, in investigateIn) (*mcp.CallToolResult, investigateOut, error) {
+	ns, err := parseNamespace(in.Namespace)
+	if err != nil {
+		return nil, investigateOut{}, err
 	}
 	client, err := s.newClient(in.KubeContext, ns)
 	if err != nil {
 		return nil, investigateOut{}, err
 	}
-	observe := time.Duration(clamp(in.ObserveSeconds, maxObserveSeconds, defaultObserveSeconds)) * time.Second
+	if namespaceMissing(ctx, client, ns) {
+		return nil, investigateOut{}, errNamespaceNotFound(ns, client.Context)
+	}
+	defer s.reportProgress(ctx, req, "Investigating "+ns)()
+	select {
+	case s.investigations <- struct{}{}:
+		defer func() { <-s.investigations }()
+	case <-ctx.Done():
+		return nil, investigateOut{}, ctx.Err()
+	}
+	observe := observeFor(in.ObserveSeconds)
 	ctx, cancel := context.WithTimeout(ctx, collectTimeout+observe)
 	defer cancel()
 
@@ -261,7 +364,11 @@ func (s *Server) investigate(ctx context.Context, _ *mcp.CallToolRequest, in inv
 	if err != nil && st.CollectedAt.IsZero() {
 		return nil, investigateOut{}, fmt.Errorf("investigate %s: %w", ns, err)
 	}
-	return nil, s.shape.summarize(s.cache.put(st), st), nil
+	out := s.shape.summarize(s.cache.put(st), st)
+	if err != nil {
+		out.Warnings = append(out.Warnings, fmt.Sprintf("Investigation incomplete: %s. Results may be partial.", clean(err.Error())))
+	}
+	return nil, out, nil
 }
 
 func (sh shaper) summarize(id string, st model.InvestigationState) investigateOut {
@@ -271,7 +378,7 @@ func (sh shaper) summarize(id string, st model.InvestigationState) investigateOu
 		InvestigationID: id, Context: sum.Context, Namespace: sum.Namespace, Workload: st.Query,
 		CollectedAt: st.CollectedAt, Status: v.Status, Confidence: v.Confidence,
 		ConfidenceLabel: engine.ConfidenceLabel(v.Confidence), LeadingSignal: v.LeadingSignal,
-		LikelyTrigger: clean(v.LikelyTrigger), Summary: clean(v.Summary), Hypothesis: st.HypothesisLabel,
+		LikelyTrigger: clean(v.LikelyTrigger), Summary: clean(v.Summary), Headline: clean(st.Headline), Hypothesis: clean(st.HypothesisLabel),
 		HypothesisReasons: redact.Strings(st.HypothesisReasons), Alternatives: st.HypothesisAlts,
 		CausalChain: sh.causalChain(st.CausalChain, st.Timeline),
 		NextChecks:  redact.Strings(st.NextChecks), SuggestedActions: redact.Strings(st.FixActions),
@@ -286,9 +393,11 @@ func (sh shaper) summarize(id string, st model.InvestigationState) investigateOu
 	for _, m := range capSlice(st.MatchedObjects, 20) {
 		out.MatchedObjects = append(out.MatchedObjects, refString(m.Ref))
 	}
+	out.ProblemsTotal = len(st.Problems)
+	out.Problems = mapSlice(capSlice(st.Problems, maxProblems), briefProblem)
 	failing := failingPods(st.Snapshot.Pods)
 	out.FailingPodsTotal = len(failing)
-	out.FailingPods = mapSlice(capSlice(failing, 10), briefPod)
+	out.FailingPods = mapSlice(capSlice(failing, 10), sh.pod)
 	sigs := allSignals(v)
 	out.SignalsTotal = len(sigs)
 	out.Signals = mapSlice(capSlice(sigs, 8), sh.signal)
@@ -301,9 +410,15 @@ func (sh shaper) summarize(id string, st model.InvestigationState) investigateOu
 		cp.Text = clean(cp.Text)
 		out.PinnedChange = &cp
 	}
-	out.Warnings = redact.Strings(append(append([]string{}, v.MissingDataWarnings...), st.Warnings...))
-	if st.Query != "" && len(st.MatchedObjects) == 0 {
-		out.Warnings = append(out.Warnings, fmt.Sprintf("No objects matched %q in %s; the verdict covers the namespace.", st.Query, sum.Namespace))
+	for _, c := range st.Snapshot.Coverage {
+		if c.Status != "collected" && c.Status != "not-installed" {
+			c.Detail = clean(c.Detail)
+			out.NotCollected = append(out.NotCollected, c)
+		}
+	}
+	out.Warnings = briefWarnings(v.MissingDataWarnings, st.Warnings)
+	if st.Query != "" && len(st.MatchedObjects) == 0 && st.Snapshot.Target == nil {
+		out.Warnings = append(out.Warnings, clean(fmt.Sprintf("No objects matched %q in %s; the verdict covers the namespace.", st.Query, sum.Namespace)))
 	}
 	return out
 }
@@ -363,7 +478,7 @@ func (sh shaper) detailItems(st model.InvestigationState, section string) ([]any
 	}
 	switch section {
 	case "pods":
-		return asAny(mapSlice(rankPods(st.Snapshot.Pods), briefPod)), nil
+		return asAny(mapSlice(rankPods(st.Snapshot.Pods), sh.pod)), nil
 	case "signals":
 		return asAny(mapSlice(allSignals(st.Verdict), sh.signal)), nil
 	case "log_patterns":
@@ -393,11 +508,13 @@ func (sh shaper) detailItems(st model.InvestigationState, section string) ([]any
 
 type eventHistoryIn struct {
 	KubeContext  string `json:"kube_context,omitempty" jsonschema:"Kube context name from klew_list_contexts. Omit to use the server default (kubeconfig current-context)."`
-	Namespace    string `json:"namespace" jsonschema:"Namespace whose events to list."`
+	Namespace    string `json:"namespace" jsonschema:"One namespace name whose events to list. To cover several, call once for each."`
 	ObjectName   string `json:"object_name,omitempty" jsonschema:"Limit to events about this object. A workload name also matches its pods and ReplicaSets (<name>-*) unless exact_name is true."`
 	ExactName    bool   `json:"exact_name,omitempty" jsonschema:"Match object_name exactly instead of also matching <name>-* children."`
 	SinceMinutes int    `json:"since_minutes,omitempty" jsonschema:"How far back to look, in minutes."`
 	WarningsOnly bool   `json:"warnings_only,omitempty" jsonschema:"Return only Warning events."`
+	Reason       string `json:"reason,omitempty" jsonschema:"Only events with this reason, or any of several separated by commas (BackOff, FailedScheduling, OOMKilling, Unhealthy, FailedMount). Case is ignored."`
+	ObjectKind   string `json:"object_kind,omitempty" jsonschema:"Only events about objects of this kind (Pod, Node, PersistentVolumeClaim, Deployment, …). Case is ignored."`
 	Limit        int    `json:"limit,omitempty" jsonschema:"Max events to return."`
 }
 
@@ -407,7 +524,9 @@ type eventHistoryOut struct {
 	Since     string       `json:"since"`
 	Total     int          `json:"total"`
 	Events    []eventBrief `json:"events"`
-	Truncated bool         `json:"truncated"`
+	// Truncated is true when matches exist beyond Events, including when the
+	// recorded-event cap was hit and Total is only a lower bound.
+	Truncated bool `json:"truncated"`
 	// LiveEvents and RecordedEvents count matches by origin before truncation.
 	LiveEvents     int            `json:"live_events"`
 	RecordedEvents int            `json:"recorded_events"`
@@ -416,9 +535,9 @@ type eventHistoryOut struct {
 }
 
 func (s *Server) eventHistory(ctx context.Context, _ *mcp.CallToolRequest, in eventHistoryIn) (*mcp.CallToolResult, eventHistoryOut, error) {
-	ns := strings.TrimSpace(in.Namespace)
-	if ns == "" {
-		return nil, eventHistoryOut{}, fmt.Errorf("namespace is required")
+	ns, err := parseNamespace(in.Namespace)
+	if err != nil {
+		return nil, eventHistoryOut{}, err
 	}
 	client, err := s.newClient(in.KubeContext, ns)
 	if err != nil {
@@ -430,6 +549,8 @@ func (s *Server) eventHistory(ctx context.Context, _ *mcp.CallToolRequest, in ev
 	since := time.Now().UTC().Add(-time.Duration(clamp(in.SinceMinutes, 43200, 1440)) * time.Minute)
 	name := strings.TrimSpace(in.ObjectName)
 	prefix := name != "" && !in.ExactName
+	reasons := splitList(in.Reason)
+	kind := strings.TrimSpace(in.ObjectKind)
 
 	live, err := kube.ListEvents(ctx, client, ns)
 	if err != nil {
@@ -443,22 +564,34 @@ func (s *Server) eventHistory(ctx context.Context, _ *mcp.CallToolRequest, in ev
 
 	out := eventHistoryOut{Context: client.Context, Namespace: ns, Since: since.Format(time.RFC3339), Events: []eventBrief{}}
 	all := live
+	capped := false
 	if client.History != nil && client.Config != nil {
-		recs, cov, herr := client.History.RecordedEvents(ctx, client.Context, client.Config.Host, model.EventHistoryQuery{
-			Namespace: ns, Since: since, RegardingName: name, NamePrefix: prefix, Limit: 5000,
-		})
+		q := model.EventHistoryQuery{Namespace: ns, Since: since, RegardingName: name, NamePrefix: prefix, Reasons: reasons, RegardingKind: kind, Limit: maxRecordedEvents}
+		if in.WarningsOnly {
+			q.Type = "Warning"
+		}
+		recs, cov, herr := client.History.RecordedEvents(ctx, client.Context, client.Config.Host, q)
 		if herr != nil {
 			out.Note = "Recorded event history unavailable: " + herr.Error()
 		} else {
 			all, _ = kube.MergeRecordedEvents(live, recs)
-			if cov.Since != "" || len(cov.Gaps) > 0 {
+			capped = len(recs) >= maxRecordedEvents
+			switch {
+			case cov.Since != "" || len(cov.Gaps) > 0:
 				out.Coverage = briefCoverage(&cov)
-			} else {
+			case cov.LastRecorded != "":
+				out.Note = fmt.Sprintf("Klew's recording of this cluster ended at %s, before this window; showing live events only. Increase since_minutes to include recorded events.", cov.LastRecorded)
+			default:
 				out.Note = "Klew has not recorded this cluster; showing live events only (the API keeps events for about an hour)."
 			}
 		}
 	} else {
 		out.Note = "No local event history (recorded by the Klew desktop app); showing live events only (the API keeps events for about an hour)."
+	}
+
+	// Not an error: recorded events can outlive a deleted namespace.
+	if namespaceMissing(ctx, client, ns) {
+		out.Note = strings.TrimSpace(fmt.Sprintf("Namespace %q does not exist in this cluster, so only recorded events can appear; check the name. %s", ns, out.Note))
 	}
 
 	var matched []model.EventRecord
@@ -472,6 +605,12 @@ func (s *Server) eventHistory(ctx context.Context, _ *mcp.CallToolRequest, in ev
 		if name != "" && !nameMatches(e.InvolvedObject.Name, name, prefix) {
 			continue
 		}
+		if kind != "" && !strings.EqualFold(e.InvolvedObject.Kind, kind) {
+			continue
+		}
+		if len(reasons) > 0 && !containsFold(reasons, e.Reason) {
+			continue
+		}
 		matched = append(matched, e)
 		if e.Recorded {
 			out.RecordedEvents++
@@ -482,9 +621,32 @@ func (s *Server) eventHistory(ctx context.Context, _ *mcp.CallToolRequest, in ev
 	newestEventsFirst(matched)
 	limit := clamp(in.Limit, 500, 100)
 	out.Total = len(matched)
-	out.Truncated = len(matched) > limit
+	out.Truncated = len(matched) > limit || capped
+	if capped {
+		out.Note = strings.TrimSpace(out.Note + fmt.Sprintf(" Read only the newest %d recorded events: total is a lower bound and older events are missing. Narrow since_minutes or object_name.", maxRecordedEvents))
+	}
 	out.Events = mapSlice(capSlice(matched, limit), briefEvent)
 	return nil, out, nil
+}
+
+// splitList splits a comma-separated value, dropping blanks.
+func splitList(s string) []string {
+	var out []string
+	for _, part := range strings.Split(s, ",") {
+		if p := strings.TrimSpace(part); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func containsFold(list []string, v string) bool {
+	for _, s := range list {
+		if strings.EqualFold(s, v) {
+			return true
+		}
+	}
+	return false
 }
 
 // nameMatches reports whether obj is name, or with prefix one of its <name>-* children.
@@ -496,16 +658,23 @@ func nameMatches(obj, name string, prefix bool) bool {
 
 type workloadChangesIn struct {
 	KubeContext  string `json:"kube_context,omitempty" jsonschema:"Kube context name from klew_list_contexts. Omit to use the server default (kubeconfig current-context)."`
-	Namespace    string `json:"namespace" jsonschema:"Namespace of the workload."`
+	Namespace    string `json:"namespace" jsonschema:"One namespace name: the workload's namespace."`
 	Kind         string `json:"kind" jsonschema:"Workload kind."`
 	Name         string `json:"name" jsonschema:"Workload or Helm release name."`
 	MaxRevisions int    `json:"max_revisions,omitempty" jsonschema:"Max revisions to return, newest first."`
 	SummaryOnly  bool   `json:"summary_only,omitempty" jsonschema:"Omit field-level diffs and return one summary line per revision."`
 }
 
+// changeBrief is a revision with diffs capped; DiffsTotal counts them all.
+type changeBrief struct {
+	model.WorkloadChange
+	DiffsTotal int `json:"diffs_total"`
+}
+
 type workloadChangesOut struct {
 	model.WorkloadChanges
-	TotalRevisions int `json:"total_revisions"`
+	Changes        []changeBrief `json:"changes"`
+	TotalRevisions int           `json:"total_revisions"`
 }
 
 func (s *Server) workloadChanges(ctx context.Context, _ *mcp.CallToolRequest, in workloadChangesIn) (*mcp.CallToolResult, workloadChangesOut, error) {
@@ -514,13 +683,20 @@ func (s *Server) workloadChanges(ctx context.Context, _ *mcp.CallToolRequest, in
 	default:
 		return nil, workloadChangesOut{}, fmt.Errorf("unsupported kind %q; use Deployment, StatefulSet, DaemonSet or HelmRelease", in.Kind)
 	}
-	ns, name := strings.TrimSpace(in.Namespace), strings.TrimSpace(in.Name)
-	if ns == "" || name == "" {
-		return nil, workloadChangesOut{}, fmt.Errorf("namespace and name are required")
+	ns, err := parseNamespace(in.Namespace)
+	if err != nil {
+		return nil, workloadChangesOut{}, err
+	}
+	name := strings.TrimSpace(in.Name)
+	if name == "" {
+		return nil, workloadChangesOut{}, fmt.Errorf("name is required")
 	}
 	client, err := s.newClient(in.KubeContext, ns)
 	if err != nil {
 		return nil, workloadChangesOut{}, err
+	}
+	if namespaceMissing(ctx, client, ns) {
+		return nil, workloadChangesOut{}, errNamespaceNotFound(ns, client.Context)
 	}
 	ctx, cancel := context.WithTimeout(ctx, changesTimeout)
 	defer cancel()
@@ -532,21 +708,26 @@ func (s *Server) workloadChanges(ctx context.Context, _ *mcp.CallToolRequest, in
 		}
 		return nil, workloadChangesOut{}, err
 	}
+	return nil, shapeChanges(wc, clamp(in.MaxRevisions, 50, 5), in.SummaryOnly), nil
+}
+
+func shapeChanges(wc model.WorkloadChanges, maxRevisions int, summaryOnly bool) workloadChangesOut {
 	out := workloadChangesOut{WorkloadChanges: wc, TotalRevisions: len(wc.Changes)}
-	out.Changes = append([]model.WorkloadChange(nil), capSlice(wc.Changes, clamp(in.MaxRevisions, 50, 5))...)
-	for i := range out.Changes {
-		c := &out.Changes[i]
-		c.Summary, c.ChangeCause = clean(c.Summary), clean(c.ChangeCause)
-		if in.SummaryOnly {
-			c.Diffs = nil
-			continue
+	out.WorkloadChanges.Changes = nil
+	out.AccessMessage, out.HelmNote = clean(wc.AccessMessage), clean(wc.HelmNote)
+	out.Changes = mapSlice(capSlice(wc.Changes, maxRevisions), func(c model.WorkloadChange) changeBrief {
+		b := changeBrief{WorkloadChange: c, DiffsTotal: len(c.Diffs)}
+		b.Summary, b.ChangeCause, b.Actor = clean(c.Summary), clean(c.ChangeCause), clean(c.Actor)
+		b.Diffs = nil
+		if !summaryOnly {
+			// Diff values are already masked by key and shape (changes.RedactValue);
+			// clean also catches credentials embedded in longer values.
+			b.Diffs = mapSlice(capSlice(c.Diffs, maxDiffsPerRevision), func(d model.FieldDiff) model.FieldDiff {
+				d.Path, d.Before, d.After = clean(d.Path), clean(d.Before), clean(d.After)
+				return d
+			})
 		}
-		// Diff values are already masked by key and shape (changes.RedactValue);
-		// this also catches credentials embedded in longer values.
-		c.Diffs = append([]model.FieldDiff(nil), c.Diffs...)
-		for j := range c.Diffs {
-			c.Diffs[j].Before, c.Diffs[j].After = redact.String(c.Diffs[j].Before), redact.String(c.Diffs[j].After)
-		}
-	}
-	return nil, out, nil
+		return b
+	})
+	return out
 }

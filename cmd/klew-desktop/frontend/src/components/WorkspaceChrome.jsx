@@ -1,5 +1,6 @@
 import { SURFACE_META } from '../lib/constants'
 import { investigationBreadcrumb } from '../lib/investigationContext'
+import { HeaderSlot } from '../context/HeaderSlotContext.jsx'
 
 export function WorkspaceChrome({
   tab,
@@ -8,9 +9,6 @@ export function WorkspaceChrome({
   view,
   inspectKey,
   inspectRow,
-  focusPinned,
-  drillDown,
-  onClearFocus,
   layoutSwitcher,
   timeWindowLabel,
   live,
@@ -21,12 +19,12 @@ export function WorkspaceChrome({
     cluster,
     inspectKey,
     inspectRow,
-    focusPinned,
-    drillDown,
   })
 
   if (compact) {
+    // Shares the Watch / Investigate bar's row when that bar is shown.
     return (
+      <HeaderSlot name="context">
       <header className="workspace-chrome workspace-chrome-compact">
         <div className="workspace-chrome-main">
           {crumb && (
@@ -45,17 +43,10 @@ export function WorkspaceChrome({
           )}
         </div>
         <div className="workspace-chrome-actions">
-          {focusPinned && drillDown?.active && (
-            <div className="focus-chip focus-chip-compact">
-              <span className="focus-chip-label">Focus · {drillDown.label}</span>
-              <button type="button" className="focus-chip-clear" onClick={onClearFocus}>
-                Clear
-              </button>
-            </div>
-          )}
           {layoutSwitcher}
         </div>
       </header>
+      </HeaderSlot>
     )
   }
 
@@ -85,14 +76,6 @@ export function WorkspaceChrome({
           <div className="workspace-time-context" title="Investigation time window">
             <span className="workspace-time-label">{timeWindowLabel || 'Last 15m'}</span>
             {live && <span className="workspace-live-badge">Live</span>}
-          </div>
-        )}
-        {focusPinned && drillDown?.active && (
-          <div className="focus-chip focus-chip-compact">
-            <span className="focus-chip-label">Focus · {drillDown.label}</span>
-            <button type="button" className="focus-chip-clear" onClick={onClearFocus}>
-              Clear
-            </button>
           </div>
         )}
         {layoutSwitcher}

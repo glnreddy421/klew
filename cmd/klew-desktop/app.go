@@ -15,6 +15,7 @@ import (
 	"github.com/glnreddy421/klew/internal/details"
 	"github.com/glnreddy421/klew/internal/engine"
 	"github.com/glnreddy421/klew/internal/kube"
+	"github.com/glnreddy421/klew/internal/logstream"
 	"github.com/glnreddy421/klew/internal/model"
 	"github.com/glnreddy421/klew/internal/service"
 	"github.com/glnreddy421/klew/internal/version"
@@ -61,12 +62,19 @@ type App struct {
 
 	history    *eventHistory
 	historyErr string
+
+	logStreamMu     sync.Mutex
+	logStreams      map[string]*logstream.Session
+	logStreamSeq    int
+	logStreamClient *kube.Client
 }
 
 func NewApp(boot bootOptions) *App { return &App{boot: boot} }
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	// Extension load errors also appear in each investigation's warnings.
+	engine.SetRegistry(engine.LoadConfiguredExtensions())
 	if a.boot.Kubeconfig != "" {
 		a.cluster.KubeconfigPath = a.boot.Kubeconfig
 	}
@@ -81,6 +89,7 @@ func (a *App) startup(ctx context.Context) {
 
 func (a *App) shutdown(context.Context) {
 	a.stopCatalogEntityWatch()
+	a.stopAllLogStreams()
 	a.stopInvestigation()
 	if a.terminals != nil {
 		a.terminals.closeAll()
@@ -273,6 +282,10 @@ func (a *App) SelectContext(contextName string) kube.ClusterState {
 	prev := a.cluster
 	a.mu.Unlock()
 
+	// A stream follows pods of the previous cluster; end it.
+	if prev.SelectedContext != contextName {
+		a.stopAllLogStreams()
+	}
 	st := kube.PreserveClusterPickerOnSyncError(prev, a.refreshCluster(contextName, defaultNS))
 	a.mu.Lock()
 	a.cluster = st
@@ -391,6 +404,42 @@ func discoverScopeFromOptions(opts DiscoverOptions, fallbackNS string) model.Nam
 }
 
 // DiscoverMatches finds resources matching the query across the selected scope.
+// InvestigableTypes lists the resource types Investigate can target, from
+// the engine's collectors (built-in and user extensions). The Resources view
+// marks these and explains why the others cannot be investigated.
+func (a *App) InvestigableTypes() []model.InvestigableType {
+	return engine.InvestigableTypes()
+}
+
+// InvestigationTargets lists what Investigate mode can target in one
+// namespace, grouped by kind, from the engine's collectors (built-in and
+// user extensions).
+func (a *App) InvestigationTargets(opts DiscoverOptions) (model.TargetList, error) {
+	if a.ctx == nil {
+		a.ctx = context.Background()
+	}
+	a.mu.Lock()
+	cluster := a.cluster
+	a.mu.Unlock()
+	kcfg, ctxName, ns := opts.Kubeconfig, opts.Context, opts.Namespace
+	if kcfg == "" {
+		kcfg = cluster.KubeconfigPath
+	}
+	if ctxName == "" {
+		ctxName = cluster.SelectedContext
+	}
+	if ns == "" {
+		return model.TargetList{Groups: []model.TargetGroup{}}, fmt.Errorf("pick a namespace to list investigation targets")
+	}
+	client, err := kube.NewFromFlags(kcfg, ctxName, ns)
+	if err != nil {
+		return model.TargetList{Groups: []model.TargetGroup{}}, err
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
+	defer cancel()
+	return engine.TargetGroups(ctx, client, ns), nil
+}
+
 func (a *App) DiscoverMatches(opts DiscoverOptions) ([]model.MatchedObject, error) {
 	if a.ctx == nil {
 		a.ctx = context.Background()
@@ -805,10 +854,11 @@ type StartOptions struct {
 	Tail                    int    `json:"tail"`
 	RefreshSec              int    `json:"refreshSec"`
 	WindowSec               int    `json:"windowSec"`
-	MaxLogRequests          int    `json:"maxLogRequests"`
 	AutoRefresh             *bool  `json:"autoRefresh"`
 	UseMetricsServer        *bool  `json:"useMetricsServer"`
 	CheckAdmissionPerimeter *bool  `json:"checkAdmissionPerimeter"`
+	// NoLogs investigates without reading container logs.
+	NoLogs bool `json:"noLogs"`
 }
 
 // StartInvestigation begins live cluster collection.
@@ -887,10 +937,10 @@ func (a *App) StartInvestigation(opts StartOptions) error {
 		Tail:                    opts.Tail,
 		PollEvery:               refresh,
 		Window:                  window,
-		MaxLogRequests:          opts.MaxLogRequests,
 		AutoRefresh:             autoRefresh,
 		DisableMetrics:          disableMetrics,
 		CheckAdmissionPerimeter: checkAdmission,
+		NoLogs:                  opts.NoLogs,
 	})
 	if err != nil {
 		a.stopInvestigation()
@@ -906,83 +956,6 @@ func (a *App) StartInvestigation(opts StartOptions) error {
 // StopInvestigation ends the active live session.
 func (a *App) StopInvestigation() {
 	a.stopInvestigation()
-}
-
-// LogTailOptions configures on-demand multipod log gathering.
-type LogTailOptions struct {
-	PodNames []string `json:"podNames"`
-}
-
-// LogTailActive reports whether log follows are running for the active session.
-func (a *App) LogTailActive() bool {
-	a.mu.Lock()
-	svc := a.svc
-	a.mu.Unlock()
-	if svc == nil {
-		return false
-	}
-	return svc.LogTailActive()
-}
-
-// StartLogTail begins gathering container logs from pods in the investigation scope.
-func (a *App) StartLogTail(opts LogTailOptions) error {
-	a.mu.Lock()
-	svc := a.svc
-	a.mu.Unlock()
-	if svc == nil {
-		return fmt.Errorf("no active investigation")
-	}
-	return svc.StartLogTail(engine.LogTailOptions{PodNames: opts.PodNames})
-}
-
-// StopLogTail stops log follows without ending the investigation.
-func (a *App) StopLogTail() {
-	a.mu.Lock()
-	svc := a.svc
-	a.mu.Unlock()
-	if svc != nil {
-		svc.StopLogTail()
-	}
-}
-
-// PauseLogTail closes GetLogs streams while retaining the gather selection.
-func (a *App) PauseLogTail() error {
-	a.mu.Lock()
-	svc := a.svc
-	a.mu.Unlock()
-	if svc == nil {
-		return fmt.Errorf("no active investigation")
-	}
-	err := svc.PauseLogTail()
-	if err == nil {
-		a.emitState()
-	}
-	return err
-}
-
-// ResumeLogTail reopens GetLogs follows for the paused gather selection.
-func (a *App) ResumeLogTail() error {
-	a.mu.Lock()
-	svc := a.svc
-	a.mu.Unlock()
-	if svc == nil {
-		return fmt.Errorf("no active investigation")
-	}
-	err := svc.ResumeLogTail()
-	if err == nil {
-		a.emitState()
-	}
-	return err
-}
-
-// ClearLogs removes all buffered log lines from the active investigation.
-func (a *App) ClearLogs() {
-	a.mu.Lock()
-	svc := a.svc
-	a.mu.Unlock()
-	if svc != nil {
-		svc.ClearLogs()
-	}
 }
 
 func (a *App) stopInvestigation() {

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -25,7 +26,16 @@ type Client struct {
 	ContextNamespace string
 	// History reads Klew's local event recordings (optional; nil disables).
 	History EventHistory
+	// Dynamic overrides the dynamic client built from Config (tests set a fake).
+	Dynamic dynamic.Interface
 }
+
+// Client-side request limits. client-go's defaults (5 QPS, burst 10) dominate a
+// snapshot, which issues about a hundred requests plus one per container log.
+const (
+	clientQPS   = 50
+	clientBurst = 100
+)
 
 // configureLoadingRules mirrors configLoader: empty path uses KUBECONFIG env merge;
 // multi-file KUBECONFIG values must not be passed as ExplicitPath.
@@ -59,6 +69,7 @@ func NewFromFlags(kubeconfig, context, namespace string) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load kubeconfig: %w", err)
 	}
+	restConfig.QPS, restConfig.Burst = clientQPS, clientBurst
 	cs, err := kubernetes.NewForConfig(restConfig)
 	if err != nil {
 		return nil, fmt.Errorf("create clientset: %w", err)

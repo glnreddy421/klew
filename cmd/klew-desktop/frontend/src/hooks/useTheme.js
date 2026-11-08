@@ -1,13 +1,22 @@
-import { useCallback, useState } from 'react'
-import { applyTheme, readStoredTheme } from '../lib/themes'
+import { useCallback, useEffect, useState } from 'react'
+import { applyTheme, readStoredTheme, resolveThemeId, subscribeTheme } from '../lib/themes'
 
+/**
+ * `themeId` is the stored preference (light / dark / system); `resolvedTheme` is
+ * the palette in effect, which follows macOS while the preference is system.
+ */
 export function useTheme() {
   const [themeId, setThemeId] = useState(() => readStoredTheme())
+  const [resolvedTheme, setResolvedTheme] = useState(() => resolveThemeId(readStoredTheme()))
 
-  const setTheme = useCallback((id) => {
-    const applied = applyTheme(id)
-    setThemeId(applied)
+  useEffect(() => subscribeTheme((resolved, pref) => {
+    setResolvedTheme(resolved)
+    setThemeId(pref)
+  }), [])
+
+  const setTheme = useCallback((pref) => {
+    applyTheme(pref)
   }, [])
 
-  return { themeId, setTheme }
+  return { themeId, resolvedTheme, setTheme }
 }

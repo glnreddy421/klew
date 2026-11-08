@@ -1,6 +1,11 @@
 package kube
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+)
 
 func TestParseNullTerminatedEnv(t *testing.T) {
 	raw := []byte("PATH=/bin:/usr/bin\x00KUBECONFIG=/a:/b\x00EMPTY=\x00")
@@ -24,5 +29,21 @@ func TestMergeLoginShellVar(t *testing.T) {
 	}
 	if mergeLoginShellVar("OLDPWD") {
 		t.Fatal("OLDPWD should not merge")
+	}
+}
+
+func TestLoginShellEnvironmentTimesOut(t *testing.T) {
+	// The background sleep keeps stdout open after the shell is killed.
+	shell := filepath.Join(t.TempDir(), "slow-shell")
+	if err := os.WriteFile(shell, []byte("#!/bin/sh\nsleep 30 &\nwait\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SHELL", shell)
+	start := time.Now()
+	if _, err := loginShellEnvironment(100 * time.Millisecond); err == nil {
+		t.Fatal("want an error from a shell that never finishes")
+	}
+	if d := time.Since(start); d > 5*time.Second {
+		t.Fatalf("took %v", d)
 	}
 }

@@ -35,10 +35,13 @@ type KubeContext struct {
 
 // PermissionCheck records RBAC probe results.
 type PermissionCheck struct {
+	Group     string `json:"group,omitempty"`
 	Resource  string `json:"resource"`
 	Verb      string `json:"verb"`
 	Namespace string `json:"namespace,omitempty"`
 	Allowed   bool   `json:"allowed"`
+	// Error is set when the review could not run: access is unknown, not denied.
+	Error string `json:"error,omitempty"`
 }
 
 // ObjectRef is a lightweight Kubernetes object reference.
@@ -58,21 +61,23 @@ type MatchedObject struct {
 
 // WorkloadSummary describes a primary investigation target.
 type WorkloadSummary struct {
-	Kind        string            `json:"kind"`
-	Name        string            `json:"name"`
-	Namespace   string            `json:"namespace"`
-	UID         string            `json:"uid,omitempty"`
-	Replicas    int32             `json:"replicas"`
-	Ready       int32             `json:"ready"`
-	Available   int32             `json:"available"`
-	Updated     int32             `json:"updated"`
-	Generation  int64             `json:"generation"`
-	ObservedGen int64             `json:"observedGeneration"`
-	Selector    string            `json:"selector,omitempty"`
-	Conditions  []string          `json:"conditions,omitempty"`
-	Labels      map[string]string `json:"labels,omitempty"`
-	Annotations map[string]string `json:"annotations,omitempty"`
-	RootOwner   *ObjectRef        `json:"rootOwner,omitempty"`
+	Kind        string   `json:"kind"`
+	Name        string   `json:"name"`
+	Namespace   string   `json:"namespace"`
+	UID         string   `json:"uid,omitempty"`
+	Replicas    int32    `json:"replicas"`
+	Ready       int32    `json:"ready"`
+	Available   int32    `json:"available"`
+	Updated     int32    `json:"updated"`
+	Generation  int64    `json:"generation"`
+	ObservedGen int64    `json:"observedGeneration"`
+	Selector    string   `json:"selector,omitempty"`
+	Conditions  []string `json:"conditions,omitempty"`
+	// FailedConditions are conditions that are False, as "Type: Reason: Message".
+	FailedConditions []string          `json:"failedConditions,omitempty"`
+	Labels           map[string]string `json:"labels,omitempty"`
+	Annotations      map[string]string `json:"annotations,omitempty"`
+	RootOwner        *ObjectRef        `json:"rootOwner,omitempty"`
 }
 
 // PodSummary is a pod under investigation.
@@ -93,12 +98,18 @@ type PodSummary struct {
 	SecretRefs      []string          `json:"secretRefs,omitempty"`
 	PVCRefs         []string          `json:"pvcRefs,omitempty"`
 	RelatedCRDKinds []string          `json:"relatedCRDKinds,omitempty"`
+	// Unschedulable is the scheduler's reason when the pod cannot be placed.
+	Unschedulable string `json:"unschedulable,omitempty"`
+	// ServiceAccount is the pod's service account name.
+	ServiceAccount string `json:"serviceAccount,omitempty"`
 }
 
 // ContainerStatus is container-level state.
 type ContainerStatus struct {
-	PodName      string     `json:"podName"`
-	Name         string     `json:"name"`
+	PodName string `json:"podName"`
+	Name    string `json:"name"`
+	// Init marks an init container. A completed init container counts as ready.
+	Init         bool       `json:"init,omitempty"`
 	Image        string     `json:"image"`
 	Ready        bool       `json:"ready"`
 	RestartCount int32      `json:"restartCount"`
@@ -117,6 +128,14 @@ type ContainerStatus struct {
 	LimitsMem    string     `json:"limitsMem,omitempty"`
 	Command      []string   `json:"command,omitempty"`
 	Args         []string   `json:"args,omitempty"`
+	// Ports are the declared container ports, e.g. "80/TCP".
+	Ports []string `json:"ports,omitempty"`
+	// ReadinessProbe and LivenessProbe describe the probe action, e.g. "http-get :8080/healthz".
+	ReadinessProbe string `json:"readinessProbe,omitempty"`
+	LivenessProbe  string `json:"livenessProbe,omitempty"`
+	// Mounts are volume mount paths with their volume, e.g. "/data (data)".
+	// The service account token mount is left out.
+	Mounts []string `json:"mounts,omitempty"`
 }
 
 // ReplicaSetSummary links rollout generations.
@@ -127,6 +146,24 @@ type ReplicaSetSummary struct {
 	Ready           int32     `json:"ready"`
 	DeploymentOwner string    `json:"deploymentOwner,omitempty"`
 	CreatedAt       Timestamp `json:"createdAt"`
+	// CreateFailure is the ReplicaFailure condition message when pods cannot be
+	// created, e.g. rejected by a LimitRange, ResourceQuota or webhook.
+	CreateFailure string `json:"createFailure,omitempty"`
+}
+
+// JobSummary is a Job in scope, with its CronJob owner when it has one.
+type JobSummary struct {
+	Name      string    `json:"name"`
+	Namespace string    `json:"namespace"`
+	CronJob   string    `json:"cronJob,omitempty"`
+	Active    int32     `json:"active"`
+	Succeeded int32     `json:"succeeded"`
+	Failed    int32     `json:"failed"`
+	Complete  bool      `json:"complete,omitempty"`
+	CreatedAt Timestamp `json:"createdAt"`
+	// FailedReason and FailedMessage come from the Failed condition, e.g. BackoffLimitExceeded.
+	FailedReason  string `json:"failedReason,omitempty"`
+	FailedMessage string `json:"failedMessage,omitempty"`
 }
 
 // ServiceSummary includes endpoint readiness.
@@ -147,6 +184,8 @@ type IngressSummary struct {
 	Namespace string   `json:"namespace"`
 	Hosts     []string `json:"hosts,omitempty"`
 	Backends  []string `json:"backends,omitempty"`
+	// ClassName is spec.ingressClassName; empty means the default class.
+	ClassName string `json:"className,omitempty"`
 }
 
 // EventRecord is a normalized Kubernetes event.
@@ -235,6 +274,7 @@ type EvidenceBundle struct {
 	Workloads          []WorkloadSummary          `json:"workloads"`
 	Pods               []PodSummary               `json:"pods"`
 	ReplicaSets        []ReplicaSetSummary        `json:"replicaSets"`
+	Jobs               []JobSummary               `json:"jobs,omitempty"`
 	Services           []ServiceSummary           `json:"services"`
 	Ingresses          []IngressSummary           `json:"ingresses"`
 	Events             []EventRecord              `json:"events"`
@@ -248,13 +288,22 @@ type EvidenceBundle struct {
 	PVCRefs            []ResourceRef              `json:"pvcRefs"`
 	Permissions        []PermissionCheck          `json:"permissions"`
 	Warnings           []string                   `json:"warnings"`
-	DetectedCRDKinds   []string                   `json:"detectedCRDKinds,omitempty"`
 	Metrics            MetricsSummary             `json:"metrics"`
 	AdmissionPerimeter *AdmissionPerimeterSummary `json:"admissionPerimeter,omitempty"`
 	// EventHistory describes recorded events merged into Events (nil when none).
 	EventHistory *EventHistoryCoverage `json:"eventHistory,omitempty"`
+	// Coverage records what each collector did: collected, no-permission,
+	// not-installed, failed or off.
+	Coverage []CollectorStatus `json:"coverage,omitempty"`
+	// Target is the exact scope when the investigation names one object; nil
+	// means the whole namespace (or a free-text search).
+	Target *ScopeTarget `json:"target,omitempty"`
 	// WorkloadChanges holds the latest revision change of each in-scope workload.
 	WorkloadChanges []WorkloadChangeMarker `json:"workloadChanges,omitempty"`
+	// Resources holds objects listed by generic collectors (built-in ones such
+	// as persistentvolumeclaims, and user-defined ones), keyed by collector
+	// name. Rules read them; they are not sent to the UI or MCP clients.
+	Resources map[string][]map[string]any `json:"-"`
 }
 
 // TimeRange is a closed time interval.
@@ -275,7 +324,15 @@ type EventHistoryQuery struct {
 	RegardingName string
 	// NamePrefix also matches "<RegardingName>-*" (workload → pods/replicasets).
 	NamePrefix bool
-	Limit      int
+	// Type filters by event type ("Warning", "Normal"); "" means all. It applies
+	// before Limit, so frequent Normal events cannot push out older Warnings.
+	Type string
+	// Reasons limits to these event reasons, ignoring case; empty means all.
+	// RegardingKind limits to events about this kind, ignoring case. Both
+	// apply before Limit, like Type.
+	Reasons       []string
+	RegardingKind string
+	Limit         int
 }
 
 // EventHistoryCoverage summarises Klew's local event recording for a cluster.
@@ -286,6 +343,9 @@ type EventHistoryCoverage struct {
 	Gaps  []TimeRange `json:"gaps,omitempty"`
 	// RecordedEvents counts events that came only from history (no longer in the API).
 	RecordedEvents int `json:"recordedEvents,omitempty"`
+	// LastRecorded is set when nothing in the range was recorded but the cluster
+	// was recorded earlier; it is when that recording ended.
+	LastRecorded Timestamp `json:"lastRecorded,omitempty"`
 }
 
 // TimelineEvent is a correlated incident timeline entry.

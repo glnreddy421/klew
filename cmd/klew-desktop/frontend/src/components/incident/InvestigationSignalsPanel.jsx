@@ -61,9 +61,6 @@ export function InvestigationSignalsPanel({
   inspect,
   inspectRow,
   layoutMode,
-  focusPinned,
-  showFocusCta,
-  onFocus,
   onInspect,
   loading,
   error,
@@ -102,9 +99,6 @@ export function InvestigationSignalsPanel({
           <ComponentInspectPanel
             inspect={inspect}
             layoutMode={layoutMode}
-            focusPinned={focusPinned}
-            showFocusCta={showFocusCta}
-            onFocus={onFocus}
             onInspect={onInspect}
             loading={loading}
             error={error}

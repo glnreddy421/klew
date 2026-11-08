@@ -14,23 +14,19 @@ import (
 
 // LiveOptions configures live investigation.
 type LiveOptions struct {
-	Query          string
-	Namespace      string
-	PollEvery      time.Duration
-	AutoRefresh    bool
-	Window         time.Duration
-	Tail           int
-	MaxLogRequests int // concurrent pod/container log follows; 0 → kube default
+	Query       string
+	Namespace   string
+	PollEvery   time.Duration
+	AutoRefresh bool
+	Window      time.Duration
+	Tail        int
 	// DisableMetrics skips the metrics-server probe (requests/limits only).
 	DisableMetrics bool
 	// CheckAdmissionPerimeter lists admission webhooks when workloads expect pods but none exist.
 	CheckAdmissionPerimeter bool
-}
-
-// LogTailOptions configures an on-demand multipod log follow.
-type LogTailOptions struct {
-	// PodNames limits tailing to these pods. Empty → all pods in the investigation snapshot.
-	PodNames []string
+	// NoLogs skips container logs in snapshots, and the investigation accepts
+	// no streamed log lines (see IngestLog).
+	NoLogs bool
 }
 
 // LiveSession runs collectors and exposes investigation state.
@@ -49,23 +45,22 @@ type LiveSession struct {
 	refreshNS         string
 	refreshQuery      string
 
-	logMu         sync.Mutex
-	stopLogTail   func()
-	logTailActive bool
-	logTailPaused bool
-	logTailNames  []string
-	tail          int
-	window        time.Duration
-	maxLogReq     int
-	logNS         string
+	logMu sync.Mutex
+	tail  int
+	logNS string
+	// Pods whose streamed lines the investigation accepts, refreshed from the
+	// snapshot at most once a second (see IngestLog).
+	ingestPods   map[string]bool
+	ingestPodsAt time.Time
 
 	checkAdmissionPerimeter bool
+	noLogs                  bool
 
 	watcher *kube.LiveWatcher
 }
 
 // StartLive creates snapshot, starts bus/reducer, watchers, and metrics poll.
-// Live pod tailing starts only when the user requests it via StartLogTail.
+// Live log lines arrive only through IngestLog, from the desktop log stream.
 func StartLive(ctx context.Context, client *kube.Client, opts LiveOptions) (*LiveSession, error) {
 	if opts.PollEvery <= 0 {
 		opts.PollEvery = 10 * time.Second
@@ -90,6 +85,7 @@ func StartLive(ctx context.Context, client *kube.Client, opts LiveOptions) (*Liv
 		Query:                   opts.Query,
 		Tail:                    opts.Tail,
 		CheckAdmissionPerimeter: opts.CheckAdmissionPerimeter,
+		NoLogs:                  opts.NoLogs,
 	})
 	if err != nil {
 		cancel()
@@ -111,10 +107,9 @@ func StartLive(ctx context.Context, client *kube.Client, opts LiveOptions) (*Liv
 		refreshNS:               ns,
 		refreshQuery:            opts.Query,
 		tail:                    opts.Tail,
-		window:                  opts.Window,
-		maxLogReq:               opts.MaxLogRequests,
 		logNS:                   ns,
 		checkAdmissionPerimeter: opts.CheckAdmissionPerimeter,
+		noLogs:                  opts.NoLogs,
 	}
 
 	sink := func(e model.EvidenceEvent) {
@@ -131,10 +126,12 @@ func StartLive(ctx context.Context, client *kube.Client, opts LiveOptions) (*Liv
 	go session.runRefreshLoop(ctx)
 
 	watcher := &kube.LiveWatcher{Client: client, Sink: sink, Namespace: ns, Query: opts.Query}
+	watcher.SetTarget(bundle.Target)
 	watcher.SeedEventUIDs(eventUIDs(bundle.Events))
 	scopePods := podSummaryNames(bundle.Pods)
-	watches := watcher.Start(ctx, &session.wg, scopePods)
+	// Set before Start: the sink reads it from watch goroutines.
 	session.watcher = watcher
+	watches := watcher.Start(ctx, &session.wg, scopePods)
 
 	if opts.DisableMetrics {
 		sink(model.EvidenceEvent{
@@ -226,6 +223,7 @@ func (s *LiveSession) noteStructuralChange(e model.EvidenceEvent) {
 		}
 		if watcher != nil {
 			watcher.SetScopePodNames(podSummaryNames(reducer.State().Snapshot.Pods))
+			watcher.SetTarget(reducer.State().Snapshot.Target)
 		}
 	}()
 }
@@ -280,6 +278,7 @@ func (s *LiveSession) RefreshSnapshotNow(ctx context.Context) error {
 	}
 	if watcher != nil {
 		watcher.SetScopePodNames(podSummaryNames(reducer.State().Snapshot.Pods))
+		watcher.SetTarget(reducer.State().Snapshot.Target)
 	}
 	return nil
 }
@@ -292,6 +291,7 @@ func (s *LiveSession) snapshotCollectOptions() SnapshotOptions {
 		Query:                   s.refreshQuery,
 		Tail:                    s.tail,
 		CheckAdmissionPerimeter: s.checkAdmissionPerimeter,
+		NoLogs:                  s.noLogs,
 	}
 }
 
@@ -321,227 +321,44 @@ func (s *LiveSession) runRefreshLoop(ctx context.Context) {
 				slog.Debug("snapshot refresh", "err", err)
 			} else if s.watcher != nil {
 				s.watcher.SetScopePodNames(podSummaryNames(reducer.State().Snapshot.Pods))
+				s.watcher.SetTarget(reducer.State().Snapshot.Target)
 			}
 		}
 	}
 }
 
 func (s *LiveSession) Stop() {
-	s.logMu.Lock()
-	s.stopLogTailLocked()
-	s.logMu.Unlock()
 	s.cancel()
 	s.Bus.Close()
 	s.wg.Wait()
 }
 
-// LogTailActive reports whether GetLogs follow streams are open.
-func (s *LiveSession) LogTailActive() bool {
-	if s == nil {
+// IngestLog accepts a log line streamed outside the investigation (the
+// desktop log stream) when it comes from a pod in the investigation's
+// snapshot, so Patterns and signals see it. It reports whether it was used.
+// Investigations started without logs accept none.
+func (s *LiveSession) IngestLog(e model.EvidenceEvent) bool {
+	if s == nil || s.Bus == nil || s.noLogs || e.SourceType != model.SourceLog {
+		return false
+	}
+	if e.Namespace != s.logNS || e.Pod == "" {
 		return false
 	}
 	s.logMu.Lock()
-	defer s.logMu.Unlock()
-	return s.logTailActive
-}
-
-// LogTailEngaged reports whether a gather session exists (streaming or paused).
-func (s *LiveSession) LogTailEngaged() bool {
-	if s == nil || s.Reducer == nil {
-		return false
-	}
-	s.logMu.Lock()
-	defer s.logMu.Unlock()
-	if s.logTailActive || s.logTailPaused {
-		return true
-	}
-	return len(s.Reducer.State().LogTailPods) > 0
-}
-
-// LogTailPaused reports whether log follows are paused with scope retained.
-func (s *LiveSession) LogTailPaused() bool {
-	if s == nil {
-		return false
-	}
-	s.logMu.Lock()
-	defer s.logMu.Unlock()
-	return s.logTailPaused
-}
-
-// StartLogTail opens GetLogs follows for pods in the investigation snapshot.
-func (s *LiveSession) StartLogTail(opts LogTailOptions) error {
-	if s == nil || s.client == nil {
-		return fmt.Errorf("no active investigation")
-	}
-	pods := filterSnapshotPods(s.Reducer.State().Snapshot.Pods, opts.PodNames)
-	if len(opts.PodNames) == 0 {
-		return fmt.Errorf("select at least one pod")
-	}
-	if len(pods) == 0 {
-		return fmt.Errorf("no pods in investigation scope")
-	}
-	allowNames := podSummaryNames(pods)
-
-	s.logMu.Lock()
-	defer s.logMu.Unlock()
-	s.stopLogTailLocked()
-	s.logTailNames = append([]string(nil), allowNames...)
-	return s.startLogStreamsLocked(pods, allowNames)
-}
-
-// PauseLogTail closes GetLogs streams but keeps the gather session for resume.
-func (s *LiveSession) PauseLogTail() error {
-	if s == nil {
-		return fmt.Errorf("no active investigation")
-	}
-	s.logMu.Lock()
-	defer s.logMu.Unlock()
-	if !s.logTailActive && !s.logTailPaused {
-		return fmt.Errorf("no active log gather session")
-	}
-	if s.logTailPaused {
-		return nil
-	}
-	s.stopStreamsLocked()
-	s.logTailPaused = true
-	if s.Reducer != nil {
-		s.Reducer.SetLogTailPaused(true)
-	}
-	s.emitLogTailSystem("log_tail_paused", "Log gather paused — GetLogs streams closed to reduce API load")
-	return nil
-}
-
-// ResumeLogTail reopens GetLogs follows for the last gather selection.
-func (s *LiveSession) ResumeLogTail() error {
-	if s == nil || s.client == nil {
-		return fmt.Errorf("no active investigation")
-	}
-	s.logMu.Lock()
-	defer s.logMu.Unlock()
-	if !s.logTailPaused {
-		return fmt.Errorf("log gather is not paused")
-	}
-	names := s.logTailNames
-	if len(names) == 0 {
-		names = append([]string(nil), s.Reducer.State().LogTailPods...)
-	}
-	if len(names) == 0 {
-		return fmt.Errorf("no pods to resume")
-	}
-	pods := filterSnapshotPods(s.Reducer.State().Snapshot.Pods, names)
-	if len(pods) == 0 {
-		return fmt.Errorf("selected pods are no longer in investigation scope")
-	}
-	allowNames := podSummaryNames(pods)
-	s.logTailNames = append([]string(nil), allowNames...)
-	if err := s.startLogStreamsLocked(pods, allowNames); err != nil {
-		return err
-	}
-	s.emitLogTailSystem("log_tail_resumed", fmt.Sprintf("Resumed log gather for %d pod(s)", len(pods)))
-	return nil
-}
-
-// StopLogTail ends active log follows without stopping the investigation.
-func (s *LiveSession) StopLogTail() {
-	if s == nil {
-		return
-	}
-	s.logMu.Lock()
-	defer s.logMu.Unlock()
-	s.stopLogTailLocked()
-}
-
-// ClearLogs wipes log lines for the active tail pods (live panel clean slate).
-// Log lines from other pods stay in the buffer for Patterns and other views.
-func (s *LiveSession) ClearLogs() {
-	if s == nil || s.Reducer == nil {
-		return
-	}
-	pods := s.Reducer.State().LogTailPods
-	if len(pods) > 0 {
-		s.Reducer.ClearLogsForPods(pods)
-		return
-	}
-	s.Reducer.ClearLogs()
-}
-
-func (s *LiveSession) stopLogTailLocked() {
-	s.stopStreamsLocked()
-	s.logTailPaused = false
-	s.logTailNames = nil
-	if s.Reducer != nil {
-		s.Reducer.SetLogTailPods(nil)
-		s.Reducer.SetLogTailPaused(false)
-	}
-}
-
-func (s *LiveSession) stopStreamsLocked() {
-	if s.stopLogTail != nil {
-		s.stopLogTail()
-		s.stopLogTail = nil
-	}
-	s.logTailActive = false
-}
-
-func (s *LiveSession) startLogStreamsLocked(pods []model.PodSummary, allowNames []string) error {
-	if s.client == nil {
-		return fmt.Errorf("no cluster client")
-	}
-	s.stopStreamsLocked()
-	s.logTailPaused = false
-
-	s.Reducer.SetLogTailPods(allowNames)
-	s.Reducer.SetLogTailPaused(false)
-
-	sink := func(e model.EvidenceEvent) { s.Bus.Publish(e) }
-	streamer := &kube.LogStreamer{
-		Client:         s.client,
-		Sink:           sink,
-		Namespace:      s.logNS,
-		Query:          "",
-		Tail:           s.tail,
-		Since:          s.window,
-		MaxLogRequests: s.maxLogReq,
-	}
-	s.stopLogTail = streamer.StartWithStop(s.ctx, pods)
-	s.logTailActive = true
-	s.emitLogTailSystem("log_tail_started", fmt.Sprintf("Gathering logs from %d pod(s)", len(pods)))
-	return nil
-}
-
-func (s *LiveSession) emitLogTailSystem(reason, message string) {
-	if s.Bus == nil {
-		return
-	}
-	s.Bus.Publish(model.EvidenceEvent{
-		Timestamp:  model.TimestampFrom(time.Now().UTC()),
-		SourceType: model.SourceSystem,
-		Severity:   model.SeverityInfo,
-		Reason:     reason,
-		Message:    message,
-		Confidence: 1,
-	})
-}
-
-func filterSnapshotPods(pods []model.PodSummary, names []string) []model.PodSummary {
-	if len(names) == 0 {
-		out := make([]model.PodSummary, len(pods))
-		copy(out, pods)
-		return out
-	}
-	want := make(map[string]bool, len(names))
-	for _, n := range names {
-		if n != "" {
-			want[n] = true
+	if s.ingestPods == nil || time.Since(s.ingestPodsAt) > time.Second {
+		pods := s.Reducer.State().Snapshot.Pods
+		s.ingestPods = make(map[string]bool, len(pods))
+		for _, p := range pods {
+			s.ingestPods[p.Name] = true
 		}
+		s.ingestPodsAt = time.Now()
 	}
-	var out []model.PodSummary
-	for _, p := range pods {
-		if want[p.Name] {
-			out = append(out, p)
-		}
+	ok := s.ingestPods[e.Pod]
+	s.logMu.Unlock()
+	if ok {
+		s.Bus.Publish(e)
 	}
-	return out
+	return ok
 }
 
 func podSummaryNames(pods []model.PodSummary) []string {
@@ -554,6 +371,11 @@ func podSummaryNames(pods []model.PodSummary) []string {
 	return out
 }
 
+// settleTimeout bounds how long RunFor waits for queued evidence to be applied.
+const settleTimeout = 5 * time.Second
+
+// RunFor watches for duration, then returns the state once queued evidence has
+// been applied. A zero duration returns the snapshot's verdict without watching.
 func RunFor(ctx context.Context, client *kube.Client, opts LiveOptions, duration time.Duration) (model.InvestigationState, error) {
 	session, err := StartLive(ctx, client, opts)
 	if err != nil {
@@ -564,8 +386,26 @@ func RunFor(ctx context.Context, client *kube.Client, opts LiveOptions, duration
 	case <-ctx.Done():
 		return session.State(), ctx.Err()
 	case <-time.After(duration):
-		return session.State(), nil
 	}
+	err = session.settle(ctx)
+	return session.State(), err
+}
+
+// settle waits until the bus is idle. Watches keep publishing, so a busy
+// session may never be; that is reported rather than waited out.
+func (s *LiveSession) settle(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, settleTimeout)
+	defer cancel()
+	tick := time.NewTicker(5 * time.Millisecond)
+	defer tick.Stop()
+	for !s.Bus.Idle() {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("evidence still being processed: %w", ctx.Err())
+		case <-tick.C:
+		}
+	}
+	return nil
 }
 
 func eventUIDs(events []model.EventRecord) []string {

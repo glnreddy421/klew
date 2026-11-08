@@ -5,7 +5,6 @@
  */
 
 import { DEFAULT_WORKSPACE_LAYOUT, normalizeLayoutMode, saveLayoutMode } from './incidentLayout'
-import { DEFAULT_TERMINAL_APPEARANCE, normalizeTerminalAppearance } from './terminalAppearance'
 import { DEFAULT_UI_FONT, normalizeUiFont } from './fonts'
 import { normalizeTopbarScale, TOPBAR_SCALE_DEFAULT } from './topbarScale'
 import { normalizeFavoriteContexts } from './clusterContexts.js'
@@ -13,7 +12,7 @@ import { normalizeFavoriteContexts } from './clusterContexts.js'
 export const PREFS_STORAGE_KEY = 'klew.desktop.preferences'
 
 /** Bump when defaults change so existing localStorage picks up migrations once. */
-export const PREFS_VERSION = 15
+export const PREFS_VERSION = 16
 
 /** Investigation window lengths supported by the engine (minutes). */
 export const WINDOW_MIN_OPTIONS = [5, 15, 30, 60]
@@ -24,6 +23,7 @@ export const SETTINGS_SECTIONS = [
   { id: 'investigation', label: 'Investigation', hint: 'Windows & refresh' },
   { id: 'concurrency', label: 'Concurrency', hint: 'Log stream limits' },
   { id: 'kubernetes', label: 'Kubernetes', hint: 'Kubeconfig & metrics' },
+  { id: 'extensions', label: 'Extensions', hint: 'Your collectors & rules' },
   { id: 'help', label: 'Help', hint: 'Shortcuts & links' },
 ]
 
@@ -32,7 +32,6 @@ export const SETTINGS_SECTIONS = [
 export function defaultPreferences() {
   return {
     // General
-    openStreamOnInvestigate: false,
     followLogsByDefault: true,
     rememberLastQuery: true,
 
@@ -77,7 +76,6 @@ export function defaultPreferences() {
     // In-app terminal
     terminalShell: '', // empty/system = follow $SHELL
     terminalShellPrompted: false,
-    terminalAppearance: DEFAULT_TERMINAL_APPEARANCE,
 
     prefsVersion: PREFS_VERSION,
   }
@@ -112,10 +110,7 @@ function migratePreferences(parsed) {
     next.terminalShell = ''
     next.terminalShellPrompted = false
   }
-  // v5: terminal appearance preset.
-  if (version < 5) {
-    next.terminalAppearance = DEFAULT_TERMINAL_APPEARANCE
-  }
+  // v5: terminal appearance preset (removed — the terminal follows the app theme).
   // v6: bundled kubectl default.
   if (version < 6) {
     next.useBundledKubectl = true
@@ -160,6 +155,10 @@ function migratePreferences(parsed) {
   if (version < 15) {
     next.checkAdmissionPerimeter = true
   }
+  // v16: Inter replaces Jakarta as the default UI font; an explicit pick is kept.
+  if (version < 16 && (!next.uiFont || next.uiFont === 'jakarta')) {
+    next.uiFont = DEFAULT_UI_FONT
+  }
   return next
 }
 
@@ -196,7 +195,6 @@ export function normalizePreferences(p) {
   const d = defaultPreferences()
   const src = p && typeof p === 'object' ? p : {}
   return {
-    openStreamOnInvestigate: bool(src.openStreamOnInvestigate, d.openStreamOnInvestigate),
     followLogsByDefault: bool(src.followLogsByDefault, d.followLogsByDefault),
     rememberLastQuery: bool(src.rememberLastQuery, d.rememberLastQuery),
 
@@ -234,7 +232,6 @@ export function normalizePreferences(p) {
 
     terminalShell: String(src.terminalShell ?? d.terminalShell ?? '').trim(),
     terminalShellPrompted: bool(src.terminalShellPrompted, d.terminalShellPrompted),
-    terminalAppearance: normalizeTerminalAppearance(src.terminalAppearance ?? d.terminalAppearance),
 
     prefsVersion: clampInt(src.prefsVersion, 1, PREFS_VERSION, d.prefsVersion),
   }
@@ -251,7 +248,6 @@ export function startOptionsFromPreferences(prefs, base = {}) {
     tail: p.tailLines,
     refreshSec: p.refreshSec,
     windowSec: p.windowMin * 60,
-    maxLogRequests: p.maxLogRequests,
     autoRefresh: p.autoRefresh,
     useMetricsServer: p.useMetricsServer,
     checkAdmissionPerimeter: p.checkAdmissionPerimeter,

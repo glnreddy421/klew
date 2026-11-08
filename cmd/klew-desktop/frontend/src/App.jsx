@@ -2,14 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   StartInvestigation,
   StopInvestigation,
-  DiscoverMatches,
+  InvestigationTargets,
+  InvestigableTypes,
   GetView,
   OpenNewWindow,
-  StartLogTail,
-  StopLogTail,
-  PauseLogTail,
-  ResumeLogTail,
-  ClearLogs,
   SetAutoRefresh,
   SetPollEverySec,
   SetKubectlOptions,
@@ -19,6 +15,8 @@ import {
 import { EventsOn } from '../wailsjs/runtime/runtime'
 import { emptyView } from './lib/constants'
 import { TerminalLaunchProvider } from './context/TerminalLaunchContext.jsx'
+import { InvestigableProvider } from './context/InvestigableContext.jsx'
+import { investigableIndex } from './lib/investigable.js'
 import { useCluster } from './hooks/useCluster'
 import { useClusterStatus } from './hooks/useClusterStatus'
 import { useClusterConnection } from './hooks/useClusterConnection'
@@ -32,13 +30,19 @@ import {
   normalizeInvestigationScope,
   normalizeBrowseScope,
   RESOURCES_BROWSE_LENS,
-  scopeSupportsInvestigate,
   singleBrowseScope,
 } from './lib/browseScope.js'
 import { HOME_NAV, normalizeNavEntry, useNavigationHistory } from './hooks/useNavigationHistory'
-import { useStreamPanel, PANEL_NORMAL, PANEL_CLOSED } from './hooks/useStreamPanel'
+import { useStreamPanel } from './hooks/useStreamPanel'
+import { useLogStreams } from './hooks/useLogStream'
+import { logTabTitle, podTargets, streamTargetsFor } from './lib/logStream'
+import { LogStreamProvider } from './context/LogStreamContext.jsx'
+import { SettingsDialog } from './components/settings/SettingsDialog.jsx'
+import { McpSetupDialog } from './components/McpSetupDialog.jsx'
 import { useTerminalPanel } from './hooks/useTerminalPanel'
+import { useTerminalTabs } from './hooks/useTerminalTabs'
 import { useConsoleDock } from './hooks/useConsoleDock'
+import { useDockTabs } from './hooks/useDockTabs'
 import { useTheme } from './hooks/useTheme'
 import { usePreferences } from './hooks/usePreferences'
 import { useEventHistory } from './hooks/useEventHistory'
@@ -52,39 +56,43 @@ import { toggleFavoriteContext } from './lib/clusterContexts.js'
 import { registerSettingsRefreshHandler, scheduleSettingsCacheRefresh } from './lib/settingsCache'
 import { applyTheme } from './lib/themes'
 import { resolveTerminalShellPref } from './lib/terminalShell'
-import { buildKubectlLogsCommand, podLogsTabTitle } from './lib/podLogsTerminal'
 import { useIdleAutoStop, formatIdleDuration } from './hooks/useIdleAutoStop'
 import { AppShell } from './components/shell/AppShell.jsx'
 import { ResourcesWorkbenchRoot } from './views/ResourcesWorkbenchView'
 import { ScopeBrowseProvider } from './context/ScopeBrowseContext.jsx'
+import { HeaderSlotProvider } from './context/HeaderSlotContext.jsx'
 import { defaultRelations } from './components/shell/explorers/ExplorerPanels.jsx'
 import { ConsoleDock } from './components/ConsoleDock'
 import { TerminalShellModal } from './components/TerminalShellModal'
-import { ScopePickerModal } from './components/incident/ScopePickerModal'
+import { InvestigateBar, InvestigationTabs, MODE_INVESTIGATE, MODE_WATCH } from './components/shell/InvestigateBar.jsx'
 import { MainContent } from './views/MainContent'
 import { ClusterConnectionBanner } from './components/shell/ClusterConnectionBanner'
 import {
-  pickDefaultFocus,
   deriveMatchRows,
   getMatchedObjects,
-  buildInvestigationQuery,
   findRowByKey,
-  rowKeysMatch,
-  synthesizeFocusRow,
-  canonicalInspectKey,
+  buildInspectKey,
 } from './lib/matches'
-import { buildFocusScope, emptyFocusScope } from './lib/focusScope'
 import { isEditableTarget } from './lib/keyboard'
+import { normalizeInvestigationQuery } from './lib/investigationQuery'
 import {
-  isBlankInvestigationQuery,
-  normalizeInvestigationQuery,
-} from './lib/investigationQuery'
+  queryForTargets,
+  reconcileTargets,
+} from './lib/investigateTarget.js'
+import { RESOURCES_SURFACE_TABS } from './lib/constants'
 
 export default function App() {
   const [view, setView] = useState(emptyView())
   const [tab, setTab] = useState(HOME_NAV.tab)
+  // The terminal and logs dock is for working in a cluster; Home has none.
+  const dockAllowed = tab !== HOME_NAV.tab
+  const dockAllowedRef = useRef(dockAllowed)
+  dockAllowedRef.current = dockAllowed
   const [nodesFocus, setNodesFocus] = useState('cluster')
   const [settingsSection, setSettingsSection] = useState('general')
+  // Settings is a dialog over the current page, not a navigation entry.
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [mcpSetupOpen, setMcpSetupOpen] = useState(false)
   const navigation = useNavigationHistory(HOME_NAV)
 
   const applyNavEntry = useCallback((entry) => {
@@ -99,6 +107,11 @@ export default function App() {
       typeof target === 'object' ? target : { tab: target },
       { tab, nodesFocus, settingsSection },
     )
+    if (entry.tab === 'settings') {
+      setSettingsSection(entry.settingsSection || 'general')
+      setSettingsOpen(true)
+      return
+    }
     applyNavEntry(entry)
     navigation.push(entry)
   }, [tab, nodesFocus, settingsSection, applyNavEntry, navigation])
@@ -121,17 +134,14 @@ export default function App() {
   const [activeQuery, setActiveQuery] = useState('')
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
-  const [gatherBusy, setGatherBusy] = useState(false)
-  const [gatherError, setGatherError] = useState('')
-  const [scopePicker, setScopePicker] = useState({
-    open: false,
-    matches: [],
-    query: '',
-    mode: 'initial',
-  })
+  // Resources surface: Watch browses, Investigate runs investigations from the bar.
+  const [investigateMode, setInvestigateMode] = useState(MODE_WATCH)
+  // Investigation targets as "Kind/name" keys; empty is the whole namespace.
+  const [invTargets, setInvTargets] = useState([])
+  const [invIncludeLogs, setInvIncludeLogs] = useState(true)
+  const [activeNoLogs, setActiveNoLogs] = useState(false)
+  const [invMatches, setInvMatches] = useState({ namespace: '', items: [], unavailable: [], loading: false, error: '' })
 
-  const [focusKey, setFocusKey] = useState(null)
-  const [focusPinned, setFocusPinned] = useState(false)
   const [inspectKey, setInspectKey] = useState(null)
 
   const {
@@ -143,7 +153,7 @@ export default function App() {
     setContext,
     setNamespace,
   } = useCluster()
-  const { themeId, setTheme } = useTheme()
+  const { themeId, resolvedTheme, setTheme } = useTheme()
   const { prefs, setPreferences, reloadPreferences } = usePreferences()
   const [investigationScope, setInvestigationScope] = useState(() => singleBrowseScope(''))
   const [browseScope, setBrowseScope] = useState(() => allBrowseScope())
@@ -181,22 +191,23 @@ export default function App() {
   )
   const normalizedBrowseScope = useMemo(() => normalizeBrowseScope(browseScope), [browseScope])
 
-  const investigationScopeLocked = running || starting
+  const investigating = investigateMode === MODE_INVESTIGATE
+  const invNamespace = normalizedInvestigationScope.namespace || ''
   const resourcesInvestigationActive = Boolean(lockedResourcesScope)
   const resourcesNamespaceLocked = resourcesInvestigationActive
     && resourcesBrowseLens === RESOURCES_BROWSE_LENS.MATCHES
 
-  const displayInvestigationScope = useMemo(() => {
-    if (investigationScopeLocked && investigationNs) return singleBrowseScope(investigationNs)
-    return normalizedInvestigationScope
-  }, [investigationScopeLocked, investigationNs, normalizedInvestigationScope])
 
   const effectiveBrowseScope = useMemo(() => {
     if (resourcesNamespaceLocked && lockedResourcesScope) {
       return normalizeBrowseScope(lockedResourcesScope)
     }
+    // Investigate mode shows the namespace about to be investigated.
+    if (investigating && !resourcesInvestigationActive && invNamespace) {
+      return singleBrowseScope(invNamespace)
+    }
     return normalizedBrowseScope
-  }, [resourcesNamespaceLocked, lockedResourcesScope, normalizedBrowseScope])
+  }, [resourcesNamespaceLocked, lockedResourcesScope, investigating, resourcesInvestigationActive, invNamespace, normalizedBrowseScope])
 
   const lockResourcesForInvestigation = useCallback((scope, sessionNs = '') => {
     setResourcesBrowseLens(RESOURCES_BROWSE_LENS.MATCHES)
@@ -269,10 +280,42 @@ export default function App() {
   const terminal = useTerminalPanel()
   const consoleDock = useConsoleDock({ stream, terminal })
   const [terminalShellPickerOpen, setTerminalShellPickerOpen] = useState(false)
-  const [pendingShellPickerAction, setPendingShellPickerAction] = useState(null)
   const [terminalShellRestartToken, setTerminalShellRestartToken] = useState(0)
   const [terminalLaunchRequest, setTerminalLaunchRequest] = useState(null)
-  const pendingPodLogsLaunchRef = useRef(null)
+  const [logsFindFromPatterns, setLogsFindFromPatterns] = useState(null)
+  const terminalTabs = useTerminalTabs(cluster, {
+    open: terminal.open,
+    persist: false,
+    skipInitialSeed: Boolean(terminalLaunchRequest?.id),
+  })
+  const restoreLogStreamsRef = useRef(null)
+  const logStreams = useLogStreams({
+    maxLogRequests: prefs.maxLogRequests,
+    onRestored: (statuses) => restoreLogStreamsRef.current?.(statuses),
+  })
+  const dockTabs = useDockTabs({
+    terminalTabs,
+    logStreams,
+    onOpenTerminalPanel: terminal.openPanel,
+    onExpandDock: consoleDock.openStream,
+  })
+  restoreLogStreamsRef.current = (statuses) => {
+    dockTabs.restoreLogStreams(statuses)
+    if (statuses?.length) {
+      consoleDock.openStream()
+    }
+  }
+  const clearLogTabsOnContextChangeRef = useRef(null)
+  clearLogTabsOnContextChangeRef.current = () => {
+    logStreams.stopAll()
+    dockTabs.clearLogTabs()
+  }
+  useEffect(() => {
+    const ctx = cluster.selectedContext || cluster.currentContext || ''
+    if (prevContextRef.current && prevContextRef.current !== ctx) {
+      clearLogTabsOnContextChangeRef.current?.()
+    }
+  }, [cluster.selectedContext, cluster.currentContext])
   const activeQueryRef = useRef('')
 
   useEffect(() => {
@@ -292,7 +335,6 @@ export default function App() {
       reloadPreferences()
       if (snapshot?.themeId) {
         applyTheme(snapshot.themeId)
-        setTheme(snapshot.themeId)
       }
       if (snapshot?.prefs?.uiFont) {
         applyUiFont(snapshot.prefs.uiFont).catch(() => {})
@@ -301,7 +343,7 @@ export default function App() {
         applyTopbarScale(snapshot.prefs.topbarScale)
       }
     })
-  }, [reloadPreferences, setTheme])
+  }, [reloadPreferences])
 
   useEffect(() => scheduleSettingsCacheRefresh(), [])
 
@@ -410,6 +452,21 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [refreshNow, syncing, refreshingInvestigation, starting])
 
+  const enterInvestigateRef = useRef(() => {})
+  useEffect(() => {
+    function onKeyDown(e) {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'k') return
+      e.preventDefault()
+      enterInvestigateRef.current()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    const offSearch = EventsOn('menu:focus-search', () => enterInvestigateRef.current())
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      offSearch?.()
+    }
+  }, [])
+
   useEffect(() => {
     const offSettings = EventsOn('menu:settings', () => {
       navigateTo({ tab: 'settings', settingsSection: 'general' })
@@ -417,9 +474,11 @@ export default function App() {
     const offHelp = EventsOn('menu:help', () => {
       navigateTo({ tab: 'settings', settingsSection: 'help' })
     })
+    const offMcp = EventsOn('menu:mcp-setup', () => setMcpSetupOpen(true))
     return () => {
       offSettings?.()
       offHelp?.()
+      offMcp?.()
     }
   }, [navigateTo])
 
@@ -432,41 +491,34 @@ export default function App() {
     if (terminal.open) {
       setTerminalShellRestartToken(Date.now())
     }
-    if (pendingShellPickerAction === 'openTerminal') {
-      consoleDock.openTerminal()
-      setPendingShellPickerAction(null)
-    }
-    if (pendingShellPickerAction === 'openPodLogs') {
-      const target = pendingPodLogsLaunchRef.current
-      pendingPodLogsLaunchRef.current = null
-      if (target) {
-        setTerminalLaunchRequest({
-          id: Date.now(),
-          title: podLogsTabTitle(target.podName, target.container),
-          namespace: target.namespace || cluster.selectedNamespace || '',
-          initialInput: buildKubectlLogsCommand(target),
-        })
-      }
-      consoleDock.openTerminal()
-      setPendingShellPickerAction(null)
-    }
-  }, [setPreferences, terminal, pendingShellPickerAction, consoleDock, cluster.selectedNamespace])
+  }, [setPreferences, terminal])
 
-  const openShellPicker = useCallback((action = null) => {
-    setPendingShellPickerAction(action)
+  const openShellPicker = useCallback(() => {
     setTerminalShellPickerOpen(true)
   }, [])
 
-  const toggleTerminal = useCallback(() => {
-    if (!prefs.terminalShellPrompted) {
-      openShellPicker('openTerminal')
+  // Like an IDE: open the user's default shell straight away; Shell… in the dock changes it.
+  const openNewTerminalTab = useCallback(() => {
+    if (!terminal.open) {
+      terminal.openPanel()
+      consoleDock.openTerminal()
       return
     }
-    consoleDock.openTerminal()
-  }, [prefs.terminalShellPrompted, openShellPicker, consoleDock])
+    dockTabs.addTerminalTab()
+  }, [terminal, consoleDock, dockTabs])
+
+  const toggleTerminal = useCallback(() => {
+    if (!dockAllowedRef.current) return
+    if (!terminal.open) {
+      terminal.openPanel()
+      consoleDock.openTerminal()
+      return
+    }
+    dockTabs.focusOrOpenTerminal()
+  }, [terminal, consoleDock, dockTabs])
 
   const handleOpenTerminalShellPicker = useCallback(() => {
-    openShellPicker(null)
+    openShellPicker()
   }, [openShellPicker])
 
   const handleTerminalShellConfirm = useCallback((choice) => {
@@ -479,24 +531,9 @@ export default function App() {
     }
   }, [terminal.open])
 
-  const handleOpenPodLogs = useCallback((target) => {
-    if (!target?.podName) return
-    if (!prefs.terminalShellPrompted) {
-      pendingPodLogsLaunchRef.current = target
-      openShellPicker('openPodLogs')
-      return
-    }
-    setTerminalLaunchRequest({
-      id: Date.now(),
-      title: podLogsTabTitle(target.podName, target.container),
-      namespace: target.namespace || cluster.selectedNamespace || '',
-      initialInput: buildKubectlLogsCommand(target),
-    })
-    consoleDock.openTerminal()
-  }, [prefs.terminalShellPrompted, openShellPicker, consoleDock, cluster.selectedNamespace])
-
   const launchTerminalCommand = useCallback((opts) => {
     if (!opts?.initialInput) return
+    terminal.openPanel()
     setTerminalLaunchRequest({
       id: Date.now(),
       title: opts.title || 'Terminal',
@@ -504,7 +541,7 @@ export default function App() {
       initialInput: opts.initialInput,
     })
     consoleDock.openTerminal()
-  }, [consoleDock, cluster.selectedNamespace])
+  }, [terminal, consoleDock, cluster.selectedNamespace])
 
   const handleNavigate = useCallback((target) => {
     const entry = normalizeNavEntry(
@@ -516,7 +553,11 @@ export default function App() {
       return
     }
     if (entry.tab === 'live-logs') {
-      consoleDock.openStream()
+      if (!dockAllowedRef.current) return
+      const sel = streamSelectionRef.current
+      const picked = sel.table.length ? sel.table : sel.inspector
+      if (picked.length) streamResourcesRef.current?.(picked)
+      else consoleDock.openStream()
       return
     }
     navigateTo(entry)
@@ -526,21 +567,20 @@ export default function App() {
     const offTerminal = EventsOn('menu:terminal', () => {
       toggleTerminal()
     })
+    // ⌘⇧L streams the current selection into a tab (or focuses its existing tab).
     const offLiveLogs = EventsOn('menu:live-logs', () => {
-      consoleDock.openStream()
-    })
-    const offConsoleSplit = EventsOn('menu:console-split', () => {
-      consoleDock.openSplit()
+      if (!dockAllowedRef.current) return
+      const sel = streamSelectionRef.current
+      const picked = sel.table.length ? sel.table : sel.inspector
+      if (picked.length) streamResourcesRef.current?.(picked)
+      else consoleDock.openStream()
     })
     return () => {
       offTerminal?.()
       offLiveLogs?.()
-      offConsoleSplit?.()
     }
   }, [toggleTerminal, consoleDock])
 
-  const logTailEngaged = (view.state?.logTailPods?.length ?? 0) > 0
-  const logTailPaused = Boolean(view.state?.logTailPaused)
 
   const finishStopRef = useRef(async () => {})
 
@@ -549,13 +589,9 @@ export default function App() {
     unlockResourcesFromInvestigation()
     setRunning(false)
     setStarting(false)
-    setGatherError('')
     setActiveQuery('')
-    setFocusKey(null)
-    setFocusPinned(false)
     setView(emptyView())
     stream.resetFilters()
-    stream.setSearch('')
     stream.setFollow(Boolean(prefs.followLogsByDefault))
     if (!prefs.rememberLastQuery) {
       setQuery('')
@@ -586,43 +622,9 @@ export default function App() {
     SetPollEverySec(prefs.refreshSec).catch(() => {})
   }, [running, prefs.autoRefresh, prefs.refreshSec])
 
-  const matchRows = useMemo(
-    () => deriveMatchRows(view, getMatchedObjects(view)),
-    [view],
-  )
-
-  const focusRow = useMemo(() => {
-    const found = matchRows.find((r) => rowKeysMatch(r.key, focusKey))
-    if (found) return found
-    if (focusPinned && focusKey) {
-      return synthesizeFocusRow(
-        focusKey,
-        cluster.selectedNamespace || investigationNs || '',
-      )
-    }
-    return null
-  }, [matchRows, focusKey, focusPinned, cluster.selectedNamespace, investigationNs])
-
-  const drillDown = useMemo(
-    () => (focusPinned && focusRow ? buildFocusScope(view, focusRow) : emptyFocusScope()),
-    [focusPinned, focusRow, view],
-  )
-
-  const handleFocusChange = useCallback((key, opts = {}) => {
-    const ns = investigationNs || cluster.selectedNamespace || ''
-    const canonical = key ? (canonicalInspectKey(key, ns) || key) : null
-    setFocusKey(canonical)
-    setFocusPinned(Boolean(opts.pinned))
-  }, [investigationNs, cluster.selectedNamespace])
-
-  const handleClearFocus = useCallback(() => {
-    setFocusPinned(false)
-    setFocusKey(null)
-  }, [])
-
-  const runInvestigation = useCallback(async (q, matches = []) => {
+  const runInvestigation = useCallback(async (q, matches = [], { noLogs = false, namespace = '' } = {}) => {
     const trimmed = normalizeInvestigationQuery(q)
-    const ns = investigationNamespace(normalizedInvestigationScope, matches)
+    const ns = namespace || investigationNamespace(normalizedInvestigationScope, matches)
     if (!ns) {
       throw new Error('Could not determine namespace for investigation')
     }
@@ -634,6 +636,7 @@ export default function App() {
       context: cluster.selectedContext,
       kubeconfig: cluster.kubeconfigPath,
     })
+    opts.noLogs = Boolean(noLogs)
     // StartInvestigation stops any prior session — no separate Stop click needed.
     lockResourcesForInvestigation(normalizedInvestigationScope, ns)
     setInvestigationNs(ns)
@@ -641,209 +644,194 @@ export default function App() {
       await setNamespace(ns)
     }
     await StartInvestigation(opts)
+    setActiveNoLogs(Boolean(noLogs))
     setRunning(true)
-    setGatherError('')
     setActiveQuery(trimmed)
-    setFocusKey(null)
-    setFocusPinned(false)
     stream.resetFilters()
-    if (prefs.openStreamOnInvestigate) {
-      consoleDock.openStream()
-    }
     const next = await GetView()
     applyView(next)
     bumpActivity()
-  }, [cluster, normalizedInvestigationScope, lockResourcesForInvestigation, setNamespace, stream, consoleDock, prefs, applyView, bumpActivity])
-
-  const handleStartGather = useCallback(async ({ podNames, lineSearch }) => {
-    setGatherBusy(true)
-    setGatherError('')
-    const names = [...(podNames || [])]
-    if (!names.length) {
-      setGatherError('Select at least one pod')
-      setGatherBusy(false)
-      return
-    }
-    try {
-      await StartLogTail({ podNames: names })
-      const q = String(lineSearch || '').trim()
-      stream.setSearch(q)
-      stream.setMode('logs')
-      const next = await GetView()
-      applyView(next)
-      const allowed = next.state?.logTailPods?.length ? next.state.logTailPods : names
-      stream.selectPods(allowed, { pinned: true })
-      stream.setFollow(!q && Boolean(prefs.followLogsByDefault))
-      consoleDock.openStream()
-    } catch (err) {
-      setGatherError(String(err))
-    } finally {
-      setGatherBusy(false)
-    }
-  }, [applyView, stream, consoleDock, prefs.followLogsByDefault])
-
-  const handleStopGather = useCallback(async () => {
-    try {
-      await StopLogTail()
-    } catch {
-      /* ignore */
-    }
-    const next = await GetView()
-    applyView(next)
-  }, [applyView])
-
-  const handleToggleLogTailPause = useCallback(async () => {
-    setGatherError('')
-    try {
-      if (logTailPaused) {
-        await ResumeLogTail()
-        stream.setFollow(!stream.search.trim() && Boolean(prefs.followLogsByDefault))
-      } else {
-        await PauseLogTail()
-        stream.setFollow(false)
-      }
-      const next = await GetView()
-      applyView(next)
-    } catch (err) {
-      setGatherError(String(err))
-    }
-  }, [applyView, logTailPaused, stream, prefs.followLogsByDefault])
-
-  const handleClearLogs = useCallback(async () => {
-    try {
-      await ClearLogs()
-      await StopLogTail()
-      stream.setSearch('')
-      const next = await GetView()
-      applyView(next)
-    } catch (err) {
-      setGatherError(String(err))
-    }
-  }, [applyView, stream])
+  }, [cluster, normalizedInvestigationScope, lockResourcesForInvestigation, setNamespace, stream, prefs, applyView, bumpActivity])
 
   function beginInvestigationTransition(nextQuery) {
     setView(emptyView())
     setActiveQuery(normalizeInvestigationQuery(nextQuery))
-    setFocusKey(null)
-    setFocusPinned(false)
     stream.resetFilters()
-    stream.setSearch('')
   }
 
-  async function onStart(e) {
-    e?.preventDefault?.()
-    if (starting) return
-    if (!scopeSupportsInvestigate(normalizedInvestigationScope)) return
-
-    const q = normalizeInvestigationQuery(query)
-    if (q !== query) {
-      setQuery(q)
-    }
-
-    const scopeLabel = browseScopeLabel(normalizedInvestigationScope, { namespaces: cluster.namespaces })
-    const discoverBase = discoverOptionsFromScope(normalizedInvestigationScope, {
-      context: cluster.selectedContext,
-      kubeconfig: cluster.kubeconfigPath,
+  // What the engine can investigate in the chosen namespace, grouped by kind
+  // (built-in and custom collectors), for the Kind and Object pickers.
+  useEffect(() => {
+    if (!investigating || !invNamespace || !cluster.selectedContext) return undefined
+    let cancelled = false
+    setInvMatches((prev) => ({ ...prev, namespace: invNamespace, loading: true, error: '' }))
+    InvestigationTargets({
+      query: '',
+      ...discoverOptionsFromScope(singleBrowseScope(invNamespace), {
+        context: cluster.selectedContext,
+        kubeconfig: cluster.kubeconfigPath,
+      }),
     })
-
-    setError('')
-    navigateTo('resources')
-    beginInvestigationTransition(q)
-    lockResourcesForInvestigation(
-      normalizedInvestigationScope,
-      normalizedInvestigationScope.mode === 'single' ? normalizedInvestigationScope.namespace : '',
-    )
-    setStarting(true)
-
-    let matches = []
-    try {
-      matches = await DiscoverMatches({
-        query: q,
-        ...discoverBase,
+      .then((list) => {
+        if (!cancelled) {
+          setInvMatches({
+            namespace: invNamespace, items: list?.groups || [], unavailable: list?.unavailable || [], loading: false, error: '',
+          })
+        }
       })
+      .catch((err) => {
+        if (!cancelled) setInvMatches({ namespace: invNamespace, items: [], unavailable: [], loading: false, error: String(err) })
+      })
+    return () => { cancelled = true }
+  }, [investigating, invNamespace, cluster.selectedContext, cluster.kubeconfigPath])
 
-      if (isBlankInvestigationQuery(q)) {
-        setScopePicker({
-          open: true,
-          matches,
-          query: '',
-          mode: running ? 'narrow' : 'initial',
-        })
-        return
-      }
+  const invItems = invMatches.namespace === invNamespace ? invMatches.items : []
+  const invPendingQuery = queryForTargets(invTargets, invItems)
 
-      if (!matches.length) {
-        setError(`No resources matched "${q}" in ${scopeLabel}.`)
-        setActiveQuery('')
-        setView(emptyView())
-        savedBrowseScopeRef.current = null
-        setLockedResourcesScope(null)
-        setInvestigationNs('')
-        setSavedBrowseScopeLabel('')
-        return
-      }
+  useEffect(() => {
+    // Only once the loaded targets belong to the chosen namespace.
+    if (invMatches.loading || invMatches.namespace !== invNamespace || invMatches.error) return
+    setInvTargets((t) => {
+      const kept = reconcileTargets(t, invItems)
+      return kept.length === t.length ? t : kept
+    })
+  }, [invItems, invMatches.loading, invMatches.namespace, invMatches.error, invNamespace])
+
+  const invChanged = running && (
+    invPendingQuery !== activeQuery
+    || invNamespace !== investigationNs
+    || activeNoLogs !== !invIncludeLogs
+  )
+  const canRunInvestigation = Boolean(invNamespace) && !starting && !invMatches.loading && (!running || invChanged)
+
+  async function onRunFromBar() {
+    if (!canRunInvestigation) return
+    await startInvestigationOf(invNamespace, invPendingQuery)
+  }
+
+  // Runs an investigation of namespace, narrowed by query ('' = whole namespace).
+  async function startInvestigationOf(namespace, q) {
+    setError('')
+    setQuery(q)
+    beginInvestigationTransition(q)
+    navigateTo('incident')
+    lockResourcesForInvestigation(singleBrowseScope(namespace), namespace)
+    setStarting(true)
+    try {
+      await runInvestigation(q, [], { noLogs: !invIncludeLogs, namespace })
     } catch (err) {
       setError(String(err))
       setRunning(false)
       setActiveQuery('')
       setView(emptyView())
-      savedBrowseScopeRef.current = null
-      setLockedResourcesScope(null)
-      setInvestigationNs('')
-      setSavedBrowseScopeLabel('')
-      return
+      unlockResourcesFromInvestigation()
     } finally {
       setStarting(false)
     }
-
-    setRunning(true)
-    try {
-      await runInvestigation(q, matches)
-    } catch (err) {
-      setError(String(err))
-      setRunning(false)
-      setActiveQuery('')
-      setView(emptyView())
-      unlockResourcesFromInvestigation()
-    }
   }
 
-  async function onScopeConfirm({ selectedKeys, investigateAll }) {
-    const { query: pickerQuery, matches } = scopePicker
-    setScopePicker((prev) => ({ ...prev, open: false }))
-    const effectiveQuery = buildInvestigationQuery(
-      pickerQuery,
-      investigateAll ? null : selectedKeys,
-      matches,
-    )
-    setError('')
-    beginInvestigationTransition(effectiveQuery)
-    navigateTo('resources')
-    lockResourcesForInvestigation(
-      normalizedInvestigationScope,
-      normalizedInvestigationScope.mode === 'single' ? normalizedInvestigationScope.namespace : '',
-    )
-    setRunning(true)
-    try {
-      await runInvestigation(effectiveQuery, matches)
-    } catch (err) {
-      setError(String(err))
-      setRunning(false)
-      setActiveQuery('')
-      setView(emptyView())
-      unlockResourcesFromInvestigation()
+  const onInvestigateModeChange = useCallback((mode) => {
+    setInvestigateMode(mode)
+    if (mode === MODE_WATCH) {
+      navigateTo('resources')
+      return
     }
+    // Start from the namespace being browsed, when it is a single one.
+    if (!running && !starting && normalizedBrowseScope.mode === 'single' && normalizedBrowseScope.namespace) {
+      setInvestigationScope(singleBrowseScope(normalizedBrowseScope.namespace))
+    }
+    navigateTo(running || starting ? 'incident' : 'resources')
+  }, [navigateTo, running, starting, normalizedBrowseScope])
+  enterInvestigateRef.current = () => onInvestigateModeChange(MODE_INVESTIGATE)
+
+  // Inspector "Investigate": target the selected resource exactly.
+  // What Investigate can target, from the engine's collectors (built-in and
+  // user extensions). Resources surfaces mark only these.
+  const [investigableTypes, setInvestigableTypes] = useState(null)
+  const onInvestigateRowRef = useRef(null)
+  useEffect(() => {
+    let cancelled = false
+    Promise.resolve(InvestigableTypes?.())
+      .then((types) => { if (!cancelled) setInvestigableTypes(Array.isArray(types) ? types : []) })
+      .catch(() => { if (!cancelled) setInvestigableTypes([]) })
+    return () => { cancelled = true }
+  }, [])
+  // What Resources has selected for ⌘⇧L, by surface.
+  const streamSelectionRef = useRef({ table: [], inspector: [] })
+  const [streamSelection, setStreamSelection] = useState({ table: [], inspector: [] })
+  const streamResourcesRef = useRef(null)
+  streamResourcesRef.current = async (resources) => {
+    const { targets, skipped } = streamTargetsFor(resources)
+    consoleDock.openStream()
+    if (!targets.length) return
+    const res = await dockTabs.openLogStream({ targets, tailLines: prefs.tailLines })
+    if (res?.streamId) {
+      stream.setFollow(Boolean(prefs.followLogsByDefault))
+      if (skipped) setNotice(`Streaming ${targets.length} source${targets.length === 1 ? '' : 's'}; ${skipped} selected item${skipped === 1 ? '' : 's'} cannot stream logs.`)
+    }
+  }
+  const streamPodLogsRef = useRef(null)
+  streamPodLogsRef.current = async ({ kind, name, namespace, container } = {}) => {
+    if (kind !== 'Pod' || !name || !namespace) return
+    consoleDock.openStream()
+    const res = await dockTabs.openLogStream({
+      targets: podTargets(namespace, [name]),
+      container: container || '',
+      tailLines: prefs.tailLines,
+    })
+    if (res?.streamId) stream.setFollow(Boolean(prefs.followLogsByDefault))
+  }
+  const logStreamActions = useMemo(() => ({
+    streamResources: (resources) => streamResourcesRef.current?.(resources),
+    streamPodLogs: (spec) => streamPodLogsRef.current?.(spec),
+    setSelection: (source, resources) => {
+      const list = resources || []
+      streamSelectionRef.current = { ...streamSelectionRef.current, [source]: list }
+      setStreamSelection((prev) => {
+        if (prev[source] === list || (prev[source]?.length === 0 && list.length === 0)) return prev
+        return { ...prev, [source]: list }
+      })
+    },
+  }), [])
+
+  const pickedResourcesForStream = streamSelection.table.length ? streamSelection.table : streamSelection.inspector
+  const pickedStreamTargets = useMemo(() => streamTargetsFor(pickedResourcesForStream).targets, [pickedResourcesForStream])
+  const canStreamSelection = pickedStreamTargets.length > 0
+  const selectionStreamLabel = useMemo(
+    () => (pickedStreamTargets.length ? logTabTitle({ targets: pickedStreamTargets }) : ''),
+    [pickedStreamTargets],
+  )
+  const handleStreamCurrentSelection = useCallback(() => {
+    const sel = streamSelectionRef.current
+    const picked = sel.table.length ? sel.table : sel.inspector
+    if (picked.length) streamResourcesRef.current?.(picked)
+  }, [])
+
+  const investigable = useMemo(() => ({
+    index: investigableIndex(investigableTypes),
+    loaded: investigableTypes !== null,
+    investigate: (row) => onInvestigateRowRef.current?.(row),
+  }), [investigableTypes])
+
+  async function onInvestigateRow(row) {
+    const ns = String(row?.namespace || '').trim()
+    if (!row?.kind || !row?.name || !ns || starting) return
+    const key = `${row.kind}/${row.name}`
+    // The breadcrumb and inspector follow the object being investigated, not
+    // whatever was selected before.
+    setInspectKey(buildInspectKey(row.kind, row.name, ns))
+    setInvestigateMode(MODE_INVESTIGATE)
+    setInvestigationScope(singleBrowseScope(ns))
+    setInvTargets([key])
+    await startInvestigationOf(ns, key)
   }
 
-  function onScopeCancel() {
-    setScopePicker((prev) => ({ ...prev, open: false }))
-    if (!running) {
-      savedBrowseScopeRef.current = null
-      setLockedResourcesScope(null)
-      setInvestigationNs('')
-      setSavedBrowseScopeLabel('')
-    }
-  }
+  onInvestigateRowRef.current = onInvestigateRow
+
+  // Opening an investigation tab from anywhere (banners, links) shows Investigate mode.
+  useEffect(() => {
+    if (RESOURCES_SURFACE_TABS.has(tab) && tab !== 'resources') setInvestigateMode(MODE_INVESTIGATE)
+  }, [tab])
 
   async function onStop() {
     setNotice('')
@@ -896,9 +884,13 @@ export default function App() {
   }, [setPreferences])
 
   function onInvestigationScopeChange(nextScope) {
-    if (investigationScopeLocked) return
+    // While running, a new namespace is staged for Re-run.
+    if (starting) return
     const next = normalizeInvestigationScope(nextScope, { fallbackNamespace: cluster.selectedNamespace })
     if (!next.namespace) return
+    if (next.namespace !== invNamespace) {
+      setInvTargets([])
+    }
     setInvestigationScope(next)
   }
 
@@ -940,39 +932,34 @@ export default function App() {
     return findRowByKey(rows, inspectKey)
   }, [view, inspectKey])
 
+  // Top-bar terminal button: hides the dock (sessions keep running) or brings it back.
+  const handleTogglePanel = useCallback(() => {
+    if (!dockAllowedRef.current) return
+    if (consoleDock.expanded) {
+      consoleDock.collapse()
+      return
+    }
+    if (dockTabs.tabs.length > 0) {
+      consoleDock.openStream()
+      return
+    }
+    toggleTerminal()
+  }, [consoleDock, dockTabs.tabs.length, toggleTerminal])
+
   function wrapShell(payload) {
     const shell = (
       <AppShell
         tab={tab}
         onTabChange={handleNavigate}
-        terminalOpen={consoleDock.expanded && (consoleDock.activeView === 'terminal' || consoleDock.activeView === 'split')}
-        liveLogsOpen={consoleDock.expanded && (consoleDock.activeView === 'stream' || consoleDock.activeView === 'split')}
-        streamLive={{
-          running,
-          logTailEngaged,
-          logTailPaused,
-        }}
         onOpenSettings={() => navigateTo({ tab: 'settings', settingsSection: 'general' })}
         onOpenHelp={() => navigateTo({ tab: 'settings', settingsSection: 'help' })}
         topBarProps={{
           cluster,
-          scope: displayInvestigationScope,
-          scopeLocked: investigationScopeLocked,
-          savedScopeLabel: '',
-          investigationNs,
-          onScopeChange: onInvestigationScopeChange,
-          scopeVariant: 'investigate',
           syncing: syncing || refreshingInvestigation,
           onSync: refreshNow,
           onContextChange,
-          query,
-          onQueryChange: setQuery,
-          onQueryClear: () => setQuery(''),
           running,
           starting,
-          activeQuery,
-          onStart,
-          onStop,
           onNewWindow,
           prefs,
           onPrefsChange: setPreferences,
@@ -993,9 +980,13 @@ export default function App() {
           favoriteContexts: prefs.favoriteContexts,
           onSetDefaultContext,
           onToggleFavoriteContext,
+          panelOpen: consoleDock.expanded,
+          panelRunning: terminalTabs.tabs.length > 0 || logStreams.hasActiveStream,
+          onTogglePanel: dockAllowed ? handleTogglePanel : undefined,
         }}
-        showExplorer={running || starting || scopePicker.open || tab === 'resources' || ['incident', 'patterns', 'failures', 'evidence', 'graph'].includes(tab)}
+        showExplorer={running || starting || RESOURCES_SURFACE_TABS.has(tab)}
         investigationActive={running || starting}
+        investigationStarting={starting}
         showInspector={payload.showInspector}
         inspector={payload.inspector}
         view={view}
@@ -1006,7 +997,7 @@ export default function App() {
         prefs={prefs}
         onPrefsChange={setPreferences}
         inspectRow={inspectRowForToolbar}
-        onOpenPodLogs={handleOpenPodLogs}
+        onInvestigateRow={onInvestigateRow}
         explorerFilters={explorerFilters}
         onExplorerFiltersChange={setExplorerFilters}
         graphRelations={graphRelations}
@@ -1024,7 +1015,6 @@ export default function App() {
           catalog={rw.catalog}
           cluster={rw.cluster}
           rows={rw.rows}
-          chain={rw.focusPinned}
           browseLens={rw.resourcesBrowseLens}
         >
           <ResourcesWorkbenchRoot {...rw}>
@@ -1037,32 +1027,74 @@ export default function App() {
     return shell
   }
 
-  const showConsoleDock = terminal.open || stream.panelState !== PANEL_CLOSED || consoleDock.expanded
+  const investigateChrome = (
+    <div className="investigate-chrome">
+      <InvestigateBar
+        mode={investigateMode}
+        onModeChange={onInvestigateModeChange}
+        cluster={cluster}
+        scope={normalizedInvestigationScope}
+        onScopeChange={onInvestigationScopeChange}
+        investigationNs={investigationNs}
+        groups={invItems}
+        unavailable={invMatches.namespace === invNamespace ? invMatches.unavailable : []}
+        matchesLoading={invMatches.loading}
+        matchesError={invMatches.error}
+        targets={invTargets}
+        onTargetsChange={setInvTargets}
+        includeLogs={invIncludeLogs}
+        onIncludeLogsChange={setInvIncludeLogs}
+        running={running}
+        starting={starting}
+        changed={invChanged}
+        canRun={canRunInvestigation}
+        onRun={onRunFromBar}
+        onStop={onStop}
+      />
+      {investigating && (running || starting) && (
+        <InvestigationTabs
+          tab={tab}
+          onSelect={(id) => navigateTo(id)}
+          counts={{ incident: view.state?.problems?.length || 0 }}
+        />
+      )}
+    </div>
+  )
+
   const maximized = consoleDock.maximized
 
   const filterLogsFromPatterns = useCallback(async (term) => {
     const q = String(term || '').trim()
-    stream.setSearch(q)
-    stream.setMode('logs')
     if (q) {
       stream.setFollow(false)
+      setLogsFindFromPatterns({ id: Date.now(), query: q })
       consoleDock.openStream()
       navigateTo('incident')
-      if (running && !logTailEngaged) {
+      if (dockTabs.logTabs.length > 0) {
+        if (dockTabs.activeItem?.kind !== 'log') {
+          const lastLog = dockTabs.logTabs[dockTabs.logTabs.length - 1]
+          if (lastLog) dockTabs.selectTab(`log:${lastLog.streamId}`)
+        }
+        return
+      }
+      if (running) {
         const podNames = (view.state?.snapshot?.pods || [])
           .map((p) => p?.name)
           .filter(Boolean)
         if (!podNames.length) return
-        try {
-          await StartLogTail({ podNames })
-          const next = await GetView()
-          applyView(next)
-        } catch (err) {
-          setGatherError(String(err))
-        }
+        await dockTabs.openLogStream({
+          targets: podTargets(investigationNs, podNames),
+          tailLines: prefs.tailLines,
+        })
       }
     }
-  }, [stream, consoleDock, running, logTailEngaged, view.state?.snapshot?.pods, applyView, navigateTo])
+  }, [stream, consoleDock, running, dockTabs, investigationNs, view.state?.snapshot?.pods, prefs.tailLines, navigateTo])
+
+  const handleCloseDock = useCallback(() => {
+    consoleDock.closeAll()
+    logStreams.stopAll()
+    dockTabs.clearAllTabs()
+  }, [consoleDock, logStreams, dockTabs])
 
   return (
     <>
@@ -1077,8 +1109,11 @@ export default function App() {
         </div>
       )}
 
+      <HeaderSlotProvider>
       <EventHistoryProvider value={eventHistory}>
       <TerminalLaunchProvider launch={launchTerminalCommand}>
+      <InvestigableProvider value={investigable}>
+      <LogStreamProvider value={logStreamActions}>
       <div className={`app-root ${maximized ? 'stream-maximized' : ''}`}>
       <ClusterConnectionBanner
         connection={connection}
@@ -1093,16 +1128,16 @@ export default function App() {
         view={view}
         running={running}
         starting={starting}
-        scopePickerOpen={scopePicker.open}
         activeQuery={activeQuery}
         cluster={scopedCluster}
         clusterStatus={clusterStatus}
         resourceCatalog={resourceCatalog}
         browseScope={effectiveBrowseScope}
         onBrowseScopeChange={onBrowseScopeChange}
-        browseScopeLocked={resourcesNamespaceLocked}
+        browseScopeLocked={resourcesNamespaceLocked || (investigating && Boolean(invNamespace))}
         savedBrowseScopeLabel={savedBrowseScopeLabel}
-        investigationNs={investigationNs}
+        investigationNs={investigationNs || (investigating ? invNamespace : '')}
+        investigateChrome={investigateChrome}
         resourcesBrowseLens={resourcesBrowseLens}
         onResourcesBrowseLensChange={onResourcesBrowseLensChange}
         investigationSession={{
@@ -1110,7 +1145,7 @@ export default function App() {
           namespaceLabel: lockedResourcesScope
             ? browseScopeLabel(lockedResourcesScope, { namespaces: cluster.namespaces })
             : '',
-          query: activeQuery || ((starting || scopePicker.open) ? query : ''),
+          query: activeQuery || (starting ? query : ''),
           starting,
         }}
         syncing={syncing}
@@ -1133,17 +1168,12 @@ export default function App() {
         onToggleFavoriteContext={onToggleFavoriteContext}
         onClearDefaultContext={onClearDefaultContext}
         onOpenProxySettings={openProxySettings}
-        onOpenSettingsKubernetes={() => navigateTo({ tab: 'settings', settingsSection: 'kubernetes' })}
+        onOpenMcpSetup={() => setMcpSetupOpen(true)}
         onTerminalShellChange={handleTerminalShellChange}
         onOpenTerminalShellPicker={handleOpenTerminalShellPicker}
         terminalShellRestartToken={terminalShellRestartToken}
         settingsSection={settingsSection}
         onSettingsSectionChange={setSettingsSection}
-        focusKey={focusKey}
-        focusPinned={focusPinned}
-        drillDown={drillDown}
-        onFocusChange={handleFocusChange}
-        onClearFocus={handleClearFocus}
         onFilterLogsFromPatterns={filterLogsFromPatterns}
         inspectKey={inspectKey}
         onInspectKeyChange={setInspectKey}
@@ -1158,57 +1188,43 @@ export default function App() {
 
       <div className="stream-dock">
         <ConsoleDock
-          visible={showConsoleDock}
-          activeView={consoleDock.activeView}
-          expanded={consoleDock.expanded}
+          visible={consoleDock.expanded && dockAllowed}
+          tabs={dockTabs.tabs}
+          logTabs={dockTabs.logTabs}
+          activeKey={dockTabs.activeKey}
+          activeItem={dockTabs.activeItem}
+          onSelectTab={dockTabs.selectTab}
+          onCloseTab={dockTabs.closeTab}
+          onCloseTabs={dockTabs.closeTabs}
+          onNewTerminal={openNewTerminalTab}
+          onStreamSelection={handleStreamCurrentSelection}
+          canStreamSelection={canStreamSelection}
+          selectionLabel={selectionStreamLabel}
           height={consoleDock.height}
           maximized={consoleDock.maximized}
-          onSelectView={consoleDock.selectView}
           onMinimize={consoleDock.minimize}
           onMaximize={consoleDock.maximize}
           onRestore={consoleDock.restore}
-          onClose={consoleDock.closeAll}
+          onClose={handleCloseDock}
           onResizeStart={consoleDock.startResize}
-          streamLive={{
-            running,
-            logTailEngaged,
-            logTailPaused,
-          }}
+          logStreams={logStreams}
           streamProps={{
-            evidence: view.evidence,
-            snapshotPods: view.state?.snapshot?.pods,
-            query: running ? activeQuery : query,
             running,
-            logTailEngaged,
-            logTailPaused,
-            tailPods: view.state?.logTailPods,
-            dropped: view.dropped,
-            updatedAt: view.updatedAt,
-            lastEventAt: view.state?.counters?.lastEventAt,
-            mode: stream.mode,
-            search: stream.search,
-            selectedPods: stream.selectedPods,
-            follow: stream.follow,
+            investigationPods: view.state?.snapshot?.pods,
+            investigationNamespace: investigationNs,
+            tailLines: prefs.tailLines,
+            defaultFollow: Boolean(prefs.followLogsByDefault),
             streamFontSize: prefs.streamFontSize,
             streamDense: prefs.streamDense,
             streamWrapLines: prefs.streamWrapLines,
-            onModeChange: stream.setMode,
-            onSearchChange: stream.setSearch,
-            onTogglePod: stream.togglePod,
-            onSelectMatched: stream.selectMatchedPods,
-            onSelectAllPods: stream.selectAllPods,
-            onFollowChange: stream.setFollow,
-            onToggleLogTailPause: handleToggleLogTailPause,
-            onStartGather: handleStartGather,
-            onStopGather: handleStopGather,
-            onClearLogs: handleClearLogs,
-            gatherBusy,
-            gatherError,
+            logsFindFromPatterns,
+            onLogsFindFromPatternsHandled: () => setLogsFindFromPatterns(null),
           }}
+          terminalTabs={terminalTabs}
           terminalProps={{
             cluster,
             shellPref: prefs.terminalShell,
-            appearance: prefs.terminalAppearance,
+            appTheme: resolvedTheme,
             onChangeShell: handleOpenTerminalShellPicker,
             shellRestartToken: terminalShellRestartToken,
             launchRequest: terminalLaunchRequest,
@@ -1217,29 +1233,46 @@ export default function App() {
         />
       </div>
       </div>
+      </LogStreamProvider>
+      </InvestigableProvider>
       </TerminalLaunchProvider>
       </EventHistoryProvider>
+      </HeaderSlotProvider>
+
+      <McpSetupDialog
+        open={mcpSetupOpen}
+        onClose={() => setMcpSetupOpen(false)}
+        contexts={cluster?.contexts || []}
+      />
+
+      <SettingsDialog
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        cluster={cluster}
+        themeId={themeId}
+        onThemeChange={setTheme}
+        prefs={prefs}
+        onPrefsChange={setPreferences}
+        onClusterRefresh={syncNow}
+        onReconnect={reconnect}
+        onDisconnect={disconnect}
+        reconnectBusy={reconnectBusy}
+        monitoringPaused={monitoringPaused}
+        connection={connection}
+        onClearDefaultContext={onClearDefaultContext}
+        onTerminalShellChange={handleTerminalShellChange}
+        section={settingsSection}
+        onSectionChange={setSettingsSection}
+      />
 
       <TerminalShellModal
         open={terminalShellPickerOpen}
         initialChoice={prefs.terminalShell || 'system'}
-        confirmLabel={pendingShellPickerAction === 'openTerminal' ? 'Open terminal' : 'Save'}
+        confirmLabel="Save"
         onConfirm={handleTerminalShellConfirm}
         onCancel={() => {
           setTerminalShellPickerOpen(false)
-          setPendingShellPickerAction(null)
         }}
-      />
-
-      <ScopePickerModal
-        open={scopePicker.open}
-        query={scopePicker.query}
-        namespace={browseScopeLabel(displayInvestigationScope, { namespaces: cluster.namespaces })}
-        contextLabel={cluster.selectedContext}
-        matches={scopePicker.matches}
-        mode={scopePicker.mode}
-        onConfirm={onScopeConfirm}
-        onCancel={onScopeCancel}
       />
     </>
   )

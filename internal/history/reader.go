@@ -11,8 +11,9 @@ import (
 	"github.com/glnreddy421/klew/internal/model"
 )
 
-// Reader reads recorded events without recording, pruning or locking. It is
-// for processes that only consume history the desktop app wrote (klew-mcp).
+// Reader reads recorded events without recording, pruning, migrating or
+// locking; the database is opened read-only. It is for processes that only
+// consume history the desktop app wrote (klew mcp).
 type Reader struct {
 	store *Store
 	dir   string
@@ -31,7 +32,7 @@ func OpenReader(dir string) (*Reader, error) {
 	} else if err != nil {
 		return nil, err
 	}
-	store, err := Open(path)
+	store, err := openReadOnly(path)
 	if err != nil {
 		return nil, err
 	}

@@ -1,0 +1,8 @@
+{"time":"2026-07-22T16:00:01Z","level":"info","msg":"health check ok","pod":"payment-api-7db86bb96c-xzqpw"}
+{"time":"2026-07-22T16:00:02Z","level":"error","msg":"dial tcp 10.0.2.14:5432: connect: connection refused","pod":"auth-service-7db86bb96c-xzqpw"}
+{"time":"2026-07-22T16:00:03Z","level":"error","msg":"dial tcp 10.0.2.15:5432: connect: connection refused","pod":"auth-service-7db86bb96c-xzqpw"}
+{"time":"2026-07-22T16:00:04Z","level":"error","msg":"dial tcp 10.0.2.19:5432: connect: connection refused","pod":"auth-service-7db86bb96c-xzqpw"}
+time=2026-07-22T16:00:05Z level=error msg="payment failed" userId=550e8400-e29b-41d4-a716-446655440000 error.code=TIMEOUT pod=payment-worker-5f9c8d7b6c-abcde
+time=2026-07-22T16:00:06Z level=error msg="payment failed" userId=550e8400-e29b-41d4-a716-446655440001 error.code=TIMEOUT pod=payment-worker-5f9c8d7b6c-abcde
+{"time":"2026-07-22T16:00:07Z","level":"warn","msg":"upstream timeout after 3s","pod":"checkout-6c8d9f4b2a-mnpqr"}
+time=2026-07-22T16:00:08Z level=info msg="GET /health 200" latency_ms=12 pod=frontend-84b7c9d5f-hjklo

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-
-const POD_LOGS_TITLE = 'Tail live pod logs in a new terminal tab'
-const POD_LOGS_DISABLED = 'Select a pod to tail logs in terminal'
+import { InvestigateIcon } from '../InvestigateIcon.jsx'
+import { StreamLogsGlyph } from '../DockLauncher.jsx'
 
 export function InspectorHeaderActions({
   placement = 'right',
@@ -10,16 +9,20 @@ export function InspectorHeaderActions({
   manifestOpen = false,
   manifestEnabled = false,
   onToggleManifest,
-  podLogsEnabled = false,
-  podLogsContainers = [],
-  onOpenPodLogs,
+  podStreamContainers = [],
+  investigateEnabled = false,
+  investigateTitle = '',
+  onInvestigate,
+  streamLogsEnabled = false,
+  streamLogsTitle = '',
+  onStreamLogs,
 }) {
   const [open, setOpen] = useState(false)
   const [containerMenuOpen, setContainerMenuOpen] = useState(false)
   const anchorRef = useRef(null)
   const panelRef = useRef(null)
-  const containerAnchorRef = useRef(null)
-  const containerPanelRef = useRef(null)
+  const streamAnchorRef = useRef(null)
+  const streamPanelRef = useRef(null)
 
   useEffect(() => {
     if (!open) return undefined
@@ -42,8 +45,8 @@ export function InspectorHeaderActions({
   useEffect(() => {
     if (!containerMenuOpen) return undefined
     function onDoc(e) {
-      if (containerAnchorRef.current?.contains(e.target)) return
-      if (containerPanelRef.current?.contains(e.target)) return
+      if (streamAnchorRef.current?.contains(e.target)) return
+      if (streamPanelRef.current?.contains(e.target)) return
       setContainerMenuOpen(false)
     }
     function onKey(e) {
@@ -59,65 +62,82 @@ export function InspectorHeaderActions({
 
   useEffect(() => {
     setContainerMenuOpen(false)
-  }, [podLogsEnabled, podLogsContainers])
+  }, [streamLogsEnabled, podStreamContainers])
 
-  function launchPodLogs(container = '') {
-    onOpenPodLogs?.({ container })
+  function launchStream(container = '') {
+    onStreamLogs?.(container)
     setContainerMenuOpen(false)
   }
 
-  function handlePodLogsClick() {
-    if (!podLogsEnabled) return
-    if (podLogsContainers.length > 1) {
+  function handleStreamClick() {
+    if (!streamLogsEnabled || !onStreamLogs) return
+    if (podStreamContainers.length > 1) {
       setContainerMenuOpen((v) => !v)
       return
     }
-    launchPodLogs(podLogsContainers[0]?.name || '')
+    launchStream('')
   }
 
   return (
     <div className="inspector-header-actions">
-      <div className="inspector-split-anchor" ref={containerAnchorRef}>
+      {onInvestigate && (
         <button
           type="button"
-          className={[
-            'explorer-collapse-btn',
-            'inspector-pod-logs-btn',
-            containerMenuOpen ? 'is-open' : '',
-            !podLogsEnabled ? 'is-disabled' : '',
-          ].filter(Boolean).join(' ')}
-          onClick={handlePodLogsClick}
-          disabled={!podLogsEnabled}
-          title={podLogsEnabled ? POD_LOGS_TITLE : POD_LOGS_DISABLED}
-          aria-label="Tail live pod logs in terminal"
-          aria-expanded={containerMenuOpen}
-          aria-haspopup={podLogsContainers.length > 1 ? 'menu' : undefined}
+          className="inspector-investigate-btn"
+          onClick={onInvestigate}
+          disabled={!investigateEnabled}
+          title={investigateTitle}
+          aria-label={investigateTitle}
         >
-          <PodLogsTerminalIcon />
+          <InvestigateIcon size={14} />
         </button>
-        {containerMenuOpen && podLogsContainers.length > 1 && (
-          <div
-            ref={containerPanelRef}
-            className="inspector-split-menu inspector-container-menu"
-            role="menu"
-            aria-label="Select container"
+      )}
+      {onStreamLogs && (
+        <div className="inspector-split-anchor" ref={streamAnchorRef}>
+          <button
+            type="button"
+            className={[
+              'explorer-collapse-btn',
+              'inspector-stream-logs-btn',
+              containerMenuOpen ? 'is-open' : '',
+              !streamLogsEnabled ? 'is-disabled' : '',
+            ].filter(Boolean).join(' ')}
+            onClick={handleStreamClick}
+            disabled={!streamLogsEnabled}
+            title={streamLogsEnabled ? streamLogsTitle : 'Select a pod, workload or Service to stream its logs'}
+            aria-label="Stream pod logs in Live logs"
+            aria-expanded={podStreamContainers.length > 1 ? containerMenuOpen : undefined}
+            aria-haspopup={podStreamContainers.length > 1 ? 'menu' : undefined}
           >
-            <div className="inspector-container-menu-label">Container</div>
-            {podLogsContainers.map((container) => (
-              <button
-                key={`${container.init ? 'init' : 'app'}-${container.name}`}
-                type="button"
-                role="menuitem"
-                className="inspector-split-option"
-                onClick={() => launchPodLogs(container.name)}
-              >
-                <ContainerGlyph init={container.init} />
-                <span className="mono">{container.name}</span>
+            <StreamLogsGlyph size={16} />
+          </button>
+          {containerMenuOpen && podStreamContainers.length > 1 && (
+            <div
+              ref={streamPanelRef}
+              className="inspector-split-menu inspector-container-menu"
+              role="menu"
+              aria-label="Stream logs"
+            >
+              <div className="inspector-container-menu-label">Container</div>
+              <button type="button" role="menuitem" className="inspector-split-option" onClick={() => launchStream('')}>
+                <span>All containers</span>
               </button>
-            ))}
-          </div>
-        )}
-      </div>
+              {podStreamContainers.map((container) => (
+                <button
+                  key={`${container.init ? 'init' : 'app'}-${container.name}`}
+                  type="button"
+                  role="menuitem"
+                  className="inspector-split-option"
+                  onClick={() => launchStream(container.name)}
+                >
+                  <ContainerGlyph init={container.init} />
+                  <span className="mono">{container.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       <button
         type="button"
         className={[
@@ -248,21 +268,6 @@ function KubectlIcon() {
       <path d="M5.35 7.15h5.3" />
       <path d="M5.35 9.05h3.35" />
       <path d="M5.35 10.95h4.55" />
-    </InspectorIcon>
-  )
-}
-
-/** Terminal shell with log lines + live tail dot. */
-function PodLogsTerminalIcon() {
-  return (
-    <InspectorIcon>
-      <rect x="2.25" y="2.75" width="11.5" height="10.5" rx="1.35" />
-      <path d="M5 5.35h4.75" />
-      <path d="M5 7.05h3.35" opacity="0.82" />
-      <path d="M5 8.75h4.1" opacity="0.62" />
-      <path d="M4.55 11.35L5.95 12.55L4.55 13.75" />
-      <path d="M7.15 12.55h3.35" />
-      <circle cx="12.35" cy="4.15" r="1.15" fill="currentColor" stroke="none" />
     </InspectorIcon>
   )
 }

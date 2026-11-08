@@ -22,10 +22,17 @@ export const NAV_ITEMS_INVESTIGATION = [
 
 export const NAV_ITEMS = [NAV_ITEM_RESOURCES, ...NAV_ITEMS_INVESTIGATION]
 
+export const NAV_ITEM_GRAPH = { id: 'graph', label: 'Graph', navLabel: 'Graph', hint: 'Resource relationships' }
+
+/** Investigation results, shown as tabs on the Resources surface. */
+export const NAV_ITEMS_INVESTIGATION_INLINE = [...NAV_ITEMS_INVESTIGATION, NAV_ITEM_GRAPH]
+
+/** Tabs that belong to the Resources surface: browsing plus investigation results. */
+export const RESOURCES_SURFACE_TABS = new Set([NAV_ITEM_RESOURCES.id, ...NAV_ITEMS_INVESTIGATION_INLINE.map((i) => i.id)])
+
 export const NAV_ITEMS_SECONDARY = [
-  { id: 'graph', label: 'Graph', navLabel: 'Graph', hint: 'Resource relationships' },
   { id: 'terminal', label: 'Terminal', navLabel: 'Terminal', hint: 'Context-aware cluster shell' },
-  { id: 'live-logs', label: 'Live logs', navLabel: 'Live logs', hint: 'Tail container logs from investigation pods' },
+  { id: 'live-logs', label: 'Live logs', navLabel: 'Live logs', hint: 'Stream container logs from selected pods (⌘⇧L)' },
 ]
 
 export const SURFACE_META = {
@@ -59,7 +66,7 @@ export const SURFACE_META = {
   },
   'live-logs': {
     title: 'Live logs',
-    subtitle: 'Stream container logs from pods in scope',
+    subtitle: 'Stream container logs from the pods you select',
   },
   terminal: {
     title: 'Terminal',

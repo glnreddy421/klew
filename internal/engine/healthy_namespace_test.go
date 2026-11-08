@@ -11,7 +11,7 @@ import (
 const redisStartupWarning = "1:C 27 Oct 2026 09:00:00.000 # Warning: no config file specified, using the default config. In order to specify a config file use redis-server /path/to/redis.conf"
 
 func TestClassifyLogReasonRedisStartupWarningIsNotTimeout(t *testing.T) {
-	if got := ClassifyLogReason(redisStartupWarning); got == "Redis timeout" {
+	if got := ClassifyLogReason(redisStartupWarning); got == "Timeout" {
 		t.Fatalf("redis startup warning classified as %q", got)
 	}
 	for _, line := range []string{
@@ -19,8 +19,8 @@ func TestClassifyLogReasonRedisStartupWarningIsNotTimeout(t *testing.T) {
 		"dial tcp 10.0.0.7:6379: connect: connection timed out",
 		"Error: connect ETIMEDOUT 10.0.0.7:6379",
 	} {
-		if got := ClassifyLogReason(line); got != "Redis timeout" {
-			t.Errorf("ClassifyLogReason(%q)=%q want Redis timeout", line, got)
+		if got := ClassifyLogReason(line); got != "Timeout" {
+			t.Errorf("ClassifyLogReason(%q)=%q want Timeout", line, got)
 		}
 		if got := ClassifyLogSeverity(line); got == model.SeverityInfo {
 			t.Errorf("ClassifyLogSeverity(%q)=info, want at least warning", line)
@@ -45,8 +45,8 @@ func TestCausalChainOmitsRedisTimeoutForStartupWarning(t *testing.T) {
 		Message: redisStartupWarning,
 	})
 	for _, step := range r.State().CausalChain {
-		if strings.Contains(step, "Redis timeout") {
-			t.Fatalf("causal chain has Redis timeout from a startup warning: %v", r.State().CausalChain)
+		if strings.Contains(step, "Timeout") {
+			t.Fatalf("causal chain has a timeout from a startup warning: %v", r.State().CausalChain)
 		}
 	}
 }

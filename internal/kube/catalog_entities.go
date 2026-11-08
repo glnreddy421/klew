@@ -161,64 +161,7 @@ func listCatalogEntitiesOnce(ctx context.Context, client *Client, gvr schema.Gro
 				continue
 			}
 		}
-		entity := model.CatalogEntity{
-			ResourceID:      resourceID,
-			Name:            item.GetName(),
-			Namespace:       item.GetNamespace(),
-			UID:             string(item.GetUID()),
-			ResourceVersion: item.GetResourceVersion(),
-			Generation:      item.GetGeneration(),
-			Kind:            item.GetKind(),
-			APIVersion:      item.GetAPIVersion(),
-			StatusHint:      entityStatusHint(item.Object, resource),
-			NodeName:        entityNodeName(item.Object, resource),
-		}
-		if ts := item.GetCreationTimestamp(); !ts.IsZero() {
-			entity.CreationTimestamp = ts.Format(time.RFC3339)
-		}
-		if entity.Kind == "" {
-			entity.Kind = stringFromObject(item.Object, "kind")
-		}
-		if entity.Kind == "" {
-			entity.Kind = catalogKindForResource(resource)
-		}
-		switch resource {
-		case "pods":
-			enrichPodCatalogEntity(&entity, item.Object)
-		case "deployments":
-			enrichWorkloadCatalogEntity(&entity, item.Object)
-			enrichDeploymentCatalogEntity(&entity, item.Object)
-		case "statefulsets", "replicasets":
-			enrichWorkloadCatalogEntity(&entity, item.Object)
-		case "daemonsets":
-			enrichDaemonSetCatalogEntity(&entity, item.Object)
-		case "jobs":
-			enrichJobCatalogEntity(&entity, item.Object)
-		case "cronjobs":
-			enrichCronJobCatalogEntity(&entity, item.Object)
-		case "services":
-			enrichServiceCatalogEntity(&entity, item.Object)
-			if counts, ok := serviceEndpointCounts[entity.Name]; ok {
-				applyServiceEndpointCounts(&entity, counts)
-			}
-		case "endpoints":
-			enrichEndpointsCatalogEntity(&entity, item.Object)
-		case "endpointslices":
-			enrichEndpointSliceCatalogEntity(&entity, item.Object)
-		case "ingresses":
-			enrichIngressCatalogEntity(&entity, item.Object)
-		case "ingressclasses":
-			enrichIngressClassCatalogEntity(&entity, item.Object)
-		case "networkpolicies":
-			enrichNetworkPolicyCatalogEntity(&entity, item.Object)
-		case "storageclasses":
-			enrichStorageClassCatalogEntity(&entity, item.Object)
-		case "nodes":
-			enrichNodeCatalogEntity(&entity, item.Object)
-		default:
-			enrichBuiltinCatalogEntity(resource, &entity, item.Object)
-		}
-		enrichCatalogTableFields(&entity, item.Object, resource)
+		entity := catalogEntityFor(item, resourceID, resource, serviceEndpointCounts)
 		out = append(out, entity)
 	}
 	if resource == "pods" && len(out) > 0 {
@@ -228,6 +171,70 @@ func listCatalogEntitiesOnce(ctx context.Context, client *Client, gvr schema.Gro
 		Entities:    out,
 		AccessState: model.ResourceAccessAllowed,
 	}, nil
+}
+
+// catalogEntityFor projects one listed object into a browse row. Service rows
+// take endpoint counts from serviceEndpointCounts when it has them.
+func catalogEntityFor(item unstructured.Unstructured, resourceID, resource string, serviceEndpointCounts map[string]serviceEndpointCount) model.CatalogEntity {
+	entity := model.CatalogEntity{
+		ResourceID:      resourceID,
+		Name:            item.GetName(),
+		Namespace:       item.GetNamespace(),
+		UID:             string(item.GetUID()),
+		ResourceVersion: item.GetResourceVersion(),
+		Generation:      item.GetGeneration(),
+		Kind:            item.GetKind(),
+		APIVersion:      item.GetAPIVersion(),
+		StatusHint:      entityStatusHint(item.Object, resource),
+		NodeName:        entityNodeName(item.Object, resource),
+	}
+	if ts := item.GetCreationTimestamp(); !ts.IsZero() {
+		entity.CreationTimestamp = ts.Format(time.RFC3339)
+	}
+	if entity.Kind == "" {
+		entity.Kind = stringFromObject(item.Object, "kind")
+	}
+	if entity.Kind == "" {
+		entity.Kind = catalogKindForResource(resource)
+	}
+	switch resource {
+	case "pods":
+		enrichPodCatalogEntity(&entity, item.Object)
+	case "deployments":
+		enrichWorkloadCatalogEntity(&entity, item.Object)
+		enrichDeploymentCatalogEntity(&entity, item.Object)
+	case "statefulsets", "replicasets":
+		enrichWorkloadCatalogEntity(&entity, item.Object)
+	case "daemonsets":
+		enrichDaemonSetCatalogEntity(&entity, item.Object)
+	case "jobs":
+		enrichJobCatalogEntity(&entity, item.Object)
+	case "cronjobs":
+		enrichCronJobCatalogEntity(&entity, item.Object)
+	case "services":
+		enrichServiceCatalogEntity(&entity, item.Object)
+		if counts, ok := serviceEndpointCounts[entity.Name]; ok {
+			applyServiceEndpointCounts(&entity, counts)
+		}
+	case "endpoints":
+		enrichEndpointsCatalogEntity(&entity, item.Object)
+	case "endpointslices":
+		enrichEndpointSliceCatalogEntity(&entity, item.Object)
+	case "ingresses":
+		enrichIngressCatalogEntity(&entity, item.Object)
+	case "ingressclasses":
+		enrichIngressClassCatalogEntity(&entity, item.Object)
+	case "networkpolicies":
+		enrichNetworkPolicyCatalogEntity(&entity, item.Object)
+	case "storageclasses":
+		enrichStorageClassCatalogEntity(&entity, item.Object)
+	case "nodes":
+		enrichNodeCatalogEntity(&entity, item.Object)
+	default:
+		enrichBuiltinCatalogEntity(resource, &entity, item.Object)
+	}
+	enrichCatalogTableFields(&entity, item.Object, resource)
+	return entity
 }
 
 func entityStatusHint(obj map[string]interface{}, resource string) string {

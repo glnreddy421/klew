@@ -8,7 +8,7 @@ const DB_VERSION = 1
 const STORE = 'presets'
 const META_KEY = 'klew.font-cache.meta'
 
-/** @typedef {{ id: string, css: string, updatedAt: number }} FontCacheEntry */
+/** @typedef {{ id: string, css: string, src?: string, updatedAt: number }} FontCacheEntry */
 
 export function isFontCacheStale(updatedAt) {
   if (!updatedAt) return true
@@ -27,13 +27,13 @@ export async function readFontCache(id) {
 }
 
 /** @returns {Promise<void>} */
-export async function writeFontCache(id, css) {
-  const entry = { id, css, updatedAt: Date.now() }
+export async function writeFontCache(id, css, src = '') {
+  const entry = { id, css, src, updatedAt: Date.now() }
   try {
     await idbPut(DB_NAME, DB_VERSION, STORE, entry)
     writeFontCacheMeta(id, entry.updatedAt)
   } catch {
-    writeFontCacheMetaFallback(id, css, entry.updatedAt)
+    writeFontCacheMetaFallback(entry)
   }
 }
 
@@ -49,9 +49,9 @@ function readFontCacheMetaFallback(id) {
   }
 }
 
-function writeFontCacheMetaFallback(id, css, updatedAt) {
+function writeFontCacheMetaFallback(entry) {
   try {
-    localStorage.setItem(`${META_KEY}.${id}`, JSON.stringify({ id, css, updatedAt }))
+    localStorage.setItem(`${META_KEY}.${entry.id}`, JSON.stringify(entry))
   } catch {
     // quota — ignore
   }

@@ -7,11 +7,14 @@ import (
 	"github.com/glnreddy421/klew/internal/model"
 )
 
-// ScoreSignals produces deterministic signals from bundle evidence.
+// ScoreSignals produces deterministic signals from bundle evidence by running
+// every rule in the active registry.
 func ScoreSignals(b model.EvidenceBundle) []model.Signal {
-	var signals []model.Signal
-	signals = append(signals, scoreAdmissionSignals(b)...)
+	return ActiveRegistry().Evaluate(b).Signals
+}
 
+func containerSignals(b model.EvidenceBundle) []model.Signal {
+	var signals []model.Signal
 	for _, p := range b.Pods {
 		for _, c := range p.Containers {
 			if c.LastReason == "OOMKilled" || strings.Contains(strings.ToLower(c.LastReason), "oom") {
@@ -37,7 +40,11 @@ func ScoreSignals(b model.EvidenceBundle) []model.Signal {
 			}
 		}
 	}
+	return signals
+}
 
+func eventSignals(b model.EvidenceBundle) []model.Signal {
+	var signals []model.Signal
 	for _, e := range b.Events {
 		reason := strings.ToLower(e.Reason)
 		switch {
@@ -53,7 +60,11 @@ func ScoreSignals(b model.EvidenceBundle) []model.Signal {
 			signals = append(signals, signalFromEvent(e, "probe_fail", "Probe failure", model.SeverityHigh, "strong", 85))
 		}
 	}
+	return signals
+}
 
+func serviceSignals(b model.EvidenceBundle) []model.Signal {
+	var signals []model.Signal
 	for _, svc := range b.Services {
 		if svc.ReadyEndpoints == 0 {
 			signals = append(signals, model.Signal{
@@ -63,7 +74,11 @@ func ScoreSignals(b model.EvidenceBundle) []model.Signal {
 			})
 		}
 	}
+	return signals
+}
 
+func nodeSignals(b model.EvidenceBundle) []model.Signal {
+	var signals []model.Signal
 	for _, n := range b.Nodes {
 		if !n.Ready {
 			signals = append(signals, model.Signal{
@@ -80,7 +95,11 @@ func ScoreSignals(b model.EvidenceBundle) []model.Signal {
 			})
 		}
 	}
+	return signals
+}
 
+func hpaSignals(b model.EvidenceBundle) []model.Signal {
+	var signals []model.Signal
 	for _, h := range b.HPAs {
 		if h.AtMax {
 			signals = append(signals, model.Signal{
@@ -90,15 +109,22 @@ func ScoreSignals(b model.EvidenceBundle) []model.Signal {
 			})
 		}
 	}
+	return signals
+}
 
-	// Rollout shortly before failures (medium)
-	if len(b.ReplicaSets) > 1 {
-		signals = append(signals, model.Signal{
-			ID: "rollout_activity", Label: "Recent rollout activity", Severity: model.SeverityWarning, Strength: "medium",
-			Score: 50, Evidence: fmt.Sprintf("%d replicasets observed", len(b.ReplicaSets)),
-		})
+// rolloutSignals flags a rollout shortly before failures (medium).
+func rolloutSignals(b model.EvidenceBundle) []model.Signal {
+	if len(b.ReplicaSets) <= 1 {
+		return nil
 	}
+	return []model.Signal{{
+		ID: "rollout_activity", Label: "Recent rollout activity", Severity: model.SeverityWarning, Strength: "medium",
+		Score: 50, Evidence: fmt.Sprintf("%d replicasets observed", len(b.ReplicaSets)),
+	}}
+}
 
+func metricsSignals(b model.EvidenceBundle) []model.Signal {
+	var signals []model.Signal
 	for _, w := range b.Warnings {
 		if strings.Contains(strings.ToLower(w), "metrics") {
 			signals = append(signals, model.Signal{
@@ -107,7 +133,6 @@ func ScoreSignals(b model.EvidenceBundle) []model.Signal {
 			})
 		}
 	}
-
 	return signals
 }
 

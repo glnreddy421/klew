@@ -1,42 +1,17 @@
+import { terminalFindDecorations } from './terminalAppearance'
+
 /** @typedef {{ findNext: Function, findPrevious: Function, clearDecorations: Function, onResults: Function, countMatches: Function }} TerminalSearchApi */
 
-const FIND_DECORATIONS = {
-  midnight: {
-    matchBackground: '#1a3050',
-    matchBorder: '#58a6ff',
-    matchOverviewRuler: '#58a6ff',
-    activeMatchBackground: '#264a73',
-    activeMatchBorder: '#79b8ff',
-    activeMatchColorOverviewRuler: '#79b8ff',
-  },
-  black: {
-    matchBackground: '#2a2a2a',
-    matchBorder: '#ffffff',
-    matchOverviewRuler: '#ffffff',
-    activeMatchBackground: '#3d3d3d',
-    activeMatchBorder: '#ffffff',
-    activeMatchColorOverviewRuler: '#ffffff',
-  },
-  silver: {
-    matchBackground: '#1e2128',
-    matchBorder: '#d4dae3',
-    matchOverviewRuler: '#d4dae3',
-    activeMatchBackground: '#2a3038',
-    activeMatchBorder: '#e8ecf1',
-    activeMatchColorOverviewRuler: '#e8ecf1',
-  },
-}
-
 /** Build xterm SearchAddon options with readable match highlights. */
-export function buildTerminalFindOptions(appearanceId, overrides = {}) {
-  const id = FIND_DECORATIONS[appearanceId] ? appearanceId : 'midnight'
+export function buildTerminalFindOptions(themeId = '', overrides = {}) {
+  const base = terminalFindDecorations(themeId)
   const { decorations: overrideDecorations, ...restOverrides } = overrides
   return {
     caseSensitive: false,
     wholeWord: false,
     regex: false,
     decorations: {
-      ...FIND_DECORATIONS[id],
+      ...base,
       ...overrideDecorations,
     },
     ...restOverrides,

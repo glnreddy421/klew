@@ -89,6 +89,26 @@ func Open(path string) (*Store, error) {
 	return s, nil
 }
 
+// openReadOnly opens an existing database without creating, migrating or
+// otherwise writing to it, so it needs no write lock and works alongside a
+// running recorder. It fails if the file is not a readable database.
+func openReadOnly(path string) (*Store, error) {
+	q := url.Values{}
+	q.Set("mode", "ro")
+	q.Add("_pragma", "busy_timeout(5000)")
+	q.Add("_pragma", "query_only(1)")
+	db, err := sql.Open("sqlite", "file:"+path+"?"+q.Encode())
+	if err != nil {
+		return nil, err
+	}
+	db.SetMaxOpenConns(4)
+	if _, err := db.Exec(`SELECT 1 FROM sqlite_master LIMIT 1`); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	return &Store{db: db, path: path}, nil
+}
+
 // Path returns the database file path.
 func (s *Store) Path() string { return s.path }
 
@@ -328,6 +348,11 @@ type EventQuery struct {
 	// RegardingName limits to one object; NamePrefix also matches "<name>-*".
 	RegardingName string
 	NamePrefix    bool
+	// Type limits to one event type; "" means all.
+	Type string
+	// Reasons and RegardingKind limit by reason and object kind, ignoring case.
+	Reasons       []string
+	RegardingKind string
 	// Limit caps rows (newest last_seen first); <= 0 means 1000.
 	Limit int
 }
@@ -360,6 +385,20 @@ func (s *Store) Events(ctx context.Context, q EventQuery) ([]EventRow, error) {
 			where += ` AND regarding_name = ?`
 			args = append(args, q.RegardingName)
 		}
+	}
+	if q.Type != "" {
+		where += ` AND type = ?`
+		args = append(args, q.Type)
+	}
+	if len(q.Reasons) > 0 {
+		where += ` AND reason COLLATE NOCASE IN (?` + strings.Repeat(`, ?`, len(q.Reasons)-1) + `)`
+		for _, r := range q.Reasons {
+			args = append(args, r)
+		}
+	}
+	if q.RegardingKind != "" {
+		where += ` AND regarding_kind = ? COLLATE NOCASE`
+		args = append(args, q.RegardingKind)
 	}
 	args = append(args, limit)
 	rows, err := s.db.QueryContext(ctx, `SELECT cluster_key, event_uid, namespace, regarding_kind, regarding_name,
