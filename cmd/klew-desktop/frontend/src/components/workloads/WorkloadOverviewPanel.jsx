@@ -4,24 +4,27 @@ import { LoadingBar, ResourcePaneLoading } from '../LoadingSpinner.jsx'
 import { DataAgeLabel } from '../DataAgeLabel.jsx'
 import { RefreshButton } from '../RefreshButton.jsx'
 import { useWorkloadOverview } from '../../hooks/useWorkloadOverview.js'
+import { useRecentWarnings } from '../../hooks/useRecentWarnings.js'
+import { AttentionList, RecentWarningsList } from './OverviewActivity.jsx'
 import { summarizeBrowsePodMetrics } from '../../lib/browseMetrics.js'
 import { buildOverviewMetricsSummary } from '../../lib/metricDisplay.js'
 import { OverviewMetricCard, OverviewNodesCard } from '../metrics/ResourceMetricDisplay.jsx'
-import { donutGradient } from '../../lib/workloadOverview.js'
+import { donutArcs, summarizeWorkloadCards } from '../../lib/workloadOverview.js'
 
 function dominantTone(segments = []) {
-  if (segments.some((seg) => seg.tone === 'crit' && seg.count > 0)) return 'crit'
-  if (segments.some((seg) => seg.tone === 'warn' && seg.count > 0)) return 'warn'
-  if (segments.some((seg) => seg.tone === 'ok' && seg.count > 0)) return 'ok'
+  for (const tone of ['crit', 'warn', 'ok', 'info']) {
+    if (segments.some((seg) => seg.tone === tone && seg.count > 0)) return tone
+  }
   return 'muted'
 }
 
-function healthLabel(tone) {
+function healthLabel(tone, hasData) {
   switch (tone) {
     case 'crit': return 'Needs attention'
     case 'warn': return 'Degraded'
     case 'ok': return 'Healthy'
-    default: return 'No data'
+    case 'info': return 'In progress'
+    default: return hasData ? 'Inactive' : 'No data'
   }
 }
 
@@ -35,8 +38,8 @@ function DonutLegend({ segments, total }) {
             <span className={`workload-donut-swatch tone-${seg.tone}`} aria-hidden="true" />
             <span className="workload-donut-legend-label">{seg.label}</span>
             <span className="workload-donut-legend-meta overview-num">
-              {seg.count}
-              {pct > 0 && <span className="workload-donut-legend-pct overview-num">{pct}%</span>}
+              <span className="workload-donut-legend-count">{seg.count}</span>
+              {pct > 0 && <span className="workload-donut-legend-pct">{pct}%</span>}
             </span>
           </li>
         )
@@ -47,7 +50,7 @@ function DonutLegend({ segments, total }) {
 
 function WorkloadKindDonut({ card, onSelectKind }) {
   const hasData = card.total > 0 && card.segments.length > 0
-  const gradient = donutGradient(card.segments)
+  const arcs = useMemo(() => donutArcs(card.segments), [card.segments])
   const tone = dominantTone(card.segments)
 
   return (
@@ -62,28 +65,47 @@ function WorkloadKindDonut({ card, onSelectKind }) {
         onClick={() => onSelectKind?.(card)}
       >
         <span className="workload-kind-card-icon">
-          <KindIcon kind={card.kind} size={18} />
+          <KindIcon kind={card.kind} size={16} />
         </span>
         <span className="workload-kind-card-copy">
           <span className="workload-kind-card-name">{card.label}</span>
-          <span className={`workload-kind-card-health tone-${tone}`}>{healthLabel(tone)}</span>
+          <span className={`workload-kind-card-health tone-${tone}`}>{healthLabel(tone, hasData)}</span>
         </span>
         <span className="workload-kind-card-count overview-num">{card.total}</span>
       </button>
 
       {hasData ? (
-        <>
+        <div className="workload-donut-body">
           <div className="workload-donut-wrap" aria-hidden="true">
-            <div className="workload-donut-glow" />
-            <div className="workload-donut" style={{ background: gradient }}>
-              <div className="workload-donut-hole">
-                <span className="workload-donut-total overview-num is-display">{card.total}</span>
-                <span className="workload-donut-caption overview-label">in scope</span>
-              </div>
+            <svg className="workload-donut" viewBox="0 0 100 100" width="100" height="100">
+              <circle className="workload-donut-track" cx="50" cy="50" r="36" />
+              {arcs.map((arc) => (
+                arc.full ? (
+                  <circle
+                    key={arc.label}
+                    className={`workload-donut-arc tone-${arc.tone}`}
+                    cx="50"
+                    cy="50"
+                    r="36"
+                    stroke={arc.color}
+                  />
+                ) : (
+                  <path
+                    key={arc.label}
+                    className={`workload-donut-arc tone-${arc.tone}`}
+                    d={arc.d}
+                    stroke={arc.color}
+                  />
+                )
+              ))}
+            </svg>
+            <div className="workload-donut-center">
+              <span className="workload-donut-total overview-num is-display">{card.total}</span>
+              <span className="workload-donut-caption overview-label">total</span>
             </div>
           </div>
           <DonutLegend segments={card.segments} total={card.total} />
-        </>
+        </div>
       ) : card.denied ? (
         <p className="workload-kind-empty workload-kind-denied" title="Access denied">
           Access denied
@@ -102,9 +124,11 @@ export function WorkloadOverviewPanel({
   clusterStatus = null,
   clusterMonitoringEnabled = true,
   onSelectKind,
+  onInspect,
 }) {
   const {
     cards,
+    attentionItems,
     podEntities,
     loading,
     refreshing,
@@ -120,6 +144,11 @@ export function WorkloadOverviewPanel({
     kindGroups,
     enabled: kindGroups.length > 0 && clusterMonitoringEnabled,
   })
+  const warnings = useRecentWarnings({
+    cluster,
+    browseScope,
+    enabled: clusterMonitoringEnabled,
+  })
 
   const hasOverview = hasData || cards.some((c) => c.total > 0)
   const initialLoad = loading && !hasOverview
@@ -133,23 +162,7 @@ export function WorkloadOverviewPanel({
 
   const nodes = clusterStatus?.nodes || {}
 
-  const summary = useMemo(() => {
-    let total = 0
-    let healthy = 0
-    let attention = 0
-    for (const card of cards) {
-      total += card.total
-      for (const seg of card.segments) {
-        if (seg.tone === 'ok') healthy += seg.count
-        if (seg.label === 'Pending' || seg.label === 'Failed' || seg.tone === 'crit') {
-          attention += seg.count
-        } else if (seg.tone === 'warn' && seg.label !== 'Active') {
-          attention += seg.count
-        }
-      }
-    }
-    return { total, healthy, attention }
-  }, [cards])
+  const summary = useMemo(() => summarizeWorkloadCards(cards), [cards])
 
   if (!kindGroups.length) {
     return (
@@ -190,7 +203,10 @@ export function WorkloadOverviewPanel({
             </div>
           )}
           <RefreshButton
-            onClick={() => refresh?.()}
+            onClick={() => {
+              refresh?.()
+              warnings.refresh?.()
+            }}
             spinning={backgroundRefresh}
             disabled={initialLoad}
             title="Refresh overview"
@@ -227,9 +243,11 @@ export function WorkloadOverviewPanel({
         <section className="workload-overview-metrics" aria-label="Resource usage">
           <div className="workload-overview-section-head">
             <h3 className="workload-overview-section-title">Resource usage</h3>
-            {!resourceMetrics.cpu.available && !resourceMetrics.hasAlloc && (
-              <p className="workload-overview-metrics-hint muted">{resourceMetrics.note}</p>
-            )}
+            <p className="workload-overview-section-lead muted">
+              {resourceMetrics.cpu.available || resourceMetrics.hasAlloc
+                ? resourceMetrics.note
+                : 'Pod requests, limits and live usage when metrics-server is available.'}
+            </p>
           </div>
           <div className="workload-overview-metrics-grid">
             {(resourceMetrics.cpu.available || resourceMetrics.hasAlloc) ? (
@@ -246,7 +264,12 @@ export function WorkloadOverviewPanel({
                 <p className="resource-metric-card-foot muted">{resourceMetrics.note}</p>
               </article>
             )}
-            <OverviewNodesCard ready={nodes.ready ?? 0} total={nodes.total} />
+            <OverviewNodesCard
+              ready={nodes.ready ?? 0}
+              total={nodes.total}
+              notReady={nodes.notReady ?? 0}
+              pressured={nodes.pressured ?? 0}
+            />
           </div>
         </section>
       )}
@@ -272,6 +295,20 @@ export function WorkloadOverviewPanel({
         )}
       </div>
       </section>
+
+      {!initialLoad && (
+        <section className="overview-activity" aria-label="Activity">
+          <AttentionList items={attentionItems} loading={loading} onInspect={onInspect} />
+          <RecentWarningsList
+            events={warnings.events}
+            total={warnings.total}
+            accessState={warnings.accessState}
+            error={warnings.error}
+            loading={warnings.loading}
+            onInspect={onInspect}
+          />
+        </section>
+      )}
     </div>
   )
 }

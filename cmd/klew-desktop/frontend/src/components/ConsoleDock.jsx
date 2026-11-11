@@ -56,10 +56,16 @@ export function ConsoleDock({
 
   const termList = terminalTabs?.tabs || []
   const termCount = termList.length
+  const terminalContext = terminalTabs?.contextName || ''
 
   useEffect(() => {
     if (termCount < 2) setSplitView(null)
   }, [termCount])
+
+  // Terminal strip is per-context — drop splits that belonged to the previous cluster.
+  useEffect(() => {
+    setSplitView(null)
+  }, [terminalContext])
 
   useEffect(() => {
     if (!addMenuOpen) return undefined
@@ -131,8 +137,10 @@ export function ConsoleDock({
     onCloseTab?.(tab.key)
   }, [onCloseTab])
 
-  if (!visible) return null
-
+  // One tree for hidden and visible: the terminal panel must never remount, or
+  // every context's shell session would be closed and restarted.
+  const allTermCount = terminalTabs?.allTabs?.length ?? termCount
+  const terminalMounted = allTermCount > 0 || Boolean(terminalProps.launchRequest?.id)
   const showTerminalPane = activeItem?.kind === 'terminal'
   const activeTerm = terminalTabs?.activeTab
   const activeTerminalScope = [
@@ -144,7 +152,11 @@ export function ConsoleDock({
 
   return (
     <div
-      className={['console-dock', 'console-dock-ide', 'is-expanded', maximized ? 'is-maximized' : ''].filter(Boolean).join(' ')}
+      className={visible
+        ? ['console-dock', 'console-dock-ide', 'is-expanded', maximized ? 'is-maximized' : ''].filter(Boolean).join(' ')
+        : 'console-dock is-hidden'}
+      hidden={!visible}
+      aria-hidden={!visible || undefined}
       aria-label="Panel"
     >
       {!maximized && (
@@ -166,7 +178,6 @@ export function ConsoleDock({
                 ? [
                   tab.title,
                   tab.shell,
-                  tab.contextName,
                   tab.namespace,
                   termCount >= 2 ? 'Right-click to split' : '',
                 ].filter(Boolean).join(' · ')
@@ -206,8 +217,8 @@ export function ConsoleDock({
                       <StreamLogsGlyph size={13} />
                     )}
                     <span className="console-dock-tab-label">{tab.title}</span>
-                    {tab.kind === 'terminal' && (tab.contextName || tab.shell) && (
-                      <span className="terminal-tab-shell">{tab.contextName || tab.shell}</span>
+                    {tab.kind === 'terminal' && tab.shell && (
+                      <span className="terminal-tab-shell">{tab.shell}</span>
                     )}
                     {tab.kind === 'terminal' && !tab.ready && !tab.error && (
                       <span className="terminal-tab-dot" aria-hidden="true" />
@@ -344,7 +355,7 @@ export function ConsoleDock({
         )}
 
         <div className="console-dock-pane-stack" aria-live="polite">
-          {tabs.length === 0 ? (
+          {visible && tabs.length === 0 && !terminalProps.launchRequest?.id && (
             <div className="console-dock-empty" role="status">
               <strong>No tabs open</strong>
               <span className="muted">
@@ -369,9 +380,8 @@ export function ConsoleDock({
                 )}
               </div>
             </div>
-          ) : (
-            <>
-              {logTabs.map((lt) => {
+          )}
+          {visible && logTabs.map((lt) => {
                 const isActive = activeLogStreamId === lt.streamId
                 const streamHandle = logStreams.getStream(lt.streamId)
                 return (
@@ -391,9 +401,10 @@ export function ConsoleDock({
                     />
                   </div>
                 )
-              })}
+          })}
 
-              <div
+          {/* Always mounted (even with no tab for this context) so parked contexts keep their sessions. */}
+          <div
                 className={['console-dock-pane-layer', showTerminalPane ? 'is-active' : ''].filter(Boolean).join(' ')}
                 role="tabpanel"
                 aria-hidden={!showTerminalPane}
@@ -407,17 +418,15 @@ export function ConsoleDock({
                   onActionsChange={setTerminalActions}
                   embedded
                   ideDock
-                  open={termCount > 0 || Boolean(terminalProps.launchRequest?.id)}
+                  open={terminalMounted}
                   height={height}
                   panelState={PANEL_NORMAL}
                   dockControls={null}
                 />
-              </div>
-            </>
-          )}
+          </div>
         </div>
 
-        {tabMenu && (
+        {visible && tabMenu && (
           <div
             ref={tabMenuRef}
             className="terminal-tab-menu"

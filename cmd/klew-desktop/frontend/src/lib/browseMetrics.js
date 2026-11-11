@@ -7,28 +7,40 @@ export function summarizeBrowsePodMetrics(podEntities = []) {
   let memRequestMi = 0
   let cpuLimitMillicores = 0
   let memLimitMi = 0
+  let cpuUsagePods = 0
+  let memUsagePods = 0
+  let cpuRequestPods = 0
+  let memRequestPods = 0
+  let cpuLimitPods = 0
+  let memLimitPods = 0
   let available = false
 
   for (const entity of podEntities) {
     if (entity.cpuUsageMilli != null) {
       cpuUsageMillicores += Number(entity.cpuUsageMilli) || 0
+      cpuUsagePods += 1
       available = true
     }
     if (entity.memUsageMi != null) {
       memUsageMi += Number(entity.memUsageMi) || 0
+      memUsagePods += 1
       available = true
     }
     if (entity.cpuRequestMilli != null) {
       cpuRequestMillicores += Number(entity.cpuRequestMilli) || 0
+      cpuRequestPods += 1
     }
     if (entity.cpuLimitMilli != null) {
       cpuLimitMillicores += Number(entity.cpuLimitMilli) || 0
+      cpuLimitPods += 1
     }
     if (entity.memRequestMi != null) {
       memRequestMi += Number(entity.memRequestMi) || 0
+      memRequestPods += 1
     }
     if (entity.memLimitMi != null) {
       memLimitMi += Number(entity.memLimitMi) || 0
+      memLimitPods += 1
     }
   }
 
@@ -38,9 +50,9 @@ export function summarizeBrowsePodMetrics(podEntities = []) {
 
   let note = 'Install metrics-server for live CPU/memory usage'
   if (available) {
-    note = 'metrics-server'
+    note = 'Live usage from metrics-server'
   } else if (hasAlloc) {
-    note = 'Showing pod requests/limits — install metrics-server for live usage'
+    note = 'Pod requests and limits — install metrics-server for live usage'
   }
 
   return {
@@ -53,6 +65,13 @@ export function summarizeBrowsePodMetrics(podEntities = []) {
     memRequestMi,
     cpuLimitMillicores,
     memLimitMi,
+    podCount: podEntities.length,
+    cpuUsagePods,
+    memUsagePods,
+    cpuRequestPods,
+    memRequestPods,
+    cpuLimitPods,
+    memLimitPods,
     cpuPct: available ? utilPct(cpuUsageMillicores, cpuDenom) : null,
     memPct: available ? utilPct(memUsageMi, memDenom) : null,
     cpuLabel: fmtCpu(cpuUsageMillicores),

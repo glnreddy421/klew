@@ -119,8 +119,9 @@ export function OverviewView({
         brief={brief}
         meta={meta}
         onInspect={(key) => {
+          // Failing pods belong on Failures (triage + events + logs), not Resources.
           onInspectKeyChange?.(key)
-          onNavigate?.('resources')
+          onNavigate?.('failures')
         }}
         onInspectKeyChange={onInspectKeyChange}
         onNavigate={onNavigate}

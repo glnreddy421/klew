@@ -106,7 +106,7 @@ function PodHeatmap({ heatmap, onInspect }) {
 }
 
 /** 2. What is broken right now: only unhealthy pods, with reason, exit code and restarts. */
-function FailingNow({ brief, onInspect }) {
+function FailingNow({ brief, onInspect, onNavigate }) {
   if (!brief.failing.length) return null
   return (
     <section className="ob-section" aria-labelledby="ob-failing-title">
@@ -123,7 +123,7 @@ function FailingNow({ brief, onInspect }) {
               type="button"
               className="ob-failing-row"
               onClick={() => onInspect?.(p.key)}
-              title={`Inspect Pod/${p.namespace}/${p.name}`}
+              title={`Open ${p.name} in Failures`}
             >
               <span className={`ob-dot is-${p.severity}`} aria-hidden="true" />
               <span className="ob-failing-name mono">{p.name}</span>
@@ -138,7 +138,13 @@ function FailingNow({ brief, onInspect }) {
         ))}
       </ul>
       {brief.failingTotal > brief.failing.length && (
-        <p className="ob-more">+{brief.failingTotal - brief.failing.length} more in Failures</p>
+        <button
+          type="button"
+          className="ob-more ob-more-link"
+          onClick={() => onNavigate?.('failures')}
+        >
+          +{brief.failingTotal - brief.failing.length} more in Failures
+        </button>
       )}
     </section>
   )
@@ -308,7 +314,7 @@ export function OverviewBrief({ brief, meta, onInspect, onInspectKeyChange, onNa
     <div className="ob">
       <BriefVerdict brief={brief} meta={meta} />
       <PodHeatmap heatmap={brief.heatmap} onInspect={onInspect} />
-      <FailingNow brief={brief} onInspect={onInspect} />
+      <FailingNow brief={brief} onInspect={onInspect} onNavigate={onNavigate} />
       {brief.failing.length === 0 && <OngoingIncidents incidents={brief.ongoing} />}
       {(brief.chain.length >= 2 || brief.changes.length > 0) && (
         <div className="ob-row">

@@ -21,6 +21,14 @@ const emptyCluster = () => ({
   syncWarning: '',
 })
 
+function sameClusterState(a, b) {
+  try {
+    return JSON.stringify(a) === JSON.stringify(b)
+  } catch {
+    return false
+  }
+}
+
 export function useCluster() {
   const [cluster, setCluster] = useState(emptyCluster)
   const [syncing, setSyncing] = useState(false)
@@ -30,12 +38,15 @@ export function useCluster() {
 
   const apply = useCallback((st) => {
     if (!st) return
-    setCluster({
+    const next = {
       ...emptyCluster(),
       ...st,
       contexts: Array.isArray(st.contexts) ? st.contexts : [],
       namespaces: Array.isArray(st.namespaces) ? st.namespaces : [],
-    })
+    }
+    // The backend sends the same state twice on a switch (event, then the call
+    // result); keep the first object so nothing re-renders or reloads twice.
+    setCluster((prev) => (sameClusterState(prev, next) ? prev : next))
   }, [])
 
   useEffect(() => {

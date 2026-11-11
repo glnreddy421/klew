@@ -694,6 +694,7 @@ export namespace kube {
 	    cluster: string;
 	    user: string;
 	    namespace: string;
+	    version?: string;
 	    isCurrent: boolean;
 	
 	    static createFrom(source: any = {}) {
@@ -706,6 +707,7 @@ export namespace kube {
 	        this.cluster = source["cluster"];
 	        this.user = source["user"];
 	        this.namespace = source["namespace"];
+	        this.version = source["version"];
 	        this.isCurrent = source["isCurrent"];
 	    }
 	}
@@ -909,6 +911,42 @@ export namespace kube {
 	        this.httpsProxy = source["httpsProxy"];
 	        this.noProxy = source["noProxy"];
 	    }
+	}
+	export class RecentWarnings {
+	    events: model.EventRecord[];
+	    total: number;
+	    accessState: string;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RecentWarnings(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.events = this.convertValues(source["events"], model.EventRecord);
+	        this.total = source["total"];
+	        this.accessState = source["accessState"];
+	        this.error = source["error"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class ResourceManifest {
 	    command: string;
@@ -1359,6 +1397,26 @@ export namespace main {
 	        this.context = source["context"];
 	        this.namespace = source["namespace"];
 	        this.kubeconfig = source["kubeconfig"];
+	    }
+	}
+	export class RecentWarningsOptions {
+	    namespace: string;
+	    allNamespaces: boolean;
+	    namespaces: string[];
+	    kubeconfig: string;
+	    context: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RecentWarningsOptions(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.namespace = source["namespace"];
+	        this.allNamespaces = source["allNamespaces"];
+	        this.namespaces = source["namespaces"];
+	        this.kubeconfig = source["kubeconfig"];
+	        this.context = source["context"];
 	    }
 	}
 	export class ResourceManifestOptions {
@@ -4281,6 +4339,39 @@ export namespace render {
 		}
 	}
 	
+
+}
+
+export namespace update {
+	
+	export class Result {
+	    currentVersion: string;
+	    latestVersion: string;
+	    updateAvailable: boolean;
+	    channel: string;
+	    upgradeCommand?: string;
+	    releaseURL: string;
+	    downloadURL?: string;
+	    message: string;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Result(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.currentVersion = source["currentVersion"];
+	        this.latestVersion = source["latestVersion"];
+	        this.updateAvailable = source["updateAvailable"];
+	        this.channel = source["channel"];
+	        this.upgradeCommand = source["upgradeCommand"];
+	        this.releaseURL = source["releaseURL"];
+	        this.downloadURL = source["downloadURL"];
+	        this.message = source["message"];
+	        this.error = source["error"];
+	    }
+	}
 
 }
 

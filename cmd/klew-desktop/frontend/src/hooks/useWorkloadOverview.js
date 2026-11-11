@@ -9,7 +9,7 @@ import { catalogEntityToRow } from '../lib/resourceCatalog.js'
 import { browseScopeApiParams, normalizeBrowseScope } from '../lib/browseScope.js'
 import { canLoadCatalogEntities } from '../lib/catalogDisplay.js'
 import { PRIORITY_WORKLOAD_KINDS } from '../lib/resourcePresentation.js'
-import { buildWorkloadKindCardsFromRows } from '../lib/workloadOverview.js'
+import { buildAttentionItems, buildWorkloadKindCardsFromRows } from '../lib/workloadOverview.js'
 import { normalizeCatalogAccessState } from '../lib/rbacAccess.js'
 import {
   loadCatalogCached,
@@ -402,6 +402,11 @@ export function useWorkloadOverview({
     [kindGroups, entitiesByResourceId, accessStateByResourceId],
   )
 
+  const attentionItems = useMemo(
+    () => buildAttentionItems(kindGroups, entitiesByResourceId),
+    [kindGroups, entitiesByResourceId],
+  )
+
   const podEntities = useMemo(() => {
     if (!podGroup?.resourceId) return []
     return entitiesByResourceId[podGroup.resourceId] || []
@@ -419,6 +424,7 @@ export function useWorkloadOverview({
 
   return {
     cards,
+    attentionItems,
     podEntities,
     loading,
     refreshing,

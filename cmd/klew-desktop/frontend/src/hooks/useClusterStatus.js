@@ -65,8 +65,9 @@ export function useClusterStatus(cluster, { enabled = true } = {}) {
       return undefined
     }
 
+    // Never show (or let callers save) the previous context's status under this one.
     const cached = peekCatalogCache(cacheKey)
-    if (cached) setClusterStatus(cached)
+    setClusterStatus(cached || null)
     setStatusLoading(!cached)
     refresh({ background: Boolean(cached), force: false })
 

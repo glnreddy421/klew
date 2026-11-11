@@ -156,7 +156,7 @@ func (s *Server) registerTools(srv *mcp.Server) {
 		Name: "klew_investigation_details",
 		Description: "Page through one section of an earlier klew_investigate result without collecting again. Sections: " +
 			"pods (all pods, worst first), signals (every scored signal), log_patterns and event_patterns (mined templates with samples), " +
-			"evidence_board (log templates linked to infrastructure events by time overlap), timeline (correlated incident timeline), " +
+			"evidence_board (log templates linked to infrastructure events by co-movement or failure coverage), timeline (correlated incident timeline), " +
 			"events (Kubernetes events in scope, newest first), live_evidence (evidence observed during the watch), matched_objects (objects the workload search matched). " +
 			"Investigations expire after 30 minutes; run klew_investigate again after that.",
 		Annotations: readOnly("Investigation details", false),

@@ -58,6 +58,9 @@ export function MainContent({
   onContextChange,
   onSetDefaultContext,
   onToggleFavoriteContext,
+  onAddContextTag,
+  onRemoveContextTag,
+  onRenameContext,
   onClearDefaultContext,
   onOpenProxySettings,
   onOpenMcpSetup,
@@ -181,12 +184,23 @@ export function MainContent({
           monitoringPaused={monitoringPaused}
           defaultContext={prefs?.defaultContext || ''}
           favoriteContexts={prefs?.favoriteContexts || []}
+          connectedContexts={prefs?.connectedContexts || []}
+          contextTags={prefs?.contextTags || {}}
+          contextAliases={prefs?.contextAliases || {}}
+          contextDetails={prefs?.contextDetails || {}}
           onSelectCluster={onContextChange}
           onSetDefaultContext={onSetDefaultContext}
           onToggleFavoriteContext={onToggleFavoriteContext}
+          onAddContextTag={onAddContextTag}
+          onRemoveContextTag={onRemoveContextTag}
+          onRenameContext={onRenameContext}
           onReconnect={onReconnect}
+          onDisconnect={onDisconnect}
           onOpenProxySettings={onOpenProxySettings}
           onOpenMcpSetup={onOpenMcpSetup}
+          welcomeSeenVersion={prefs?.welcomeSeenVersion || ''}
+          homeLayout={prefs?.homeLayout || 'tiles'}
+          onPrefsChange={onPrefsChange}
         />
       </div>
     )
@@ -268,6 +282,7 @@ export function MainContent({
             onNavigate={handleNavigate}
             onOpenEvidence={onOpenEvidence}
             explorerFilter={explorerFilters?.failures}
+            focusKey={inspectKey}
           />
         )}
         {tab === 'evidence' && (

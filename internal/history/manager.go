@@ -85,7 +85,9 @@ type ContextStatus struct {
 	Scope      string `json:"scope,omitempty"`
 	HighVolume bool   `json:"highVolume,omitempty"`
 	Active     bool   `json:"active,omitempty"`
-	Favorite   bool   `json:"favorite,omitempty"`
+	// Favorite is true when this context is opted into recording (the
+	// "recorded contexts" list from the UI — not the Home star).
+	Favorite bool `json:"favorite,omitempty"`
 	// Since is the start of retained history (empty when none).
 	Since model.Timestamp `json:"since,omitempty"`
 	// Gaps within retained history when Klew was not recording.
@@ -210,7 +212,10 @@ func (m *Manager) SetActiveContext(name string) {
 	}
 }
 
-// SetFavoriteContexts replaces the background-recorded favorites.
+// SetFavoriteContexts replaces the contexts this process should record.
+// The name is historical: the UI now passes an explicit "recorded contexts"
+// list (independent of Home favorites). The active context is recorded only
+// when it appears in that list.
 func (m *Manager) SetFavoriteContexts(names []string) {
 	clean := uniqueNonEmpty(names)
 	m.mu.Lock()
@@ -309,8 +314,9 @@ func (m *Manager) desired() (set []string, enabled, paused bool) {
 	if !enabled || paused {
 		return nil, enabled, paused
 	}
-	all := append([]string{m.active}, m.favorites...)
-	return uniqueNonEmpty(all), enabled, paused
+	// Only the opted-in list. Active is not forced — the UI adds a context
+	// when the user opens it, and they can turn recording off per cluster.
+	return uniqueNonEmpty(m.favorites), enabled, paused
 }
 
 // reconcile starts and stops recorders to match the desired set and retries
@@ -519,7 +525,7 @@ func (m *Manager) Statuses(extra []string) []ContextStatus {
 			b := blocked[name]
 			st.State, st.Reason, st.ClusterKey = b.State, b.Reason, b.ClusterKey
 		default:
-			st.State, st.Reason = StateOff, "not the active context or a favorite"
+			st.State, st.Reason = StateOff, "recording off for this context"
 		}
 		if st.ClusterKey == "" {
 			st.ClusterKey = keys[name]

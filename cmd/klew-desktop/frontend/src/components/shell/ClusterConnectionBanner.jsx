@@ -1,3 +1,7 @@
+import { useEffect, useState } from 'react'
+
+const CONNECTING_BANNER_DELAY_MS = 2000
+
 export function ClusterConnectionBanner({
   connection,
   onReconnect,
@@ -6,7 +10,21 @@ export function ClusterConnectionBanner({
   onOpenProxySettings,
   reconnectBusy = false,
 }) {
-  if (!connection?.showBanner) return null
+  // A quick connect (a context switch, a status check) shows no banner at all:
+  // the tab's status dot covers it. The banner appears only if it drags on, so
+  // it does not pop in and out and push the page around.
+  const connecting = connection?.phase === 'connecting'
+  const [slow, setSlow] = useState(false)
+  useEffect(() => {
+    if (!connecting) {
+      setSlow(false)
+      return undefined
+    }
+    const timer = window.setTimeout(() => setSlow(true), CONNECTING_BANNER_DELAY_MS)
+    return () => window.clearTimeout(timer)
+  }, [connecting])
+
+  if (!connection?.showBanner || (connecting && !slow)) return null
 
   const tone = connection.tone || 'info'
   const busy = tone === 'info' || reconnectBusy

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { StatusBadge } from '../components/incident/StatusBadge'
-import { KindIcon } from '../components/KindIcon'
-import { k8sIconUrl } from '../lib/k8sIcons'
+import { KindIcon, kindGlyph } from '../components/KindIcon'
+import { KindGlyph } from '../components/icons/kindGlyphs.jsx'
 import { normalizeHealth } from '../lib/investigationViews'
 
 const R = 26
@@ -361,14 +361,7 @@ export function GraphView({ view, graphRelations }) {
                   >
                     <circle className="rg-node-ring" r={R} />
                     <circle className="rg-node-disc" r={R - 3} />
-                    <image
-                      href={k8sIconUrl(n.kind)}
-                      x={-14}
-                      y={-14}
-                      width={28}
-                      height={28}
-                      preserveAspectRatio="xMidYMid meet"
-                    />
+                    <KindGlyph className="rg-node-icon" glyph={kindGlyph(n.kind)} x={-14} y={-14} size={28} />
                   </g>
                 )
               })}

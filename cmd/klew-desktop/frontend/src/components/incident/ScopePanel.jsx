@@ -268,6 +268,7 @@ export function ScopePanel({
             clusterStatus={clusterStatus}
             clusterMonitoringEnabled={clusterMonitoringEnabled}
             onSelectKind={(card) => nav.selectKind(card.groupId, card.kind, card.resourceId)}
+            onInspect={onInspect}
           />
         ) : entityView === 'table' ? (
           <EntityTable

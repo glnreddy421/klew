@@ -19,6 +19,9 @@ type ContextOption struct {
 	Cluster   string `json:"cluster"`
 	User      string `json:"user"`
 	Namespace string `json:"namespace"`
+	// Version is the last known API server GitVersion for this context
+	// (from the cluster-status cache), when available.
+	Version   string `json:"version,omitempty"`
 	IsCurrent bool   `json:"isCurrent"`
 }
 
@@ -79,6 +82,8 @@ func LoadKubeConfigSnapshot(kubeconfigPath string) (ClusterState, error) {
 		ns = "default"
 	}
 
+	attachCachedContextVersions(path, contexts)
+
 	return ClusterState{
 		KubeconfigPath:    path,
 		CurrentContext:    current,
@@ -133,9 +138,12 @@ func RefreshClusterState(ctx context.Context, kubeconfigPath, selectedContext, s
 		return base
 	}
 
+	attachCachedContextVersions(base.KubeconfigPath, base.Contexts)
+
 	clusterVersion := ""
 	if ver, verr := client.Clientset.Discovery().ServerVersion(); verr == nil && ver != nil {
 		clusterVersion = ver.GitVersion
+		stampContextVersion(base.Contexts, base.SelectedContext, clusterVersion)
 	}
 
 	nss, err := ListNamespaces(ctx, client)
@@ -164,6 +172,26 @@ func RefreshClusterState(ctx context.Context, kubeconfigPath, selectedContext, s
 	base.SyncWarning = ""
 	base.SyncedAt = model.TimestampFrom(time.Now().UTC())
 	return base
+}
+
+func attachCachedContextVersions(kubeconfigPath string, contexts []ContextOption) {
+	for i := range contexts {
+		if contexts[i].Version != "" {
+			continue
+		}
+		if v := CachedClusterVersion(kubeconfigPath, contexts[i].Name); v != "" {
+			contexts[i].Version = v
+		}
+	}
+}
+
+func stampContextVersion(contexts []ContextOption, name, version string) {
+	if name == "" || version == "" {
+		return
+	}
+	if ctx := findContext(contexts, name); ctx != nil {
+		ctx.Version = version
+	}
 }
 
 func isNamespaceListRestricted(err error) bool {

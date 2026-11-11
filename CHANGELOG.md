@@ -4,6 +4,12 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 
 ## [Unreleased]
 
+### Desktop
+
+- **Home → Contexts** — full-width table of kubeconfig contexts (context, cluster, user, namespace, tags, history, status, actions). Search, tag filters, sortable columns, favorites, and launch default. Orbital hero and braille wordmark are gone; MCP setup is a header action.
+- **Check for updates** — Settings → About and Help → Check for Updates compare this build to the latest GitHub release. After startup, if a newer release exists, a dismissible banner prompts with the Homebrew upgrade command or a download / release link. Klew does not download or install the update itself.
+- **Preferred context order** — Home lists launch default first, then favorites, then the rest. On launch Klew tries that order and falls through to the next context if one fails to connect; when none work, Home shows an auth/disconnect callout with one-click Reconnect.
+
 ### Security
 
 - **Go toolchain** — builds use Go 1.26.11, which fixes a reachable `net/http` vulnerability in Go 1.26.10 ([GO-2026-6859](https://pkg.go.dev/vuln/GO-2026-6859)).

@@ -71,3 +71,33 @@ export function LaunchDefaultIcon({ active = false, size = 16, className = '' })
     </svg>
   )
 }
+
+/** Clock / history mark for per-context event recording. */
+export function RecordHistoryIcon({ active = false, size = 16, className = '' }) {
+  const props = svgProps({
+    size,
+    className,
+    extraClass: ['context-action-record', active ? 'is-active' : 'is-outline'].join(' '),
+  })
+
+  return (
+    <svg {...props} fill="none">
+      <circle
+        cx="12"
+        cy="12"
+        r="8.2"
+        fill={active ? 'currentColor' : 'none'}
+        fillOpacity={active ? 0.18 : 0}
+        stroke="currentColor"
+        strokeWidth={STROKE}
+      />
+      <path
+        d="M12 7.6v4.6l3.1 1.9"
+        stroke="currentColor"
+        strokeWidth={STROKE}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}

@@ -13,10 +13,11 @@ function PreviewPane({ themeId }) {
   )
 }
 
+/** Light / Dark / System as preview cards. Applied instantly on click. */
 export function ThemePicker({ themeId, onChange }) {
   return (
     <div className="theme-picker">
-      <div className="theme-grid" role="radiogroup" aria-label="Appearance">
+      <div className="theme-grid" role="radiogroup" aria-label="Theme">
         {THEME_OPTIONS.map((opt) => {
           const selected = opt.id === themeId
           return (
@@ -28,19 +29,21 @@ export function ThemePicker({ themeId, onChange }) {
               className={`theme-card ${selected ? 'selected' : ''}`}
               onClick={() => onChange(opt.id)}
             >
-              {opt.id === THEME_SYSTEM ? (
-                <span className="theme-preview-split" aria-hidden="true">
-                  <PreviewPane themeId="light" />
-                  <PreviewPane themeId="dark" />
-                </span>
-              ) : (
-                <PreviewPane themeId={opt.id} />
-              )}
+              <span className="theme-card-preview">
+                {opt.id === THEME_SYSTEM ? (
+                  <span className="theme-preview-split" aria-hidden="true">
+                    <PreviewPane themeId="light" />
+                    <PreviewPane themeId="dark" />
+                  </span>
+                ) : (
+                  <PreviewPane themeId={opt.id} />
+                )}
+                {selected && <span className="theme-check" aria-hidden="true">✓</span>}
+              </span>
               <span className="theme-card-body">
                 <span className="theme-name">{opt.name}</span>
                 <span className="theme-desc">{opt.description}</span>
               </span>
-              {selected && <span className="theme-check" aria-hidden="true">✓</span>}
             </button>
           )
         })}

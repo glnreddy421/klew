@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   StartInvestigation,
   StopInvestigation,
@@ -40,7 +40,7 @@ import { LogStreamProvider } from './context/LogStreamContext.jsx'
 import { SettingsDialog } from './components/settings/SettingsDialog.jsx'
 import { McpSetupDialog } from './components/McpSetupDialog.jsx'
 import { useTerminalPanel } from './hooks/useTerminalPanel'
-import { useTerminalTabs } from './hooks/useTerminalTabs'
+import { contextBucketKey, useTerminalTabs } from './hooks/useTerminalTabs'
 import { useConsoleDock } from './hooks/useConsoleDock'
 import { useDockTabs } from './hooks/useDockTabs'
 import { useTheme } from './hooks/useTheme'
@@ -50,9 +50,21 @@ import { EventHistoryProvider } from './context/EventHistoryContext.jsx'
 import { startOptionsFromPreferences } from './lib/preferences'
 import { applyUiFont, scheduleFontCacheRefresh } from './lib/fonts'
 import { applyTopbarScale } from './lib/topbarScale'
-import { invalidateCatalogCache } from './lib/catalogCache.js'
 import { hasActiveClusterContext } from './lib/clusterIdentity.js'
-import { toggleFavoriteContext } from './lib/clusterContexts.js'
+import {
+  addContextTag,
+  enableConnectedContext,
+  enableRecordingUnlessOptedOut,
+  mergeContextDetailsFromContexts,
+  normalizeConnectedContexts,
+  preferredContextNames,
+  removeContextTag,
+  setContextAlias,
+  toggleFavoriteContext,
+  toggleRecordedContext,
+  upsertContextDetails,
+} from './lib/clusterContexts.js'
+import { addContextTab, closeContextTab, pruneContextTabs } from './lib/contextTabs.js'
 import { registerSettingsRefreshHandler, scheduleSettingsCacheRefresh } from './lib/settingsCache'
 import { applyTheme } from './lib/themes'
 import { resolveTerminalShellPref } from './lib/terminalShell'
@@ -67,6 +79,9 @@ import { TerminalShellModal } from './components/TerminalShellModal'
 import { InvestigateBar, InvestigationTabs, MODE_INVESTIGATE, MODE_WATCH } from './components/shell/InvestigateBar.jsx'
 import { MainContent } from './views/MainContent'
 import { ClusterConnectionBanner } from './components/shell/ClusterConnectionBanner'
+import { UpdateAvailableBanner } from './components/shell/UpdateAvailableBanner'
+import { useAppUpdateCheck } from './hooks/useAppUpdateCheck'
+import { usePreferredContextBootstrap } from './hooks/usePreferredContextBootstrap'
 import {
   deriveMatchRows,
   getMatchedObjects,
@@ -84,8 +99,10 @@ import { RESOURCES_SURFACE_TABS } from './lib/constants'
 export default function App() {
   const [view, setView] = useState(emptyView())
   const [tab, setTab] = useState(HOME_NAV.tab)
-  // The terminal and logs dock is for working in a cluster; Home has none.
-  const dockAllowed = tab !== HOME_NAV.tab
+  // Home hides the dock by default; keep it available once the user opens it
+  // (e.g. Contexts → CLI → Run in terminal).
+  const [homeDockOverride, setHomeDockOverride] = useState(false)
+  const dockAllowed = tab !== HOME_NAV.tab || homeDockOverride
   const dockAllowedRef = useRef(dockAllowed)
   dockAllowedRef.current = dockAllowed
   const [nodesFocus, setNodesFocus] = useState('cluster')
@@ -98,6 +115,7 @@ export default function App() {
   const applyNavEntry = useCallback((entry) => {
     if (!entry) return
     setTab(entry.tab)
+    if (entry.tab !== HOME_NAV.tab) setHomeDockOverride(false)
     setNodesFocus(entry.nodesFocus || HOME_NAV.nodesFocus)
     setSettingsSection(entry.settingsSection || HOME_NAV.settingsSection)
   }, [])
@@ -155,6 +173,8 @@ export default function App() {
   } = useCluster()
   const { themeId, resolvedTheme, setTheme } = useTheme()
   const { prefs, setPreferences, reloadPreferences } = usePreferences()
+  const updatePrompt = useAppUpdateCheck(prefs.dismissedUpdateVersion)
+  const [contextUserPicked, setContextUserPicked] = useState(false)
   const [investigationScope, setInvestigationScope] = useState(() => singleBrowseScope(''))
   const [browseScope, setBrowseScope] = useState(() => allBrowseScope())
   const savedBrowseScopeRef = useRef(null)
@@ -164,10 +184,13 @@ export default function App() {
   const [resourcesBrowseLens, setResourcesBrowseLens] = useState(RESOURCES_BROWSE_LENS.MATCHES)
   const prevContextRef = useRef('')
 
-  useEffect(() => {
+  // Layout effects: every context-switch reset lands in the same paint as the
+  // new cluster, so the old cluster's page never shows under the new tab.
+  // The catalog cache is keyed by context, so it is kept: going back to a
+  // context shows its last data at once and refreshes in the background.
+  useLayoutEffect(() => {
     const ctx = cluster.selectedContext || cluster.currentContext || ''
     if (prevContextRef.current && prevContextRef.current !== ctx) {
-      invalidateCatalogCache()
       const ns = cluster.selectedNamespace || ''
       setInvestigationScope(singleBrowseScope(ns))
       setBrowseScope(allBrowseScope())
@@ -267,12 +290,100 @@ export default function App() {
     monitoringPaused,
     onMonitoringPausedChange: setMonitoringPaused,
   })
+  const contextDisconnected = Boolean(
+    !monitoringPaused
+    && (connection?.phase === 'disconnected'
+      || connection?.phase === 'retrying'
+      || String(cluster?.syncError || '').trim()),
+  )
+  // Sticky Connected: remember contexts that reached a healthy connection.
+  // Switching away does not clear them (periodic rechecks can later).
+  useEffect(() => {
+    const name = cluster?.selectedContext || cluster?.currentContext || ''
+    if (!name || connection?.phase !== 'connected') return
+    if ((prefs.connectedContexts || []).includes(name)) return
+    setPreferences({
+      connectedContexts: enableConnectedContext(prefs.connectedContexts, name),
+    })
+  }, [connection?.phase, cluster?.selectedContext, cluster?.currentContext, prefs.connectedContexts, setPreferences])
+  // Persist learned cluster details (version / cluster label) into preferences so
+  // Home tiles stay clean and do not depend on a live probe for every context.
+  useEffect(() => {
+    const fromRows = mergeContextDetailsFromContexts(prefs.contextDetails, cluster?.contexts || [])
+    const active = cluster?.selectedContext || cluster?.currentContext || ''
+    const liveVersion = String(clusterStatus?.kubernetesVersion || '').trim()
+    const nextDetails = active && liveVersion
+      ? upsertContextDetails(fromRows, active, { version: liveVersion })
+      : fromRows
+    const connectedSeed = (cluster?.contexts || [])
+      .filter((c) => c?.name && (c?.version || nextDetails[c.name]?.version))
+      .map((c) => c.name)
+    const nextConnected = normalizeConnectedContexts([
+      ...(prefs.connectedContexts || []),
+      ...connectedSeed,
+    ])
+    const detailsChanged = nextDetails !== prefs.contextDetails
+    const connectedChanged = nextConnected.join('\0') !== (prefs.connectedContexts || []).join('\0')
+    if (!detailsChanged && !connectedChanged) return
+    setPreferences({
+      ...(detailsChanged ? { contextDetails: nextDetails } : {}),
+      ...(connectedChanged ? { connectedContexts: nextConnected } : {}),
+    })
+  }, [
+    cluster?.contexts,
+    cluster?.selectedContext,
+    cluster?.currentContext,
+    clusterStatus?.kubernetesVersion,
+    prefs.contextDetails,
+    prefs.connectedContexts,
+    setPreferences,
+  ])
+  // Launch default or any favorite → skip Home and open that cluster.
+  const launchSkipHome = Boolean(
+    String(prefs.defaultContext || '').trim() || (prefs.favoriteContexts || []).length,
+  )
+  const launchSkipHomeDoneRef = useRef(false)
+  usePreferredContextBootstrap({
+    enabled: !monitoringPaused && Boolean(cluster?.contexts?.length),
+    contexts: cluster?.contexts || [],
+    activeContext: cluster?.selectedContext || cluster?.currentContext || '',
+    defaultContext: prefs.defaultContext,
+    favoriteContexts: prefs.favoriteContexts,
+    disconnected: contextDisconnected,
+    busy: connecting || syncing || reconnectBusy,
+    userPicked: contextUserPicked,
+    onSelectContext: setContext,
+  })
+  useEffect(() => {
+    if (!launchSkipHome || launchSkipHomeDoneRef.current || contextUserPicked) return
+    if (tab !== HOME_NAV.tab) return
+    const preferred = preferredContextNames(cluster?.contexts || [], {
+      defaultContext: prefs.defaultContext,
+      favoriteContexts: prefs.favoriteContexts,
+    })[0]
+    if (!preferred) return
+    const active = cluster?.selectedContext || cluster?.currentContext || ''
+    if (active && active !== preferred) return
+    if (preferred && !active) return
+    launchSkipHomeDoneRef.current = true
+    navigateTo('resources')
+  }, [
+    launchSkipHome,
+    contextUserPicked,
+    tab,
+    cluster?.contexts,
+    cluster?.selectedContext,
+    cluster?.currentContext,
+    prefs.defaultContext,
+    prefs.favoriteContexts,
+    navigateTo,
+  ])
   const kubeContextNames = useMemo(
     () => (cluster?.contexts || []).map((c) => c?.name).filter(Boolean),
     [cluster?.contexts],
   )
   const eventHistory = useEventHistory({
-    favoriteContexts: prefs.favoriteContexts,
+    recordedContexts: prefs.recordedContexts,
     monitoringPaused,
     contexts: kubeContextNames,
   })
@@ -285,13 +396,17 @@ export default function App() {
   const [logsFindFromPatterns, setLogsFindFromPatterns] = useState(null)
   const terminalTabs = useTerminalTabs(cluster, {
     open: terminal.open,
-    persist: false,
-    skipInitialSeed: Boolean(terminalLaunchRequest?.id),
+    // Shells are owned per context and closed explicitly; hiding or closing the
+    // panel must never wipe another context's sessions.
+    persist: true,
+    // Every caller opens the shell it needs — seeding here would add a second one.
+    skipInitialSeed: true,
+    restoreOnMount: true,
   })
   const restoreLogStreamsRef = useRef(null)
   const logStreams = useLogStreams({
     maxLogRequests: prefs.maxLogRequests,
-    onRestored: (statuses) => restoreLogStreamsRef.current?.(statuses),
+    onRestored: (statuses, contextById) => restoreLogStreamsRef.current?.(statuses, contextById),
   })
   const dockTabs = useDockTabs({
     terminalTabs,
@@ -299,23 +414,40 @@ export default function App() {
     onOpenTerminalPanel: terminal.openPanel,
     onExpandDock: consoleDock.openStream,
   })
-  restoreLogStreamsRef.current = (statuses) => {
-    dockTabs.restoreLogStreams(statuses)
-    if (statuses?.length) {
+  restoreLogStreamsRef.current = (statuses, contextById = {}) => {
+    dockTabs.restoreLogStreams(statuses, contextById)
+    // Only bring the panel up for streams that belong to the showing context.
+    const ctx = cluster.selectedContext || cluster.currentContext || ''
+    const mine = !ctx || (statuses || []).some((st) => (contextById?.[st?.id] ?? ctx) === ctx)
+    if (mine) {
       consoleDock.openStream()
     }
   }
-  const clearLogTabsOnContextChangeRef = useRef(null)
-  clearLogTabsOnContextChangeRef.current = () => {
-    logStreams.stopAll()
-    dockTabs.clearLogTabs()
-  }
-  useEffect(() => {
+  // Own ref: the catalog effect above also writes prevContextRef, so it cannot
+  // be reused here (effects run in order and would see the already-updated value).
+  const prevDockContextRef = useRef('')
+  // Whether the panel was showing in each context, restored on switch.
+  const dockShownByContextRef = useRef(new Map())
+  const dockExpandedRef = useRef(false)
+  dockExpandedRef.current = consoleDock.expanded
+  useLayoutEffect(() => {
     const ctx = cluster.selectedContext || cluster.currentContext || ''
-    if (prevContextRef.current && prevContextRef.current !== ctx) {
-      clearLogTabsOnContextChangeRef.current?.()
+    // A blank context is only the gap between two connections.
+    if (!ctx) return
+    const prev = prevDockContextRef.current
+    prevDockContextRef.current = ctx
+    if (!prev || prev === ctx) return
+    dockShownByContextRef.current.set(prev, dockExpandedRef.current)
+    // Never open or close a tab on a switch: shells and log streams stay with
+    // their context. Bring the panel back only when this context had it showing
+    // and still has tabs, on the tab it last had active.
+    if (dockShownByContextRef.current.get(ctx) && dockTabs.tabs.length > 0) {
+      if (dockTabs.activeItem?.kind === 'terminal') consoleDock.openTerminal()
+      else consoleDock.openStream()
+    } else {
+      consoleDock.collapse()
     }
-  }, [cluster.selectedContext, cluster.currentContext])
+  }, [cluster.selectedContext, cluster.currentContext, consoleDock, dockTabs])
   const activeQueryRef = useRef('')
 
   useEffect(() => {
@@ -499,21 +631,21 @@ export default function App() {
 
   // Like an IDE: open the user's default shell straight away; Shell… in the dock changes it.
   const openNewTerminalTab = useCallback(() => {
-    if (!terminal.open) {
-      terminal.openPanel()
-      consoleDock.openTerminal()
-      return
-    }
-    dockTabs.addTerminalTab()
-  }, [terminal, consoleDock, dockTabs])
+    if (tab === HOME_NAV.tab) setHomeDockOverride(true)
+    terminal.openPanel()
+    consoleDock.openTerminal()
+    const ctx = cluster.selectedContext || cluster.currentContext || ''
+    dockTabs.addTerminalTab({
+      contextName: ctx,
+    })
+  }, [tab, terminal, consoleDock, dockTabs, cluster.selectedContext, cluster.currentContext])
 
   const toggleTerminal = useCallback(() => {
     if (!dockAllowedRef.current) return
-    if (!terminal.open) {
-      terminal.openPanel()
-      consoleDock.openTerminal()
-      return
-    }
+    // Always land on a shell for the *active* context — do not just reopen
+    // whatever tab was last (that is how docker-desktop showed kind-klew-a).
+    terminal.openPanel()
+    consoleDock.openTerminal()
     dockTabs.focusOrOpenTerminal()
   }, [terminal, consoleDock, dockTabs])
 
@@ -533,15 +665,20 @@ export default function App() {
 
   const launchTerminalCommand = useCallback((opts) => {
     if (!opts?.initialInput) return
+    if (tab === HOME_NAV.tab) setHomeDockOverride(true)
+    // Create the tab here. ConsoleDock shows an empty state when there are no
+    // tabs and skips TerminalPanel, so a launchRequest alone never gets handled
+    // from Home (CLI → Open terminal).
+    const ctx = String(opts.context || cluster.selectedContext || cluster.currentContext || '').trim()
     terminal.openPanel()
-    setTerminalLaunchRequest({
-      id: Date.now(),
-      title: opts.title || 'Terminal',
-      namespace: opts.namespace || cluster.selectedNamespace || '',
+    consoleDock.openTerminal()
+    dockTabs.addTerminalTab({
+      title: opts.title || ctx || 'Terminal',
+      contextName: ctx,
+      namespace: opts.namespace || '',
       initialInput: opts.initialInput,
     })
-    consoleDock.openTerminal()
-  }, [terminal, consoleDock, cluster.selectedNamespace])
+  }, [terminal, consoleDock, dockTabs, cluster.selectedContext, cluster.currentContext, tab])
 
   const handleNavigate = useCallback((target) => {
     const entry = normalizeNavEntry(
@@ -840,6 +977,7 @@ export default function App() {
 
   async function onContextChange(name) {
     if (!name) return
+    setContextUserPicked(true)
     const current = cluster.selectedContext || cluster.currentContext || ''
     // One cluster per window: while investigating, open another context in a clone.
     if ((running || starting) && name !== current) {
@@ -854,6 +992,7 @@ export default function App() {
       }
       return
     }
+    reopenContextTab(name)
     try {
       await setContext(name)
     } catch (err) {
@@ -864,6 +1003,126 @@ export default function App() {
   async function onConnectContext(name) {
     await onContextChange(name)
     navigateTo('resources')
+  }
+
+  // Tabs the user closed stay closed until they open that context again.
+  const closedTabsRef = useRef(new Set())
+  function reopenContextTab(name) {
+    if (!name) return
+    closedTabsRef.current.delete(name)
+    // Opening a context opts into event recording (unless the user turned it
+    // off for that cluster) so multi-tab keeps history for every open cluster.
+    setPreferences((prev) => {
+      const recording = enableRecordingUnlessOptedOut(
+        prev.recordedContexts,
+        prev.recordingOptOutContexts,
+        name,
+      )
+      return {
+        ...prev,
+        contextTabs: addContextTab(prev.contextTabs, name, { keep: name }),
+        ...recording,
+      }
+    })
+  }
+
+  // ── Context tabs (Chrome-style) ─────────────────────────────────────────
+  // One context is connected at a time. Each tab remembers where the user was
+  // in that context (page, selected object, namespace scope) and restores it
+  // when they switch back.
+  const activeContext = cluster.selectedContext || cluster.currentContext || ''
+  const contextTabs = useMemo(
+    () => pruneContextTabs(prefs.contextTabs, (cluster.contexts || []).map((c) => c?.name)),
+    [prefs.contextTabs, cluster.contexts],
+  )
+  useEffect(() => {
+    if (!activeContext || contextTabs.includes(activeContext)) return
+    if (closedTabsRef.current.has(activeContext)) return
+    setPreferences((prev) => {
+      const recording = enableRecordingUnlessOptedOut(
+        prev.recordedContexts,
+        prev.recordingOptOutContexts,
+        activeContext,
+      )
+      // A function patch replaces all preferences, so keep everything else.
+      return {
+        ...prev,
+        contextTabs: addContextTab(prev.contextTabs, activeContext, { keep: activeContext }),
+        ...recording,
+      }
+    })
+  }, [activeContext, contextTabs, setPreferences])
+
+  // Open tabs keep recording in the background (unless the user opted out).
+  useEffect(() => {
+    if (!contextTabs.length) return
+    const current = prefs.recordedContexts || []
+    const optOut = prefs.recordingOptOutContexts || []
+    let recorded = current
+    let changed = false
+    for (const name of contextTabs) {
+      const next = enableRecordingUnlessOptedOut(recorded, optOut, name)
+      if (next.recordedContexts !== recorded) {
+        recorded = next.recordedContexts
+        changed = true
+      }
+    }
+    if (!changed) return
+    setPreferences({ recordedContexts: recorded })
+  }, [contextTabs, prefs.recordedContexts, prefs.recordingOptOutContexts, setPreferences])
+
+  const contextUiRef = useRef(new Map())
+  const liveUiRef = useRef({})
+  liveUiRef.current = { tab, inspectKey, browseScope }
+  const lastUiContextRef = useRef(activeContext)
+  useLayoutEffect(() => {
+    const prev = lastUiContextRef.current
+    if (!activeContext || prev === activeContext) return
+    lastUiContextRef.current = activeContext
+    if (prev) contextUiRef.current.set(prev, { ...liveUiRef.current })
+    const saved = contextUiRef.current.get(activeContext)
+    if (!saved) {
+      // First visit: never carry the previous cluster's selection across.
+      setInspectKey(null)
+      return
+    }
+    if (saved.browseScope) setBrowseScope(saved.browseScope)
+    setInspectKey(saved.inspectKey || null)
+    if (saved.tab && saved.tab !== 'home' && saved.tab !== liveUiRef.current.tab) {
+      navigateTo(saved.tab)
+    }
+  }, [activeContext, navigateTo])
+
+  async function onSelectContextTab(name) {
+    if (!name) return
+    if (name === activeContext) {
+      if (tab === 'home') navigateTo('resources')
+      return
+    }
+    await onContextChange(name)
+  }
+
+  async function onCloseContextTab(name) {
+    const { tabs: remaining, next } = closeContextTab(contextTabs, name, activeContext)
+    contextUiRef.current.delete(name)
+    closedTabsRef.current.add(name)
+    // Closing a context tab ends that context's shells and log streams, so
+    // nothing keeps running where the user can no longer see it.
+    terminalTabs.closeTabs(
+      (terminalTabs.allTabs || [])
+        .filter((t) => contextBucketKey(t.contextName) === contextBucketKey(name))
+        .map((t) => t.id),
+    )
+    dockTabs.closeContext(name)
+    dockShownByContextRef.current.delete(name)
+    if (name === activeContext) consoleDock.collapse()
+    setPreferences({ contextTabs: remaining })
+    if (name !== activeContext) return
+    if (next) {
+      await onContextChange(next)
+    } else {
+      navigateTo('home')
+    }
   }
 
   const onSetDefaultContext = useCallback((name) => {
@@ -878,6 +1137,36 @@ export default function App() {
       favoriteContexts: toggleFavoriteContext(prefs.favoriteContexts, name),
     })
   }, [prefs.favoriteContexts, setPreferences])
+
+  const onToggleRecordedContext = useCallback((name) => {
+    if (!name) return
+    setPreferences(toggleRecordedContext(
+      prefs.recordedContexts,
+      prefs.recordingOptOutContexts,
+      name,
+    ))
+  }, [prefs.recordedContexts, prefs.recordingOptOutContexts, setPreferences])
+
+  const onAddContextTag = useCallback((contextName, tag) => {
+    if (!contextName || !tag) return
+    setPreferences({
+      contextTags: addContextTag(prefs.contextTags, contextName, tag),
+    })
+  }, [prefs.contextTags, setPreferences])
+
+  const onRemoveContextTag = useCallback((contextName, tag) => {
+    if (!contextName || !tag) return
+    setPreferences({
+      contextTags: removeContextTag(prefs.contextTags, contextName, tag),
+    })
+  }, [prefs.contextTags, setPreferences])
+
+  const onRenameContext = useCallback((contextName, alias) => {
+    if (!contextName) return
+    setPreferences({
+      contextAliases: setContextAlias(prefs.contextAliases, contextName, alias),
+    })
+  }, [prefs.contextAliases, setPreferences])
 
   const onClearDefaultContext = useCallback(() => {
     setPreferences({ defaultContext: '' })
@@ -932,19 +1221,16 @@ export default function App() {
     return findRowByKey(rows, inspectKey)
   }, [view, inspectKey])
 
-  // Top-bar terminal button: hides the dock (sessions keep running) or brings it back.
+  // Top-bar terminal button: hides the dock (sessions keep running) or brings it
+  // back on a shell for the active context — never the previous cluster's tab.
   const handleTogglePanel = useCallback(() => {
     if (!dockAllowedRef.current) return
     if (consoleDock.expanded) {
       consoleDock.collapse()
       return
     }
-    if (dockTabs.tabs.length > 0) {
-      consoleDock.openStream()
-      return
-    }
     toggleTerminal()
-  }, [consoleDock, dockTabs.tabs.length, toggleTerminal])
+  }, [consoleDock, toggleTerminal])
 
   function wrapShell(payload) {
     const shell = (
@@ -958,6 +1244,10 @@ export default function App() {
           syncing: syncing || refreshingInvestigation,
           onSync: refreshNow,
           onContextChange,
+          contextTabs,
+          onSelectContextTab,
+          onCloseContextTab,
+          showContextTabs: tab !== HOME_NAV.tab,
           running,
           starting,
           onNewWindow,
@@ -978,10 +1268,16 @@ export default function App() {
           connectingTarget,
           defaultContext: prefs.defaultContext,
           favoriteContexts: prefs.favoriteContexts,
+          contextTags: prefs.contextTags,
+          contextAliases: prefs.contextAliases,
           onSetDefaultContext,
           onToggleFavoriteContext,
+          onAddContextTag,
+          onRemoveContextTag,
           panelOpen: consoleDock.expanded,
-          panelRunning: terminalTabs.tabs.length > 0 || logStreams.hasActiveStream,
+          // Only what runs in the showing context; parked contexts have their own tabs.
+          panelRunning: terminalTabs.tabs.length > 0
+            || dockTabs.logTabs.some((lt) => logStreams.streams?.[lt.streamId]?.status?.active),
           onTogglePanel: dockAllowed ? handleTogglePanel : undefined,
         }}
         showExplorer={running || starting || RESOURCES_SURFACE_TABS.has(tab)}
@@ -1091,10 +1387,14 @@ export default function App() {
   }, [stream, consoleDock, running, dockTabs, investigationNs, view.state?.snapshot?.pods, prefs.tailLines, navigateTo])
 
   const handleCloseDock = useCallback(() => {
-    consoleDock.closeAll()
-    logStreams.stopAll()
+    // Closes this context's shells and log streams only; other contexts keep theirs.
+    consoleDock.collapse()
+    stream.close()
+    for (const lt of dockTabs.logTabs) logStreams.stop(lt.streamId, { keepEntry: false })
+    terminalTabs.closeTabs((terminalTabs.tabs || []).map((t) => t.id))
     dockTabs.clearAllTabs()
-  }, [consoleDock, logStreams, dockTabs])
+    setHomeDockOverride(false)
+  }, [consoleDock, stream, logStreams, terminalTabs, dockTabs])
 
   return (
     <>
@@ -1110,7 +1410,11 @@ export default function App() {
       )}
 
       <HeaderSlotProvider>
-      <EventHistoryProvider value={eventHistory}>
+      <EventHistoryProvider value={{
+        ...eventHistory,
+        recordedContexts: prefs.recordedContexts || [],
+        onToggleRecorded: onToggleRecordedContext,
+      }}>
       <TerminalLaunchProvider launch={launchTerminalCommand}>
       <InvestigableProvider value={investigable}>
       <LogStreamProvider value={logStreamActions}>
@@ -1122,6 +1426,10 @@ export default function App() {
         onOpenSettings={() => navigateTo({ tab: 'settings', settingsSection: 'kubernetes' })}
         onOpenProxySettings={openProxySettings}
         reconnectBusy={reconnectBusy}
+      />
+      <UpdateAvailableBanner
+        result={updatePrompt}
+        onDismiss={(version) => setPreferences({ dismissedUpdateVersion: version || '' })}
       />
       <MainContent
         tab={tab}
@@ -1166,6 +1474,9 @@ export default function App() {
         onContextChange={onConnectContext}
         onSetDefaultContext={onSetDefaultContext}
         onToggleFavoriteContext={onToggleFavoriteContext}
+        onAddContextTag={onAddContextTag}
+        onRemoveContextTag={onRemoveContextTag}
+        onRenameContext={onRenameContext}
         onClearDefaultContext={onClearDefaultContext}
         onOpenProxySettings={openProxySettings}
         onOpenMcpSetup={() => setMcpSetupOpen(true)}

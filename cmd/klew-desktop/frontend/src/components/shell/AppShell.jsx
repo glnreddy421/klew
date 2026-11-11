@@ -70,13 +70,20 @@ export function AppShell({
   const contextName = cluster?.selectedContext || ''
   const switching = Boolean(topBarProps?.connecting)
   const firstPaint = useRef(true)
+  const lastContextRef = useRef(contextName)
   useEffect(() => {
     if (firstPaint.current) {
       firstPaint.current = false
       return
     }
-    if (!switching) animateIn(workspaceRef.current)
-  }, [tab, contextName, switching])
+    // A context switch un-dims the workspace in place; only a page change on
+    // the same cluster gets the enter animation. Running both reads as a blink.
+    const contextChanged = lastContextRef.current !== contextName
+    lastContextRef.current = contextName
+    if (switching || contextChanged) return
+    animateIn(workspaceRef.current)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- page changes only
+  }, [tab, contextName])
 
   const {
     layout,

@@ -71,6 +71,10 @@ func buildHelpMenu(app *App) *menu.MenuItem {
 	help.AddText("Klew Help", nil, func(*menu.CallbackData) {
 		emitMenuEvent(app, "help")
 	})
+	help.AddSeparator()
+	help.AddText("Check for Updates…", nil, func(*menu.CallbackData) {
+		go app.checkForUpdateDialog()
+	})
 
 	return menu.SubMenu("Help", help)
 }

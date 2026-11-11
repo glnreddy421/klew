@@ -9,6 +9,7 @@ import {
   optionsWithValue,
   settingsContextRows,
 } from '../lib/eventHistory'
+import { isRecordedContext } from '../lib/clusterContexts.js'
 import {
   SelectRow,
   SettingRow,
@@ -36,7 +37,7 @@ export function EventHistorySettings() {
   }, [confirmClear])
 
   if (!history) return null
-  const { settings, busy, saveSettings, clearHistory, statuses } = history
+  const { settings, busy, saveSettings, clearHistory, statuses, recordedContexts, onToggleRecorded } = history
   const rows = settingsContextRows(statuses)
   const disabled = busy || !settings.available
   const off = !settings.enabled
@@ -45,11 +46,12 @@ export function EventHistorySettings() {
     <>
       <SettingsGroup
         title="Event history"
-        description="Kubernetes keeps Events for about an hour. Klew records them locally while it runs — for the active context and your favorites — so investigations can show what happened earlier. Stored only on this machine, never uploaded. History has gaps whenever Klew was not running."
+        description="Kubernetes keeps Events for about an hour. Klew can record them locally per cluster while it runs, so investigations can show what happened earlier. The switch below is the master; each context also has its own toggle on Home and in the list under Recorded contexts. Stored only on this machine, never uploaded."
         footer={<SettingsMessage tone="warn">{settings.error}</SettingsMessage>}
       >
         <SwitchRow
           label="Record Kubernetes events locally"
+          hint="Master switch. When off, no cluster is recorded."
           checked={settings.enabled}
           disabled={disabled}
           onChange={(v) => saveSettings({ enabled: v })}
@@ -100,10 +102,23 @@ export function EventHistorySettings() {
       </SettingsGroup>
 
       {rows.length > 0 && (
-        <SettingsGroup title="Recorded contexts">
-          {rows.map((r) => (
-            <SettingRow key={r.context} label={r.context} hint={r.text} />
-          ))}
+        <SettingsGroup
+          title="Recorded contexts"
+          description="One toggle per cluster. Open contexts opt in automatically; turn one off to stop recording it in the background."
+        >
+          {rows.map((r) => {
+            const on = isRecordedContext(recordedContexts, r.context)
+            return (
+              <SwitchRow
+                key={r.context}
+                label={r.context}
+                hint={r.text}
+                checked={on}
+                disabled={disabled || off || !onToggleRecorded}
+                onChange={() => onToggleRecorded?.(r.context)}
+              />
+            )
+          })}
         </SettingsGroup>
       )}
     </>

@@ -18,6 +18,21 @@ export function parseDockTabKey(key) {
 }
 
 /**
+ * Pick an existing terminal tab pinned to wantCtx (empty → unpinned only).
+ * Prefer preferredId, then activeId, then the most recently added same-context tab.
+ */
+export function pickTerminalTabForContext(termList = [], wantCtx = '', preferredId = null, activeId = null) {
+  const want = String(wantCtx || '').trim()
+  const sameCtx = want
+    ? termList.filter((t) => String(t.contextName || '').trim() === want)
+    : termList.filter((t) => !String(t.contextName || '').trim())
+  if (sameCtx.length === 0) return null
+  return sameCtx.find((t) => t.id === preferredId)
+    || sameCtx.find((t) => t.id === activeId)
+    || sameCtx[sameCtx.length - 1]
+}
+
+/**
  * Synchronises terminal tabs into the combined tabOrder while preserving
  * the relative order of existing terminal and log tabs.
  */

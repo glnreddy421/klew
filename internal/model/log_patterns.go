@@ -18,7 +18,7 @@ type LogPatterns struct {
 	EventHistogram []int             `json:"eventHistogram,omitempty"`
 	EventWindow    LogPatternsWindow `json:"eventWindow,omitempty"`
 
-	// EvidenceBoard is log↔infra event chains ranked by time-series Jaccard confidence.
+	// EvidenceBoard is log↔infra event chains (co-movement Jaccard or failure coverage).
 	EvidenceBoard *EvidenceBoardPayload `json:"evidenceBoard,omitempty"`
 }
 
@@ -55,7 +55,7 @@ type EvidenceBoardPayload struct {
 // EvidenceCard groups one root infrastructure event pattern with time-aligned log patterns.
 type EvidenceCard struct {
 	EvidenceID    string        `json:"evidenceId"`
-	Confidence    float64       `json:"confidence"` // Jaccard similarity in [0,1]
+	Confidence    float64       `json:"confidence"` // best of Jaccard co-movement or failure-coverage containment, in [0,1]
 	RootEvent     LogTemplate   `json:"rootEvent"`
 	TriggeredLogs []LogTemplate `json:"triggeredLogs"`
 }

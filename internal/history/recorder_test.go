@@ -332,6 +332,7 @@ func TestManagerPauseAndResume(t *testing.T) {
 	cs := fake.NewSimpleClientset(v1Event("ns", "e1", "uid-1", "Warning", "Failed"))
 	m := newTestManager(t, dir, cs)
 	m.SetActiveContext("docker-desktop")
+	m.SetFavoriteContexts([]string{"docker-desktop"})
 	key := ClusterKey("docker-desktop", "https://docker-desktop:6443")
 
 	eventually(t, "recording", func() bool { return statusFor(m, "docker-desktop").State == StateRecording })
@@ -358,6 +359,7 @@ func TestManagerTurnedOffStopsWrites(t *testing.T) {
 	cs := fake.NewSimpleClientset()
 	m := newTestManager(t, dir, cs)
 	m.SetActiveContext("c")
+	m.SetFavoriteContexts([]string{"c"})
 	eventually(t, "recording", func() bool { return m.IsRecording("c") })
 	s := m.Settings()
 	s.Enabled = false
@@ -382,6 +384,7 @@ func TestSecondManagerDoesNotRecordSameContext(t *testing.T) {
 	eventually(t, "a recording", func() bool { return a.IsRecording("shared") })
 
 	b := newTestManager(t, dir, cs)
+	b.SetFavoriteContexts([]string{"shared"})
 	b.SetActiveContext("shared")
 	eventually(t, "b sees other window", func() bool { return statusFor(b, "shared").State == StateOtherWindow })
 	if b.IsRecording("shared") {
@@ -420,6 +423,7 @@ func TestManagerClearRestartsCoverage(t *testing.T) {
 	cs := fake.NewSimpleClientset(v1Event("ns", "e1", "uid-1", "Warning", "Failed"))
 	m := newTestManager(t, dir, cs)
 	m.SetActiveContext("c")
+	m.SetFavoriteContexts([]string{"c"})
 	key := ClusterKey("c", "https://c:6443")
 	eventually(t, "event", func() bool { _, ok := storedUIDs(t, m.Store(), key)["uid-1"]; return ok })
 	if err := m.Clear(); err != nil {
@@ -607,6 +611,7 @@ func TestManagerRecordsStopReasons(t *testing.T) {
 	key := ClusterKey("c", "https://c:6443")
 
 	m.SetActiveContext("c")
+	m.SetFavoriteContexts([]string{"c"})
 	eventually(t, "session", func() bool { return len(sessions(t, m.Store(), key)) == 1 })
 	m.SetPaused(true)
 	eventually(t, "paused reason", func() bool {
@@ -616,7 +621,7 @@ func TestManagerRecordsStopReasons(t *testing.T) {
 
 	m.SetPaused(false)
 	eventually(t, "resumed", func() bool { return len(sessions(t, m.Store(), key)) == 2 })
-	m.SetActiveContext("other")
+	m.SetFavoriteContexts([]string{"other"})
 	eventually(t, "inactive reason", func() bool {
 		ss := sessions(t, m.Store(), key)
 		return len(ss) >= 2 && ss[1].EndReason == EndContextInactive

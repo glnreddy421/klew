@@ -68,28 +68,82 @@ function formatMetricTitle(kind, { usage, request, limit, fmt, live }) {
   return `${kind}: ${parts.join(' · ')}`
 }
 
+/** Like fmtCpu, but whole-core values say "cores" instead of a bare number. */
+export function fmtCpuCores(m) {
+  const label = fmtCpu(m)
+  if (m == null || m < 1000) return label
+  return `${label} ${m === 1000 ? 'core' : 'cores'}`
+}
+
+function pluralPods(n) {
+  return n === 1 ? '1 pod' : `${n} pods`
+}
+
+function requestCoverageLabel(covered, total) {
+  if (covered == null || total == null || total <= 0) return null
+  if (covered >= total) return null
+  return `on ${covered} of ${total} pods`
+}
+
+function limitCoverageLabel(limitPods, podCount) {
+  if (limitPods == null || podCount == null || podCount <= 0 || limitPods <= 0) return null
+  if (limitPods >= podCount) return null
+  const uncapped = podCount - limitPods
+  return `on ${pluralPods(limitPods)} · ${uncapped} uncapped`
+}
+
 export function buildOverviewResourceMetric({
   kind,
   available,
   usage,
   request,
   limit,
+  usagePods = null,
+  requestPods = null,
+  limitPods = null,
+  podCount = null,
   fmt,
 }) {
-  const segments = metricBarSegments({ usage: available ? usage : null, request, limit })
-  const tone = available ? metricToneFromPct(segments.pct) : 'muted'
-  const denomLabel = fmt(segments.denom)
+  // Only put limit on the shared bar when enough pods set one that the
+  // totals are roughly comparable. A tiny limit sum next to a full request
+  // sum reads as "requests > limits" when it really means "mostly uncapped".
+  const limitPartial = Boolean(limit) && limitPods != null && podCount != null && limitPods < podCount
+  const limitComparable = Boolean(limit) && !limitPartial && (limit >= (request || 0) || !request)
+  const barLimit = limitComparable ? limit : null
+  const segments = metricBarSegments({
+    usage: available ? usage : null,
+    request,
+    limit: barLimit,
+  })
+  // Tone from usage vs request when live; otherwise quiet.
+  const tonePct = available && request > 0
+    ? utilPct(usage, request)
+    : (available ? segments.pct : null)
+  const tone = available ? metricToneFromPct(tonePct) : 'muted'
   const usageLabel = available ? fmt(usage) : null
+  const requestLabel = request ? fmt(request) : null
+  const limitLabel = limit ? fmt(limit) : null
+  const primaryLabel = usageLabel || requestLabel || limitLabel
+  const primaryKind = usageLabel ? 'usage' : (requestLabel ? 'request' : 'limit')
   return {
     kind,
     available,
     tone,
     ...segments,
+    pct: tonePct,
     usageLabel,
-    denomLabel,
-    requestLabel: request ? fmt(request) : null,
-    limitLabel: limit ? fmt(limit) : null,
+    requestLabel,
+    limitLabel,
+    primaryLabel,
+    primaryKind,
+    usageCoverage: requestCoverageLabel(usagePods, podCount),
+    requestCoverage: requestCoverageLabel(requestPods, podCount),
+    limitCoverage: limitCoverageLabel(limitPods, podCount),
+    limitPartial,
+    allocLabel: requestLabel || limitLabel,
+    allocKind: requestLabel ? 'Requested' : 'Limits',
     hasAlloc: (request ?? 0) > 0 || (limit ?? 0) > 0,
+    podCount: podCount || 0,
   }
 }
 
@@ -101,7 +155,11 @@ export function buildOverviewMetricsSummary(summary) {
       usage: summary.cpuUsageMillicores,
       request: summary.cpuRequestMillicores,
       limit: summary.cpuLimitMillicores,
-      fmt: fmtCpu,
+      usagePods: summary.cpuUsagePods,
+      requestPods: summary.cpuRequestPods,
+      limitPods: summary.cpuLimitPods,
+      podCount: summary.podCount,
+      fmt: fmtCpuCores,
     }),
     memory: buildOverviewResourceMetric({
       kind: 'memory',
@@ -109,6 +167,10 @@ export function buildOverviewMetricsSummary(summary) {
       usage: summary.memUsageMi,
       request: summary.memRequestMi,
       limit: summary.memLimitMi,
+      usagePods: summary.memUsagePods,
+      requestPods: summary.memRequestPods,
+      limitPods: summary.memLimitPods,
+      podCount: summary.podCount,
       fmt: fmtMem,
     }),
     note: summary.note,

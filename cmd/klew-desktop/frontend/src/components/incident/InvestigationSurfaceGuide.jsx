@@ -1,16 +1,83 @@
 import { getInvestigationSurface } from '../../lib/investigationSurfaceGuide.js'
-import {
-  InvestigateScopeIcon,
-  SurfaceGuideCheckIcon,
-  SurfaceGuideIcon,
-  SurfaceGuidePanelIcon,
-} from './surfaceGuideIcons.jsx'
+import { SurfaceGuideIcon } from './surfaceGuideIcons.jsx'
 
 const SURFACE_ICON_ID = {
   overview: 'incident',
   patterns: 'patterns',
   failures: 'failures',
   evidence: 'evidence',
+}
+
+/** Ghost preview of the surface that will replace this empty state. */
+function SurfacePreview({ surfaceId }) {
+  if (surfaceId === 'patterns') {
+    return (
+      <div className="surface-guide-preview is-patterns" aria-hidden="true">
+        {[72, 48, 61, 34].map((w, i) => (
+          <span key={i} className="surface-guide-preview-bar">
+            <span className="surface-guide-preview-bar-fill" style={{ width: `${w}%` }} />
+            <span className="surface-guide-preview-bar-label" />
+          </span>
+        ))}
+      </div>
+    )
+  }
+  if (surfaceId === 'failures') {
+    return (
+      <div className="surface-guide-preview is-failures" aria-hidden="true">
+        {[1, 2, 3].map((row) => (
+          <span key={row} className={`surface-guide-preview-row tone-${row === 1 ? 'crit' : row === 2 ? 'warn' : 'ok'}`}>
+            <span className="surface-guide-preview-dot" />
+            <span className="surface-guide-preview-lines">
+              <span />
+              <span />
+            </span>
+          </span>
+        ))}
+      </div>
+    )
+  }
+  if (surfaceId === 'evidence') {
+    return (
+      <div className="surface-guide-preview is-evidence" aria-hidden="true">
+        <span className="surface-guide-preview-card" />
+        <span className="surface-guide-preview-card is-tall" />
+        <span className="surface-guide-preview-card" />
+      </div>
+    )
+  }
+  return (
+    <div className="surface-guide-preview is-overview" aria-hidden="true">
+      <div className="surface-guide-preview-verdict">
+        <span className="surface-guide-preview-status" />
+        <span className="surface-guide-preview-headline" />
+        <span className="surface-guide-preview-meta" />
+      </div>
+      <div className="surface-guide-preview-findings">
+        <span />
+        <span />
+        <span />
+      </div>
+    </div>
+  )
+}
+
+function Journey({ steps }) {
+  if (!steps?.length) return null
+  return (
+    <ol className="surface-guide-journey" aria-label="How to start">
+      {steps.map((step, index) => (
+        <li key={step.label} className="surface-guide-journey-step">
+          {index > 0 && <span className="surface-guide-journey-rail" aria-hidden="true" />}
+          <span className="surface-guide-journey-num">{index + 1}</span>
+          <span className="surface-guide-journey-copy">
+            <strong>{step.label}</strong>
+            <span>{step.detail}</span>
+          </span>
+        </li>
+      ))}
+    </ol>
+  )
 }
 
 export function InvestigationSurfaceGuide({
@@ -40,12 +107,15 @@ export function InvestigationSurfaceGuide({
         </div>
         <p className="surface-guide-desc">{surface.description}</p>
         <ol className="surface-guide-step-list surface-guide-step-list-compact">
-          {surface.steps.map((step, index) => (
-            <li key={step} className="surface-guide-step-item">
-              <span className="surface-guide-step-num">{index + 1}</span>
-              <span className="surface-guide-step-text">{step}</span>
-            </li>
-          ))}
+          {(surface.journey || surface.steps).map((step, index) => {
+            const text = typeof step === 'string' ? step : `${step.label} — ${step.detail}`
+            return (
+              <li key={text} className="surface-guide-step-item">
+                <span className="surface-guide-step-num">{index + 1}</span>
+                <span className="surface-guide-step-text">{text}</span>
+              </li>
+            )
+          })}
         </ol>
         {surface.whenLive && (
           <p className="surface-guide-live-hint">
@@ -69,88 +139,71 @@ export function InvestigationSurfaceGuide({
       <div className="surface-guide-shell">
         <div className="surface-guide-glow" aria-hidden="true" />
 
+        {!compact && (
+          <div className="surface-guide-preview-wrap">
+            <SurfacePreview surfaceId={surfaceId} />
+            <span className="surface-guide-preview-fade" aria-hidden="true" />
+          </div>
+        )}
+
         <header className="surface-guide-hero">
           <span className="surface-guide-icon-badge surface-guide-icon-badge-lg" aria-hidden="true">
             <SurfaceGuideIcon id={iconId} size={22} />
           </span>
           <div className="surface-guide-hero-copy">
-            <span className="surface-guide-badge">Investigation surface</span>
             <p className="surface-guide-kicker">{surface.title}</p>
             <h2 className="surface-guide-headline">{surface.headline}</h2>
             <p className="surface-guide-desc">{surface.description}</p>
           </div>
         </header>
 
-        <div className="surface-guide-investigate-callout">
-          <span className="surface-guide-callout-icon" aria-hidden="true">
-            <InvestigateScopeIcon />
-          </span>
-          <div className="surface-guide-callout-copy">
-            <strong>Start from the top bar</strong>
-            <p>Set <span className="surface-guide-inline-chip">Investigate scope</span> to one namespace, then click <span className="surface-guide-inline-chip accent">Investigate</span>.</p>
-          </div>
-        </div>
+        {!compact && <Journey steps={surface.journey} />}
 
-        {!compact && (
-          <div className="surface-guide-panels">
-            <section className="surface-guide-panel">
-              <h3 className="surface-guide-panel-title">
-                <span className="surface-guide-panel-icon" aria-hidden="true">
-                  <SurfaceGuidePanelIcon kind="see" />
-                </span>
-                What you will see
-              </h3>
-              <ul className="surface-guide-feature-list">
-                {surface.provides.map((item) => (
-                  <li key={item} className="surface-guide-feature-item">
-                    <span className="surface-guide-feature-check" aria-hidden="true">
-                      <SurfaceGuideCheckIcon />
-                    </span>
-                    <span>{item}</span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-
-            <section className="surface-guide-panel">
-              <h3 className="surface-guide-panel-title">
-                <span className="surface-guide-panel-icon" aria-hidden="true">
-                  <SurfaceGuidePanelIcon kind="do" />
-                </span>
-                How to get data here
-              </h3>
-              <ol className="surface-guide-step-list">
-                {surface.steps.map((step, index) => (
-                  <li key={step} className="surface-guide-step-item">
-                    <span className="surface-guide-step-num">{index + 1}</span>
-                    <span className="surface-guide-step-text">{step}</span>
-                  </li>
-                ))}
-              </ol>
-            </section>
-          </div>
+        {!compact && surface.outcomes?.length > 0 && (
+          <ul className="surface-guide-outcomes" aria-label="What you will see">
+            {surface.outcomes.map((item) => (
+              <li key={item.label} className="surface-guide-outcome">
+                <strong>{item.label}</strong>
+                <span>{item.hint}</span>
+              </li>
+            ))}
+          </ul>
         )}
 
-        <footer className="surface-guide-foot">
-          {surface.whenLive && (
-            <p className="surface-guide-live-hint">
-              <span className="surface-guide-live-dot" aria-hidden="true" />
-              {surface.whenLive}
-            </p>
-          )}
+        <div className="surface-guide-cta">
+          <div className="surface-guide-cta-cue">
+            <span className="surface-guide-cta-arrow" aria-hidden="true">
+              <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M8 12.5V3.5M4.5 7 8 3.5 11.5 7" />
+              </svg>
+            </span>
+            <div className="surface-guide-cta-copy">
+              <strong>{surface.cue || 'Click Investigate in the bar above'}</strong>
+              <p>
+                Scope is already in the top bar — pick a namespace, then press{' '}
+                <span className="surface-guide-inline-chip accent">Investigate</span>.
+              </p>
+            </div>
+          </div>
 
-          {onNavigate && (
-            <div className="surface-guide-actions">
+          <div className="surface-guide-cta-actions">
+            {onNavigate && (
               <button type="button" className="btn btn-outline btn-sm" onClick={() => onNavigate('resources')}>
                 Browse Resources
               </button>
-            </div>
-          )}
+            )}
+            {surface.browseNote && (
+              <p className="surface-guide-alt">{surface.browseNote}</p>
+            )}
+          </div>
+        </div>
 
-          {surface.browseNote && (
-            <p className="surface-guide-alt">{surface.browseNote}</p>
-          )}
-        </footer>
+        {surface.whenLive && (
+          <p className="surface-guide-live-hint surface-guide-live-hint-foot">
+            <span className="surface-guide-live-dot" aria-hidden="true" />
+            {surface.whenLive}
+          </p>
+        )}
       </div>
     </div>
   )

@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { KindIcon } from '../KindIcon'
 import { LogoMark } from '../Logo'
-import { BrailleWordmark } from '../BrailleWordmark.jsx'
 
 const ORBIT_KINDS = ['Pod', 'Deployment', 'Service', 'Ingress', 'ConfigMap', 'Node']
 
@@ -17,11 +16,9 @@ const PHASES = [
  * Full-panel orbit splash.
  * - collecting: while investigation is still gathering matches
  * - idle: welcome / open state (same orbit, calmer copy)
- * - home: Klew home — cluster picker hero
  */
 export function CollectingMatchesSplash({ variant = 'collecting' }) {
-  const idle = variant === 'idle' || variant === 'home'
-  const home = variant === 'home'
+  const idle = variant === 'idle'
   const [phase, setPhase] = useState(0)
 
   useEffect(() => {
@@ -42,18 +39,7 @@ export function CollectingMatchesSplash({ variant = 'collecting' }) {
       <OrbitStage idle={idle} />
 
       <div className="collect-splash-copy">
-        {home ? (
-          <>
-            <p className="collect-splash-title collect-splash-title-braille">
-              <BrailleWordmark text="Klew" />
-            </p>
-            <p className="collect-splash-phase collect-splash-tagline">
-              <span className="collect-splash-tagline-lead">Pick a cluster</span>
-              <span className="collect-splash-tagline-dot" aria-hidden="true" />
-              <span className="collect-splash-tagline-accent">See everything it&apos;s saying</span>
-            </p>
-          </>
-        ) : idle ? (
+        {idle ? (
           <>
             <p className="collect-splash-title">Ready to investigate</p>
             <p className="collect-splash-phase">

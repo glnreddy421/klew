@@ -121,3 +121,47 @@ func TestAppEnforcesMaxLogStreamsCap(t *testing.T) {
 		t.Fatalf("expected max log streams error, got %v", err)
 	}
 }
+
+func TestAppLogStreamsAreTrackedPerContext(t *testing.T) {
+	var objs []runtime.Object
+	for i := 0; i < MaxLogStreams+1; i++ {
+		objs = append(objs, testPod(fmt.Sprintf("p-%d", i)))
+	}
+	app := newTestLogApp(objs...)
+	defer app.stopAllLogStreams()
+
+	start := func(i int) (logstream.Status, error) {
+		return app.StartLogStream(LogStreamOptions{
+			Targets: []logstream.Target{{Namespace: "shop", Pods: []string{fmt.Sprintf("p-%d", i)}}},
+		})
+	}
+
+	app.cluster.SelectedContext = "ctx-a"
+	for i := 0; i < MaxLogStreams; i++ {
+		if _, err := start(i); err != nil {
+			t.Fatalf("ctx-a stream %d failed: %v", i, err)
+		}
+	}
+	if _, err := start(MaxLogStreams); err == nil {
+		t.Fatal("ctx-a should be at its cap")
+	}
+
+	// Another context has its own budget, and ctx-a's streams keep running.
+	app.cluster.SelectedContext = "ctx-b"
+	st, err := start(MaxLogStreams)
+	if err != nil {
+		t.Fatalf("ctx-b stream failed: %v", err)
+	}
+	if got := len(app.ListLogStreams()); got != MaxLogStreams+1 {
+		t.Fatalf("open streams = %d, want %d", got, MaxLogStreams+1)
+	}
+	ctxs := app.LogStreamContexts()
+	if ctxs[st.ID] != "ctx-b" || ctxs["log-1"] != "ctx-a" {
+		t.Fatalf("LogStreamContexts = %v", ctxs)
+	}
+
+	app.StopLogStream(st.ID)
+	if _, ok := app.LogStreamContexts()[st.ID]; ok {
+		t.Fatal("stopped stream still has a context entry")
+	}
+}

@@ -19,7 +19,7 @@ The formula installs the `klew` command. Upgrade with `brew upgrade klew-cli`. A
 
 ### From the desktop app (macOS)
 
-The app has the same server built in, so desktop users need nothing else. Open **Set up MCP** on the Home screen (or **Tools → Set Up MCP…**). Pick the server (built into the app, or a standalone `klew` command it found), choose a default context and flags, and copy the ready-made line for Claude Code, Claude Desktop, Cursor or another client. The built-in server runs as `<path to Klew.app>/Contents/MacOS/Klew mcp`, takes the same flags as `klew mcp`, and opens no window. The dialog only shows text to copy; it changes no client configuration.
+The app has the same server built in, so desktop users need nothing else. Open **Set up MCP** on the Home screen (or **Tools → Set Up MCP…**). Choose a default context and flags, pick a client, then copy from the **Desktop** or **CLI** section. Desktop uses the app binary; CLI uses the standalone `klew` command (with install lines when it is not on this machine). The built-in server runs as `<path to Klew.app>/Contents/MacOS/Klew mcp`, takes the same flags as `klew mcp`, and opens no window. The dialog only shows text to copy; it changes no client configuration.
 
 ### Other ways
 

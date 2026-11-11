@@ -63,10 +63,12 @@ type App struct {
 	history    *eventHistory
 	historyErr string
 
-	logStreamMu     sync.Mutex
-	logStreams      map[string]*logstream.Session
-	logStreamSeq    int
-	logStreamClient *kube.Client
+	logStreamMu sync.Mutex
+	logStreams  map[string]*logstream.Session
+	// logStreamContexts maps a stream ID to the kube context it was started in.
+	logStreamContexts map[string]string
+	logStreamSeq      int
+	logStreamClient   *kube.Client
 }
 
 func NewApp(boot bootOptions) *App { return &App{boot: boot} }
@@ -282,10 +284,8 @@ func (a *App) SelectContext(contextName string) kube.ClusterState {
 	prev := a.cluster
 	a.mu.Unlock()
 
-	// A stream follows pods of the previous cluster; end it.
-	if prev.SelectedContext != contextName {
-		a.stopAllLogStreams()
-	}
+	// Log streams keep their own client, so the previous context's tabs keep
+	// following while it is parked (see logStreamContexts).
 	st := kube.PreserveClusterPickerOnSyncError(prev, a.refreshCluster(contextName, defaultNS))
 	a.mu.Lock()
 	a.cluster = st
@@ -609,6 +609,46 @@ func (a *App) ListCatalogEntities(opts ListCatalogEntitiesOptions) (model.Catalo
 		Namespaces:    opts.Namespaces,
 		ClusterScoped: opts.ClusterScoped,
 	})
+}
+
+// RecentWarningsOptions selects the browse scope for ListRecentWarnings.
+type RecentWarningsOptions struct {
+	Namespace     string   `json:"namespace"`
+	AllNamespaces bool     `json:"allNamespaces"`
+	Namespaces    []string `json:"namespaces"`
+	Kubeconfig    string   `json:"kubeconfig"`
+	Context       string   `json:"context"`
+}
+
+// ListRecentWarnings returns the newest Warning events in the browse scope
+// for the Workloads overview. Read-only: it lists events and nothing else.
+func (a *App) ListRecentWarnings(opts RecentWarningsOptions) (kube.RecentWarnings, error) {
+	client, ns, err := a.resolveCatalogClient(CatalogOptions{
+		Namespace:     opts.Namespace,
+		AllNamespaces: opts.AllNamespaces,
+		Namespaces:    opts.Namespaces,
+		Kubeconfig:    opts.Kubeconfig,
+		Context:       opts.Context,
+	})
+	if err != nil {
+		return kube.RecentWarnings{AccessState: model.ResourceAccessError, Error: err.Error()}, err
+	}
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	var namespaces []string
+	switch {
+	case opts.AllNamespaces:
+		namespaces = []string{""}
+	case len(opts.Namespaces) > 0:
+		namespaces = opts.Namespaces
+	case opts.Namespace != "":
+		namespaces = []string{opts.Namespace}
+	default:
+		namespaces = []string{ns}
+	}
+	return kube.ListRecentWarnings(ctx, client, namespaces, kube.RecentWarningsLimit)
 }
 
 // CatalogEntityWatchPayload is pushed to the frontend on catalog:entities events.
@@ -1092,6 +1132,11 @@ func (a *App) SetKubeconfigPath(path string) kube.ClusterState {
 	ns := prev.SelectedNamespace
 	a.mu.Unlock()
 
+	// Open log streams follow clusters of the old kubeconfig, and a context of
+	// the same name in the new file may be a different cluster; end them.
+	if pathChanged {
+		a.stopAllLogStreams()
+	}
 	st := kube.PreserveClusterPickerOnSyncError(prev, a.refreshCluster(ctxName, ns))
 	a.mu.Lock()
 	a.cluster = st

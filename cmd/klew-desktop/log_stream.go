@@ -13,7 +13,8 @@ import (
 	"github.com/glnreddy421/klew/v2/internal/model"
 )
 
-// MaxLogStreams caps concurrent open log tabs so per-tab follow budgets stay bounded.
+// MaxLogStreams caps concurrent open log tabs per kube context so per-tab
+// follow budgets stay bounded.
 const MaxLogStreams = 8
 
 // LogStreamOptions picks the pods to follow: named pods, a workload or Service
@@ -62,8 +63,15 @@ func (a *App) StartLogStream(opts LogStreamOptions) (logstream.Status, error) {
 		}
 	}
 
+	ctxName := a.activeContextName()
 	a.logStreamMu.Lock()
-	if len(a.logStreams) >= MaxLogStreams {
+	inContext := 0
+	for id := range a.logStreams {
+		if a.logStreamContexts[id] == ctxName {
+			inContext++
+		}
+	}
+	if inContext >= MaxLogStreams {
 		a.logStreamMu.Unlock()
 		return logstream.Status{}, fmt.Errorf("at most %d log streams can run at once; close a log tab first", MaxLogStreams)
 	}
@@ -81,7 +89,11 @@ func (a *App) StartLogStream(opts LogStreamOptions) (logstream.Status, error) {
 			}
 		},
 		// Lines from pods an investigation covers also feed its Patterns and signals.
+		// A parked context's stream must not feed another cluster's investigation.
 		OnLog: func(e model.EvidenceEvent) {
+			if a.activeContextName() != ctxName {
+				return
+			}
 			a.mu.Lock()
 			svc := a.svc
 			a.mu.Unlock()
@@ -103,8 +115,34 @@ func (a *App) StartLogStream(opts LogStreamOptions) (logstream.Status, error) {
 		a.logStreams = make(map[string]*logstream.Session)
 	}
 	a.logStreams[id] = sess
+	if a.logStreamContexts == nil {
+		a.logStreamContexts = make(map[string]string)
+	}
+	a.logStreamContexts[id] = ctxName
 	a.logStreamMu.Unlock()
 	return sess.Status(), nil
+}
+
+// activeContextName is the kube context new log streams are started in.
+func (a *App) activeContextName() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.cluster.SelectedContext != "" {
+		return a.cluster.SelectedContext
+	}
+	return a.cluster.CurrentContext
+}
+
+// LogStreamContexts maps each open log stream ID to the kube context it was
+// started in, so the window can show a context's own log tabs.
+func (a *App) LogStreamContexts() map[string]string {
+	a.logStreamMu.Lock()
+	defer a.logStreamMu.Unlock()
+	out := make(map[string]string, len(a.logStreamContexts))
+	for id, ctxName := range a.logStreamContexts {
+		out[id] = ctxName
+	}
+	return out
 }
 
 // StopLogStream ends the named log stream and discards its buffered lines.
@@ -118,6 +156,7 @@ func (a *App) StopLogStream(id string) {
 	a.logStreamMu.Lock()
 	sess := a.logStreams[id]
 	delete(a.logStreams, id)
+	delete(a.logStreamContexts, id)
 	a.logStreamMu.Unlock()
 	if sess != nil {
 		sess.Stop()
@@ -202,6 +241,7 @@ func (a *App) stopAllLogStreams() {
 		sessions = append(sessions, sess)
 	}
 	a.logStreams = nil
+	a.logStreamContexts = nil
 	a.logStreamMu.Unlock()
 	for _, sess := range sessions {
 		sess.Stop()

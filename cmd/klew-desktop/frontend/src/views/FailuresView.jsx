@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { StatusBadge } from '../components/incident/StatusBadge'
 import { InvestigationSurfaceGuide } from '../components/incident/InvestigationSurfaceGuide.jsx'
 import { SurfaceGuideIcon } from '../components/incident/surfaceGuideIcons.jsx'
@@ -17,14 +17,28 @@ import {
   severityRankTL,
   worstContainer,
 } from '../lib/investigationViews'
+import { parseInspectKey } from '../lib/matches.js'
 import { useLogStreamActions } from '../context/LogStreamContext.jsx'
 import { streamLogsTitle } from '../lib/logStream.js'
 import { StreamLogsGlyph } from '../components/DockLauncher.jsx'
 
+/** Pod name from an inspect key like Pod/ns/name or Pod/name. */
+function podNameFromFocusKey(focusKey) {
+  const parsed = parseInspectKey(focusKey)
+  if (!parsed || parsed.kind !== 'Pod') return null
+  return parsed.name || null
+}
+
 /**
  * Failures — severity-ranked pod triage + investigation detail.
  */
-export function FailuresView({ view, explorerFilter, investigationActive = false, onNavigate }) {
+export function FailuresView({
+  view,
+  explorerFilter,
+  investigationActive = false,
+  onNavigate,
+  focusKey = null,
+}) {
   const state = getState(view)
   const snap = getSnapshot(view)
   const pods = useMemo(() => {
@@ -61,6 +75,13 @@ export function FailuresView({ view, explorerFilter, investigationActive = false
     () => pods.filter((p) => p.namespace && podHealthLabel(p) !== 'healthy'),
     [pods],
   )
+
+  // Overview "Failing now" (and similar) lands here with focusKey set to the pod.
+  useEffect(() => {
+    const name = podNameFromFocusKey(focusKey)
+    if (!name) return
+    if (pods.some((p) => p.name === name)) setSelected(name)
+  }, [focusKey, pods])
 
   const activeKey = selected && pods.some((p) => p.name === selected)
     ? selected
