@@ -41,7 +41,10 @@ export function ScopeBrowseProvider({
     [rowSig, podSig, catalogSig],
   )
 
-  const nav = useResourceNavigation(baseTree, { enabled: true })
+  const nav = useResourceNavigation(baseTree, {
+    enabled: true,
+    memoryKey: cluster?.selectedContext || cluster?.currentContext || '',
+  })
 
   const isOverviewSelected = isCategoryOverview(nav.selectedKind)
   const investigationEntities = nav.entities

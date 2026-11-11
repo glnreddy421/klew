@@ -7,12 +7,20 @@
 import { DEFAULT_WORKSPACE_LAYOUT, normalizeLayoutMode, saveLayoutMode } from './incidentLayout'
 import { DEFAULT_UI_FONT, normalizeUiFont } from './fonts'
 import { normalizeTopbarScale, TOPBAR_SCALE_DEFAULT } from './topbarScale'
-import { normalizeFavoriteContexts } from './clusterContexts.js'
+import {
+  normalizeConnectedContexts,
+  normalizeContextAliases,
+  normalizeContextDetails,
+  normalizeContextTags,
+  normalizeFavoriteContexts,
+  normalizeRecordedContexts,
+} from './clusterContexts.js'
+import { normalizeContextTabs } from './contextTabs.js'
 
 export const PREFS_STORAGE_KEY = 'klew.desktop.preferences'
 
 /** Bump when defaults change so existing localStorage picks up migrations once. */
-export const PREFS_VERSION = 16
+export const PREFS_VERSION = 23
 
 /** Investigation window lengths supported by the engine (minutes). */
 export const WINDOW_MIN_OPTIONS = [5, 15, 30, 60]
@@ -70,12 +78,33 @@ export function defaultPreferences() {
     httpsProxy: '',
     noProxy: '',
     autoMonitorCluster: true,
-    defaultContext: '', // optional context highlighted on Home (launch opens Home)
+    defaultContext: '', // launch default: skip Home and open this context
     favoriteContexts: [], // starred contexts — quick access; many allowed
+    // Contexts Klew records events for (background + active). Independent of stars.
+    recordedContexts: [],
+    // Contexts the user turned recording off for (opening them does not re-enable).
+    recordingOptOutContexts: [],
+    contextTags: {}, // { [contextName]: string[] } — user labels on Home
+    // Short display names for long kube context ids ({ [realName]: alias }).
+    contextAliases: {},
+    // Learned per-context cluster facts for Home tiles (version, cluster label).
+    contextDetails: {},
 
     // In-app terminal
     terminalShell: '', // empty/system = follow $SHELL
     terminalShellPrompted: false,
+
+    // Update prompt — latest version the user dismissed ("Not now").
+    dismissedUpdateVersion: '',
+
+    // What's new — the release whose welcome strip was dismissed.
+    welcomeSeenVersion: '',
+    // Home contexts: 'tiles' (start page) or 'list' (table).
+    homeLayout: 'tiles',
+    // Open context tabs in the top bar, in order.
+    contextTabs: [],
+    // Contexts that have connected successfully at least once (sticky Connected).
+    connectedContexts: [],
 
     prefsVersion: PREFS_VERSION,
   }
@@ -159,6 +188,38 @@ function migratePreferences(parsed) {
   if (version < 16 && (!next.uiFont || next.uiFont === 'jakarta')) {
     next.uiFont = DEFAULT_UI_FONT
   }
+  // v17: remember which update version the user dismissed.
+  if (version < 17) {
+    next.dismissedUpdateVersion = String(next.dismissedUpdateVersion || '')
+  }
+  // v18: user tags on kube contexts (Home).
+  if (version < 18) {
+    next.contextTags = normalizeContextTags(next.contextTags)
+  }
+  // v19: the what's-new strip starts unseen.
+  if (version < 19) {
+    next.welcomeSeenVersion = String(next.welcomeSeenVersion || '')
+  }
+  // v20: per-context event recording list (was coupled to Home favorites).
+  if (version < 20) {
+    const existing = normalizeRecordedContexts(next.recordedContexts)
+    next.recordedContexts = existing.length
+      ? existing
+      : normalizeRecordedContexts(next.favoriteContexts)
+    next.recordingOptOutContexts = normalizeRecordedContexts(next.recordingOptOutContexts)
+  }
+  // v21: sticky Connected per context (independent of which tab is active).
+  if (version < 21) {
+    next.connectedContexts = normalizeConnectedContexts(next.connectedContexts)
+  }
+  // v22: persist learned cluster details for clean Home tiles.
+  if (version < 22) {
+    next.contextDetails = normalizeContextDetails(next.contextDetails)
+  }
+  // v23: optional display aliases for long context names.
+  if (version < 23) {
+    next.contextAliases = normalizeContextAliases(next.contextAliases)
+  }
   return next
 }
 
@@ -229,9 +290,22 @@ export function normalizePreferences(p) {
     autoMonitorCluster: bool(src.autoMonitorCluster, d.autoMonitorCluster),
     defaultContext: String(src.defaultContext ?? d.defaultContext ?? '').trim(),
     favoriteContexts: normalizeFavoriteContexts(src.favoriteContexts ?? d.favoriteContexts),
+    recordedContexts: normalizeRecordedContexts(src.recordedContexts ?? d.recordedContexts),
+    recordingOptOutContexts: normalizeRecordedContexts(
+      src.recordingOptOutContexts ?? d.recordingOptOutContexts,
+    ),
+    contextTags: normalizeContextTags(src.contextTags ?? d.contextTags),
+    contextAliases: normalizeContextAliases(src.contextAliases ?? d.contextAliases),
+    contextDetails: normalizeContextDetails(src.contextDetails ?? d.contextDetails),
 
     terminalShell: String(src.terminalShell ?? d.terminalShell ?? '').trim(),
     terminalShellPrompted: bool(src.terminalShellPrompted, d.terminalShellPrompted),
+
+    dismissedUpdateVersion: String(src.dismissedUpdateVersion ?? d.dismissedUpdateVersion ?? '').trim(),
+    welcomeSeenVersion: String(src.welcomeSeenVersion ?? d.welcomeSeenVersion ?? '').trim(),
+    homeLayout: src.homeLayout === 'list' ? 'list' : 'tiles',
+    contextTabs: normalizeContextTabs(src.contextTabs ?? d.contextTabs),
+    connectedContexts: normalizeConnectedContexts(src.connectedContexts ?? d.connectedContexts),
 
     prefsVersion: clampInt(src.prefsVersion, 1, PREFS_VERSION, d.prefsVersion),
   }

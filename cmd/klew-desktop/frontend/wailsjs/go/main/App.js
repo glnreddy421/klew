@@ -6,6 +6,10 @@ export function AddExtensionFile() {
   return window['go']['main']['App']['AddExtensionFile']();
 }
 
+export function CheckForUpdate() {
+  return window['go']['main']['App']['CheckForUpdate']();
+}
+
 export function ClearEventHistory() {
   return window['go']['main']['App']['ClearEventHistory']();
 }
@@ -104,6 +108,14 @@ export function ListCatalogEntities(arg1) {
 
 export function ListLogStreams() {
   return window['go']['main']['App']['ListLogStreams']();
+}
+
+export function ListRecentWarnings(arg1) {
+  return window['go']['main']['App']['ListRecentWarnings'](arg1);
+}
+
+export function LogStreamContexts() {
+  return window['go']['main']['App']['LogStreamContexts']();
 }
 
 export function LogStreamLines(arg1) {

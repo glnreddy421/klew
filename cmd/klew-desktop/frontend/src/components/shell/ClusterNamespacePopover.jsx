@@ -2,10 +2,9 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { filterBySubstring } from '../../lib/scopeSearch.js'
 import { hasClusterContexts } from '../../lib/clusterIdentity.js'
-import { isFavoriteContext, orderContextsForDisplay } from '../../lib/clusterContexts.js'
-import { FavoriteStarIcon, LaunchDefaultIcon } from './ContextActionIcons.jsx'
+import { displayContextName, orderContextsForDisplay } from '../../lib/clusterContexts.js'
 import { ClusterCloudIcon } from './ClusterCloudIcon.jsx'
-import { ContextRecordingHint } from './ContextRecordingHint.jsx'
+import { ContextRecordingToggle } from './ContextRecordingToggle.jsx'
 import {
   allBrowseScope,
   browseScopeLabel,
@@ -126,6 +125,10 @@ export function usePopoverFilter(open) {
 export function PopoverSearch({ value, onChange, inputRef, placeholder, ariaLabel, onKeyDown }) {
   return (
     <div className="shell-popover-search">
+      <svg className="shell-popover-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+        <circle cx="11" cy="11" r="6.5" />
+        <path d="M20 20l-4-4" strokeLinecap="round" />
+      </svg>
       <input
         ref={inputRef}
         type="search"
@@ -142,6 +145,60 @@ export function PopoverSearch({ value, onChange, inputRef, placeholder, ariaLabe
   )
 }
 
+/** Plug: connect (or reconnect) a context. */
+function PlugIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M9 3v4M15 3v4" />
+      <path d="M6.5 7h11v4a5.5 5.5 0 0 1-11 0V7Z" />
+      <path d="M12 16.5V21" />
+    </svg>
+  )
+}
+
+/** Unplugged: stop watching the connected context. */
+function UnplugIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M9 3v4M15 3v4" />
+      <path d="M6.5 7h11v4a5.5 5.5 0 0 1-11 0V7Z" />
+      <path d="M12 16.5V21" />
+      <path d="M3.5 3.5l17 17" />
+    </svg>
+  )
+}
+
+/**
+ * Inline connection control for a context row: Disconnect on the connected
+ * context, Reconnect when it is paused or dropped, Connect on any other.
+ */
+function ConnectionButton({ name, active, paused, disconnected, busy, onConnect, onReconnect, onDisconnect }) {
+  let kind = 'connect'
+  if (active) kind = paused || disconnected ? 'reconnect' : 'disconnect'
+  const action = { connect: onConnect, reconnect: onReconnect, disconnect: onDisconnect }[kind]
+  if (!action) return null
+  const label = {
+    connect: `Connect to ${name}`,
+    reconnect: busy ? 'Connecting…' : `Reconnect ${name}`,
+    disconnect: `Disconnect ${name} (stop watching)`,
+  }[kind]
+  return (
+    <button
+      type="button"
+      className={`shell-popover-conn-btn is-${kind}`}
+      title={label}
+      aria-label={label}
+      disabled={busy && kind !== 'connect'}
+      onClick={(e) => {
+        e.stopPropagation()
+        action()
+      }}
+    >
+      {kind === 'disconnect' ? <UnplugIcon /> : <PlugIcon />}
+    </button>
+  )
+}
+
 export function ContextPopover({
   cluster,
   disabled,
@@ -152,10 +209,9 @@ export function ContextPopover({
   onDisconnect,
   reconnectBusy = false,
   monitoringPaused = false,
-  defaultContext = '',
   favoriteContexts = [],
-  onSetDefaultContext,
-  onToggleFavoriteContext,
+  contextAliases = {},
+  compact = false,
 }) {
   const { open, setOpen, anchorRef, panelRef } = usePopover()
   const { filter, setFilter, inputRef } = usePopoverFilter(open)
@@ -184,7 +240,13 @@ export function ContextPopover({
         : 'Kubernetes context for this window'
 
   const filteredRaw = filterBySubstring(contexts, filter, (c) =>
-    [c.name, c.cluster, c.user, c.namespace].filter(Boolean).join(' '),
+    [
+      c.name,
+      displayContextName(contextAliases, c.name, { truncate: false }),
+      c.cluster,
+      c.user,
+      c.namespace,
+    ].filter(Boolean).join(' '),
   )
   const filtered = filter.trim()
     ? filteredRaw
@@ -197,6 +259,7 @@ export function ContextPopover({
         className={[
           'shell-scope-btn',
           'shell-scope-btn-context',
+          compact ? 'is-compact' : '',
           disconnected ? 'is-disconnected' : '',
           monitoringPaused ? 'is-paused' : '',
         ].filter(Boolean).join(' ')}
@@ -204,12 +267,19 @@ export function ContextPopover({
         disabled={disabled}
         aria-expanded={open}
         aria-haspopup="listbox"
-        aria-label={`Context: ${ctx}${disconnected ? ' (disconnected)' : ''}`}
-        title={contextHint}
+        aria-label={compact ? 'Open another context' : `Context: ${ctx}${disconnected ? ' (disconnected)' : ''}`}
+        title={compact ? 'Open another context' : contextHint}
       >
-        <ClusterCloudIcon tone={cloudTone} className="shell-scope-cloud" />
-        <span className="shell-scope-value mono">{ctx}</span>
-        <ChevronDown />
+        {compact ? (
+          <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+            <path d="M8 3v10M3 8h10" />
+          </svg>
+        ) : (
+          <>
+            <span className="shell-scope-value mono">{ctx}</span>
+            <ChevronDown />
+          </>
+        )}
       </button>
       <PopoverPortal
         open={open}
@@ -242,9 +312,9 @@ export function ContextPopover({
           <ul className="shell-popover-list shell-popover-list-scroll shell-popover-list-tall">
             {filtered.map((c) => {
               const active = c.name === ctx
-              const isDefault = c.name === defaultContext
-              const isFavorite = isFavoriteContext(favoriteContexts, c.name)
               const itemTone = active ? cloudTone : 'muted'
+              const label = displayContextName(contextAliases, c.name)
+              const fullLabel = displayContextName(contextAliases, c.name, { truncate: false })
               return (
                 <li key={c.name}>
                   <button
@@ -252,7 +322,12 @@ export function ContextPopover({
                     role="option"
                     aria-selected={active}
                     className={`shell-popover-item ${active ? 'active' : ''}`}
-                    title={[c.cluster, c.user, c.namespace && `ns: ${c.namespace}`].filter(Boolean).join(' · ')}
+                    title={[
+                      fullLabel !== c.name ? `${fullLabel} (${c.name})` : c.name,
+                      c.cluster,
+                      c.user,
+                      c.namespace && `ns: ${c.namespace}`,
+                    ].filter(Boolean).join(' · ')}
                     onClick={() => {
                       onContextChange?.(c.name)
                       if (!contextLocked) setOpen(false)
@@ -261,54 +336,30 @@ export function ContextPopover({
                     {active && <span className="shell-popover-check" aria-hidden="true">✓</span>}
                     <ClusterCloudIcon tone={itemTone} className="shell-popover-item-cloud" size={13} />
                     <span className="shell-popover-item-stack">
-                      <span className="mono">
-                        {isFavorite && !filter.trim() && (
-                          <FavoriteStarIcon filled size={11} className="shell-popover-fav-mark" />
-                        )}
-                        {c.name}
-                        {isDefault && (
-                          <span className="shell-popover-default-tag" title="Launch default on Home">
-                            <LaunchDefaultIcon active size={10} />
-                          </span>
-                        )}
-                      </span>
-                      {c.cluster && c.cluster !== c.name && (
+                      <span className="mono">{label}</span>
+                      {fullLabel !== c.name && (
+                        <span className="shell-popover-item-sub muted">{c.name}</span>
+                      )}
+                      {c.cluster && c.cluster !== c.name && fullLabel === c.name && (
                         <span className="shell-popover-item-sub muted">{c.cluster}</span>
                       )}
-                      <ContextRecordingHint contextName={c.name} />
+                      <ContextRecordingToggle contextName={c.name} size={14} />
                     </span>
                   </button>
                   <div className="shell-popover-item-actions">
-                    {onToggleFavoriteContext && (
-                      <button
-                        type="button"
-                        className={['shell-popover-pin-btn', isFavorite ? 'is-favorite' : ''].filter(Boolean).join(' ')}
-                        title={isFavorite ? 'Remove favorite' : 'Add favorite'}
-                        aria-label={isFavorite ? `Unfavorite ${c.name}` : `Favorite ${c.name}`}
-                        aria-pressed={isFavorite}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          onToggleFavoriteContext(c.name)
-                        }}
-                      >
-                        <FavoriteStarIcon filled={isFavorite} size={14} />
-                      </button>
-                    )}
-                    {onSetDefaultContext && (
-                      <button
-                        type="button"
-                        className={['shell-popover-default-btn', isDefault ? 'is-default' : ''].filter(Boolean).join(' ')}
-                        title={isDefault ? 'Clear launch default' : 'Launch default on Home'}
-                        aria-label={isDefault ? `Clear ${c.name} as launch default` : `Set ${c.name} as launch default`}
-                        aria-pressed={isDefault}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          onSetDefaultContext(c.name)
-                        }}
-                      >
-                        <LaunchDefaultIcon active={isDefault} size={14} />
-                      </button>
-                    )}
+                    <ConnectionButton
+                      name={c.name}
+                      active={active}
+                      paused={monitoringPaused}
+                      disconnected={disconnected}
+                      busy={reconnectBusy}
+                      onConnect={() => {
+                        onContextChange?.(c.name)
+                        if (!contextLocked) setOpen(false)
+                      }}
+                      onReconnect={onReconnect ? () => { onReconnect(); setOpen(false) } : undefined}
+                      onDisconnect={onDisconnect ? () => { onDisconnect(); setOpen(false) } : undefined}
+                    />
                   </div>
                 </li>
               )
@@ -318,59 +369,12 @@ export function ContextPopover({
             )}
           </ul>
         )}
-        {(monitoringPaused || disconnected) && onReconnect && (
-          <div className="shell-popover-footer">
-            {syncError && !monitoringPaused && (
-              <p className="shell-popover-footer-note muted" title={syncError}>
-                {syncError}
-              </p>
-            )}
-            {monitoringPaused && (
-              <p className="shell-popover-footer-note muted">
-                Monitoring is paused — no live polls or watches until you reconnect.
-              </p>
-            )}
-            <div className="shell-popover-footer-actions">
-              <button
-                type="button"
-                className="btn btn-outline btn-sm shell-popover-reconnect-btn"
-                onClick={() => {
-                  onReconnect()
-                  setOpen(false)
-                }}
-                disabled={reconnectBusy}
-              >
-                {reconnectBusy ? 'Connecting…' : 'Reconnect'}
-              </button>
-              {!monitoringPaused && onDisconnect && (
-                <button
-                  type="button"
-                  className="text-link-btn shell-popover-disconnect-btn"
-                  onClick={() => {
-                    onDisconnect()
-                    setOpen(false)
-                  }}
-                  disabled={reconnectBusy}
-                >
-                  Disconnect
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-        {!monitoringPaused && !disconnected && onDisconnect && hasClusterContexts(cluster) && (
-          <div className="shell-popover-footer shell-popover-footer-compact">
-            <button
-              type="button"
-              className="text-link-btn shell-popover-disconnect-btn"
-              onClick={() => {
-                onDisconnect()
-                setOpen(false)
-              }}
-            >
-              Disconnect — stop monitoring
-            </button>
-          </div>
+        {(monitoringPaused || (disconnected && syncError)) && (
+          <p className="shell-popover-status-note" title={syncError || undefined}>
+            {monitoringPaused
+              ? 'Monitoring paused · use the plug to reconnect'
+              : syncError}
+          </p>
         )}
       </PopoverPortal>
     </div>

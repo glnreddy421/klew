@@ -79,7 +79,10 @@ export function TerminalTabPane({
     })
   }, [])
 
-  const contextName = tab.contextName || cluster?.selectedContext || cluster?.currentContext || ''
+  // Pin to the tab's context for the life of the session. Do not follow the
+  // app's active context — switching clusters must not retarget an open shell.
+  const contextName = String(tab.contextName || '').trim()
+    || String(cluster?.selectedContext || cluster?.currentContext || '').trim()
   const namespace = tab.namespace || ''
   const kubeconfig = cluster?.kubeconfigPath || ''
 
@@ -171,6 +174,8 @@ export function TerminalTabPane({
         error: '',
         shell: shellLabel(info.shell),
         shellNamespace: info.namespace || '',
+        // Persist the context this PTY was started with (including fallback).
+        contextName: info.context || contextName || tab.contextName || '',
       })
     } catch (err) {
       if (gen !== startGenRef.current) return

@@ -5,11 +5,29 @@ import {
   findMatchingLogTab,
   logTabKey,
   parseDockTabKey,
+  pickTerminalTabForContext,
   removeTabFromDock,
   syncTerminalTabsInOrder,
   tabsRightOf,
   termTabKey,
 } from './dockTabs'
+
+describe('pickTerminalTabForContext', () => {
+  const tabs = [
+    { id: 'a', contextName: 'kind-klew-a' },
+    { id: 'b', contextName: 'docker-desktop' },
+    { id: 'c', contextName: 'kind-klew-a' },
+  ]
+
+  it('never returns a tab from another context', () => {
+    expect(pickTerminalTabForContext(tabs, 'docker-desktop', 'a', 'a')?.id).toBe('b')
+    expect(pickTerminalTabForContext(tabs, 'kind-klew-a', 'b', 'b')?.id).toBe('c')
+  })
+
+  it('returns null when no matching context tab exists', () => {
+    expect(pickTerminalTabForContext(tabs, 'kind-klew-b', 'a', 'a')).toBeNull()
+  })
+})
 
 describe('dockTabs pure state helpers', () => {
   it('parses terminal and log tab keys', () => {

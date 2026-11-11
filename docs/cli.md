@@ -9,11 +9,19 @@ Both are **read-only**: they list, get and watch cluster objects and never chang
 
 ## Install
 
+Homebrew (macOS or Linux):
+
 ```bash
 brew install glnreddy421/klew/klew-cli
 ```
 
-Release downloads and `go install github.com/glnreddy421/klew/v2/cmd/klew@latest` are described in [mcp.md](mcp.md#other-ways); they install the same `klew` binary.
+Or with Go 1.26+:
+
+```bash
+go install github.com/glnreddy421/klew/v2/cmd/klew@latest
+```
+
+Both install the same `klew` binary. Release tarballs are described in [mcp.md](mcp.md#other-ways).
 
 ## klew investigate
 

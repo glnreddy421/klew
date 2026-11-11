@@ -2,7 +2,7 @@ export const NAV_ITEM_HOME = {
   id: 'home',
   label: 'Home',
   navLabel: 'Home',
-  hint: 'Local clusters — pick where to connect',
+  hint: 'Contexts — pick where to connect',
 }
 
 export const NAV_ITEM_RESOURCES = {
@@ -78,7 +78,7 @@ export const SURFACE_META = {
   },
   home: {
     title: 'Home',
-    subtitle: 'Local clusters from kubeconfig',
+    subtitle: 'Contexts from kubeconfig',
   },
   settings: {
     title: 'Settings',

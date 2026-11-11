@@ -102,14 +102,19 @@ export function useClusterConnection({
     await reconnect()
   }, [reconnect])
 
+  // Reset only on a real switch to another context. A cluster update that
+  // briefly reports no context must not resume a cluster the user disconnected.
+  const lastContextRef = useRef(contextKey)
   useEffect(() => {
+    if (!contextKey || contextKey === lastContextRef.current) return
+    lastContextRef.current = contextKey
     setMonitoringPaused(false)
     setRetryAttempt(0)
     setRetryInSec(0)
     setAutoRetryExhausted(false)
     setDismissed(false)
     clearRetryTimers()
-  }, [contextKey, clearRetryTimers])
+  }, [contextKey, clearRetryTimers, setMonitoringPaused])
 
   useEffect(() => {
     if (!disconnected) {

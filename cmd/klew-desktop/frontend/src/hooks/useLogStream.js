@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ListLogStreams,
+  LogStreamContexts,
   LogStreamLines,
   PauseLogStream,
   ResumeLogStream,
@@ -34,6 +35,13 @@ export function useLogStreams({ maxLogRequests = 0, onRestored } = {}) {
     Promise.resolve(ListLogStreams?.())
       .then(async (list) => {
         if (cancelled || !Array.isArray(list) || !list.length) return
+        // Which kube context owns each stream, so tabs return to their own strip.
+        let contextById = {}
+        try {
+          contextById = (await LogStreamContexts?.()) || {}
+        } catch {
+          contextById = {}
+        }
         const entries = await Promise.all(
           list.map(async (st) => {
             const id = st?.id || st?.streamId || ''
@@ -65,7 +73,7 @@ export function useLogStreams({ maxLogRequests = 0, onRestored } = {}) {
           }
           return next
         })
-        onRestoredRef.current?.(valid.map(([, entry]) => entry.status))
+        onRestoredRef.current?.(valid.map(([, entry]) => entry.status), contextById)
       })
       .catch(() => {})
 

@@ -1,21 +1,16 @@
-import { useEventHistoryContext } from '../../context/EventHistoryContext.jsx'
-import { recordingTone, recordingTooltip } from '../../lib/eventHistory'
-import { HistoryGapsPopover } from './HistoryGapsPopover.jsx'
+import { ContextRecordingToggle } from './ContextRecordingToggle.jsx'
 
-/** Small dot beside the cluster cloud: local event recording for the active context. */
+/**
+ * Top-bar recording control — same history icon toggle as Home tiles/list.
+ * Gap details live in Settings → Event history, not a hover dump here.
+ */
 export function EventRecordingDot({ contextName = '' }) {
-  const history = useEventHistoryContext()
-  if (!history || !contextName) return null
-  const status = history.byContext?.[contextName] || null
-  const tone = recordingTone(status)
-  const summary = recordingTooltip(status)
+  if (!contextName) return null
   return (
-    <HistoryGapsPopover
-      className="event-recording"
-      history={status}
-      title={summary}
-      align="end"
-      trigger={<span className={`event-recording-dot tone-${tone}`} role="img" aria-label={summary} />}
+    <ContextRecordingToggle
+      contextName={contextName}
+      size={15}
+      className="event-recording-topbar-btn"
     />
   )
 }

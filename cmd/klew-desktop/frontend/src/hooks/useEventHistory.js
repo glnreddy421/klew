@@ -18,17 +18,18 @@ function errorText(err, fallback) {
 }
 
 /**
- * Local event recording state for this window. Favorites are recorded in the
- * background; monitoring pause pauses recording too.
+ * Local event recording state for this window. `recordedContexts` is the
+ * per-cluster opt-in list; monitoring pause pauses every recorder; Settings
+ * has the global master switch.
  */
-export function useEventHistory({ favoriteContexts = [], monitoringPaused = false, contexts = [] } = {}) {
+export function useEventHistory({ recordedContexts = [], monitoringPaused = false, contexts = [] } = {}) {
   const [statuses, setStatuses] = useState([])
   const [settings, setSettings] = useState(() => normalizeHistorySettings())
   const [busy, setBusy] = useState(false)
   const contextsRef = useRef(contexts)
   contextsRef.current = contexts
 
-  const favKey = (favoriteContexts || []).join('\u0000')
+  const recordedKey = (recordedContexts || []).join('\u0000')
   const ctxKey = (contexts || []).join('\u0000')
 
   const refresh = useCallback(() => {
@@ -44,12 +45,12 @@ export function useEventHistory({ favoriteContexts = [], monitoringPaused = fals
   }, [])
 
   useEffect(() => {
-    SetRecordedContexts(favoriteContexts || [])
+    SetRecordedContexts(recordedContexts || [])
       .then(() => refresh())
       .catch(() => {})
-    // favKey captures favoriteContexts content.
+    // recordedKey captures recordedContexts content.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [favKey, refresh])
+  }, [recordedKey, refresh])
 
   useEffect(() => {
     SetEventRecordingPaused(Boolean(monitoringPaused)).catch(() => {})

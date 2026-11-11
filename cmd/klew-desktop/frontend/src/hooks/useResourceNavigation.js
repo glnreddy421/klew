@@ -11,12 +11,15 @@ import {
   visibleCategories,
 } from '../lib/resourceNavigation.js'
 
+/** Sidebar selection per context, so switching context tabs returns to it. */
+const navMemory = new Map()
+
 /**
  * Resource navigation state — independently expandable groups, kind selection.
  * Every category starts expanded the first time it appears; collapsing is
  * remembered for the life of the view.
  */
-export function useResourceNavigation(tree, { enabled = true } = {}) {
+export function useResourceNavigation(tree, { enabled = true, memoryKey = '' } = {}) {
   const [expandedGroups, setExpandedGroups] = useState(() => new Set())
   const seenGroupsRef = useRef(new Set())
   const [selectedGroupId, setSelectedGroupId] = useState(null)
@@ -41,6 +44,21 @@ export function useResourceNavigation(tree, { enabled = true } = {}) {
 
   const selectionRef = useRef({ selectedGroupId, selectedKind, selectedResourceId })
   selectionRef.current = { selectedGroupId, selectedKind, selectedResourceId }
+
+  // Save the selection under the context being left; restore the next one's.
+  const memoryKeyRef = useRef(memoryKey)
+  useEffect(() => {
+    const prev = memoryKeyRef.current
+    if (prev === memoryKey) return
+    memoryKeyRef.current = memoryKey
+    if (prev) navMemory.set(prev, { ...selectionRef.current })
+    const saved = memoryKey ? navMemory.get(memoryKey) : null
+    if (!saved?.selectedGroupId) return
+    setSelectedGroupId(saved.selectedGroupId)
+    setSelectedKind(saved.selectedKind)
+    setSelectedResourceId(saved.selectedResourceId || null)
+    setExpandedGroups((prevGroups) => expandGroup(prevGroups, saved.selectedGroupId))
+  }, [memoryKey])
 
   // Reconcile selection when the tree changes — not on every user click.
   useEffect(() => {

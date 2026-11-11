@@ -100,7 +100,7 @@ func Extract(events []model.EvidenceEvent, snap SnapshotInput, opts Options) mod
 	out.EventHistogram = eventHalf.histogram
 	out.EventWindow = eventHalf.window
 
-	// Evidence Board: Jaccard over synchronized volume histories (lock-free).
+	// Evidence Board: co-movement Jaccard + failure-event containment (lock-free).
 	out.EvidenceBoard = BuildEvidenceBoard(
 		out.Templates,
 		out.EventTemplates,

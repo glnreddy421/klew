@@ -130,8 +130,9 @@ func (a *App) emitEventHistorySoon() {
 	})
 }
 
-// SetRecordedContexts sets the favorite contexts recorded in the background.
-// The frontend calls it on launch and whenever favorites change.
+// SetRecordedContexts sets which kube contexts this window records.
+// The global Settings switch must also be on; monitoring pause stops all.
+// The frontend calls it on launch and whenever the per-context toggles change.
 func (a *App) SetRecordedContexts(names []string) []history.ContextStatus {
 	if m := a.historyManager(); m != nil {
 		m.SetFavoriteContexts(names)

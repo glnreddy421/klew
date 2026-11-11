@@ -50,36 +50,3 @@ export function SurfaceGuideIcon({ id, size = 20 }) {
       )
   }
 }
-
-export function InvestigateScopeIcon({ size = 18 }) {
-  return (
-    <GuideIcon size={size}>
-      <circle cx="12" cy="12" r="6" />
-      <path d="M12 9v6M9 12h6" />
-    </GuideIcon>
-  )
-}
-
-export function SurfaceGuidePanelIcon({ kind, size = 13 }) {
-  if (kind === 'do') {
-    return (
-      <svg viewBox="0 0 16 16" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M3.5 8.25 6.5 11l6-6.5" />
-      </svg>
-    )
-  }
-  return (
-    <svg viewBox="0 0 16 16" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <circle cx="8" cy="8" r="4.75" />
-      <path d="M8 5.25V8l1.75 1.25" />
-    </svg>
-  )
-}
-
-export function SurfaceGuideCheckIcon({ size = 11 }) {
-  return (
-    <svg viewBox="0 0 12 12" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M2.75 6.1 5 8.35 9.25 3.75" />
-    </svg>
-  )
-}

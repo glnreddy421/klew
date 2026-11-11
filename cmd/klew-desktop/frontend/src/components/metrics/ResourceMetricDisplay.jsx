@@ -88,10 +88,23 @@ export function PodMetricCell({ metric, fallback = '—' }) {
   )
 }
 
+function MetricStat({ label, value, hint, tone }) {
+  if (!value) return null
+  return (
+    <div className={`resource-metric-stat ${tone ? `tone-${tone}` : ''}`.trim()}>
+      <span className="resource-metric-stat-label">{label}</span>
+      <span className="resource-metric-stat-value overview-num">{value}</span>
+      {hint && <span className="resource-metric-stat-hint muted">{hint}</span>}
+    </div>
+  )
+}
+
 export function OverviewMetricCard({ metric, note }) {
   const kind = metric.kind === 'memory' ? 'memory' : 'cpu'
   const title = kind === 'memory' ? 'Memory' : 'CPU'
   const live = metric.available && metric.usageLabel
+  const primary = live ? metric.usageLabel : (metric.hasAlloc ? metric.allocLabel : '—')
+  const primaryUnit = live ? 'usage' : (metric.primaryKind === 'request' ? 'requested' : metric.hasAlloc ? 'limits' : '')
 
   return (
     <article className={`resource-metric-card tone-${metric.tone}`}>
@@ -101,23 +114,21 @@ export function OverviewMetricCard({ metric, note }) {
         </span>
         <div className="resource-metric-card-copy">
           <span className="resource-metric-card-label">{title}</span>
-          {live ? (
-            <span className="resource-metric-live-badge">Live</span>
-          ) : metric.hasAlloc ? (
-            <span className="resource-metric-alloc-badge">Allocated</span>
-          ) : null}
+          <span className="resource-metric-card-sub muted">
+            {live ? 'Live from metrics-server' : (metric.hasAlloc ? 'Requests and limits in scope' : (note || 'No data'))}
+          </span>
         </div>
         {live && metric.pct != null && (
-          <span className={`resource-metric-pct overview-num tone-${metric.tone}`}>{metric.pct}%</span>
+          <span className={`resource-metric-pct overview-num tone-${metric.tone}`} title="Usage vs requests">
+            {metric.pct}%
+          </span>
         )}
       </div>
 
       <div className="resource-metric-card-value-row">
-        <span className="resource-metric-card-value overview-num is-display">
-          {live ? metric.usageLabel : (metric.hasAlloc ? metric.denomLabel : '—')}
-        </span>
-        {live && (
-          <span className="resource-metric-card-denom muted overview-num is-secondary">/ {metric.denomLabel}</span>
+        <span className="resource-metric-card-value overview-num is-display">{primary}</span>
+        {primaryUnit && (
+          <span className="resource-metric-card-denom muted overview-num is-secondary">{primaryUnit}</span>
         )}
       </div>
 
@@ -129,32 +140,28 @@ export function OverviewMetricCard({ metric, note }) {
         showAlloc={metric.hasAlloc}
       />
 
-      <p className="resource-metric-card-foot muted">
-        {live ? (
-          <>
-            {metric.requestLabel && <>req {metric.requestLabel}</>}
-            {metric.requestLabel && metric.limitLabel && ' · '}
-            {metric.limitLabel && <>lim {metric.limitLabel}</>}
-            {!metric.requestLabel && !metric.limitLabel && 'Usage vs requests/limits in scope'}
-          </>
-        ) : metric.hasAlloc ? (
-          <>
-            {metric.requestLabel && <>request {metric.requestLabel}</>}
-            {metric.requestLabel && metric.limitLabel && ' · '}
-            {metric.limitLabel && <>limit {metric.limitLabel}</>}
-          </>
-        ) : (
-          note || 'Install metrics-server for live usage'
-        )}
-      </p>
+      {(live || metric.hasAlloc) ? (
+        <div className="resource-metric-stats" aria-label={`${title} breakdown`}>
+          <MetricStat label="Usage" value={metric.usageLabel} hint={metric.usageCoverage} tone={live ? metric.tone : null} />
+          <MetricStat label="Request" value={metric.requestLabel} hint={metric.requestCoverage} />
+          <MetricStat label="Limit" value={metric.limitLabel} hint={metric.limitCoverage} />
+        </div>
+      ) : (
+        <p className="resource-metric-card-foot muted">{note || 'Install metrics-server for live usage'}</p>
+      )}
     </article>
   )
 }
 
-export function OverviewNodesCard({ ready = 0, total }) {
+export function OverviewNodesCard({
+  ready = 0,
+  total,
+  notReady = 0,
+  pressured = 0,
+}) {
   const hasTotal = total != null && total > 0
-  const pct = hasTotal ? Math.min(100, Math.round((ready / total) * 100)) : null
-  const tone = !hasTotal ? 'muted' : ready === total ? 'ok' : ready === 0 ? 'crit' : 'warn'
+  const tone = !hasTotal ? 'muted' : ready === total && pressured === 0 ? 'ok' : ready === 0 ? 'crit' : 'warn'
+  const readyLabel = hasTotal ? `${ready} / ${total}` : String(ready)
 
   return (
     <article className={`resource-metric-card resource-metric-card-nodes tone-${tone}`}>
@@ -164,20 +171,19 @@ export function OverviewNodesCard({ ready = 0, total }) {
         </span>
         <div className="resource-metric-card-copy">
           <span className="resource-metric-card-label">Nodes</span>
-          <span className="resource-metric-alloc-badge">Cluster</span>
+          <span className="resource-metric-card-sub muted">Cluster-wide</span>
         </div>
-        {pct != null && (
-          <span className={`resource-metric-pct overview-num tone-${tone}`}>{pct}%</span>
-        )}
       </div>
 
       <div className="resource-metric-card-value-row">
-        <span className="resource-metric-card-value overview-num is-display">{ready}</span>
-        <span className="resource-metric-card-denom muted overview-num is-secondary">/ {hasTotal ? total : '—'} ready</span>
+        <span className="resource-metric-card-value overview-num is-display">{readyLabel}</span>
+        <span className="resource-metric-card-denom muted overview-num is-secondary">ready</span>
       </div>
 
-      <div className="resource-metric-node-ring" style={{ '--pct': pct ?? 0 }} aria-hidden="true">
-        <div className="resource-metric-node-ring-inner" />
+      <div className="resource-metric-stats" aria-label="Node health">
+        <MetricStat label="Ready" value={String(ready)} tone={tone === 'ok' ? 'ok' : null} />
+        <MetricStat label="Not ready" value={String(notReady)} tone={notReady > 0 ? 'crit' : null} />
+        <MetricStat label="Pressured" value={String(pressured)} tone={pressured > 0 ? 'warn' : null} />
       </div>
     </article>
   )

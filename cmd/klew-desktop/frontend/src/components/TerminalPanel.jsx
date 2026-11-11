@@ -1,6 +1,6 @@
 import { PANEL_CLOSED, PANEL_MAXIMIZED, PANEL_MINIMIZED, PANEL_NORMAL } from '../hooks/useStreamPanel'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useTerminalTabs } from '../hooks/useTerminalTabs'
+import { contextBucketKey, useTerminalTabs } from '../hooks/useTerminalTabs'
 import { TerminalTabPane } from './TerminalTabPane'
 import {
   createSplitView,
@@ -55,6 +55,7 @@ export function TerminalPanel({
     skipInitialSeed: Boolean(launchRequest?.id) || Boolean(terminalTabs),
   })
 
+  const lifted = terminalTabs || internalTabs
   const {
     tabs,
     activeId,
@@ -67,7 +68,9 @@ export function TerminalPanel({
     restartAllTabs,
     contextName,
     namespace,
-  } = terminalTabs || internalTabs
+  } = lifted
+  // Parked contexts keep their panes mounted so PTYs survive cluster switches.
+  const paneTabs = lifted.allTabs || tabs
   const activeNamespace = activeTab?.namespace || activeTab?.shellNamespace || namespace
 
   const shellRestartRef = useRef(shellRestartToken)
@@ -461,10 +464,11 @@ export function TerminalPanel({
                 splitView ? `is-split is-split-${splitView.orientation}` : '',
               ].filter(Boolean).join(' ')}
             >
-              {tabs.map((tab) => {
-                const visible = isTerminalPaneVisible(splitView, tab.id, activeId)
-                const paneActive = (splitView ? visible : tab.id === activeId) && activePane
-                const focused = (splitView ? splitView.focusId === tab.id : tab.id === activeId) && activePane
+              {paneTabs.map((tab) => {
+                const sameContext = contextBucketKey(tab.contextName) === contextBucketKey(contextName)
+                const visible = sameContext && isTerminalPaneVisible(splitView, tab.id, activeId)
+                const paneActive = sameContext && (splitView ? visible : tab.id === activeId) && activePane
+                const focused = sameContext && (splitView ? splitView.focusId === tab.id : tab.id === activeId) && activePane
                 return (
                   <div
                     key={tab.id}
@@ -473,8 +477,10 @@ export function TerminalPanel({
                       visible ? 'is-visible' : '',
                       focused ? 'is-focused' : '',
                     ].filter(Boolean).join(' ')}
+                    hidden={!sameContext}
+                    aria-hidden={!sameContext}
                     onMouseDown={() => {
-                      if (!splitView) return
+                      if (!splitView || !sameContext) return
                       setSplitView((prev) => (prev ? { ...prev, focusId: tab.id } : prev))
                     }}
                   >

@@ -4,8 +4,10 @@ import { BrandWordmark, LogoMark } from './Logo'
 import { TerminalGlyph } from './DockLauncher'
 import { WindowIsMaximised, WindowToggleMaximise, Environment } from '../../wailsjs/runtime/runtime'
 import { ContextPopover } from './shell/ClusterNamespacePopover.jsx'
-import { ClusterConnectionDot } from './shell/ClusterConnectionDot.jsx'
+import { ClusterConnectionDot, connectionTone } from './shell/ClusterConnectionDot.jsx'
+import { ContextTabs } from './shell/ContextTabs.jsx'
 import { EventRecordingDot } from './shell/EventRecordingDot.jsx'
+import { HoverTip } from './HoverTip.jsx'
 import { TimeWindowPopover } from './shell/TimeWindowPopover.jsx'
 import { activeContextLabel } from '../lib/clusterConnection.js'
 import {
@@ -22,6 +24,11 @@ export function TopBar({
   syncing,
   onSync,
   onContextChange,
+  contextTabs = [],
+  onSelectContextTab,
+  onCloseContextTab,
+  /** Context tabs are for working in a cluster — hide on Home (Contexts). */
+  showContextTabs = true,
   running,
   starting = false,
   onNewWindow,
@@ -42,6 +49,7 @@ export function TopBar({
   monitoringPaused = false,
   defaultContext = '',
   favoriteContexts = [],
+  contextAliases = {},
   onSetDefaultContext,
   onToggleFavoriteContext,
   connecting = false,
@@ -84,60 +92,83 @@ export function TopBar({
           <BrandWordmark variant="topbar" />
         </div>
         <div className="topbar-nav-history" role="navigation" aria-label="History">
-          <button
-            type="button"
-            className="topbar-nav-btn"
-            onClick={() => onNavBack?.()}
-            disabled={!canNavBack}
-            title="Back"
-            aria-label="Back"
-          >
-            <ChevronLeftIcon />
-          </button>
-          <button
-            type="button"
-            className="topbar-nav-btn"
-            onClick={() => onNavForward?.()}
-            disabled={!canNavForward}
-            title="Forward"
-            aria-label="Forward"
-          >
-            <ChevronRightIcon />
-          </button>
-          <button
-            type="button"
-            className="topbar-nav-btn"
-            onClick={() => onNavHome?.()}
-            title="Home — Resources"
-            aria-label="Home — Resources"
-          >
-            <HomeIcon />
-          </button>
+          <HoverTip label="Back" detail="Previous page in this window.">
+            <button
+              type="button"
+              className="topbar-nav-btn"
+              onClick={() => onNavBack?.()}
+              disabled={!canNavBack}
+              aria-label="Back"
+            >
+              <ChevronLeftIcon />
+            </button>
+          </HoverTip>
+          <HoverTip label="Forward" detail="Next page in this window.">
+            <button
+              type="button"
+              className="topbar-nav-btn"
+              onClick={() => onNavForward?.()}
+              disabled={!canNavForward}
+              aria-label="Forward"
+            >
+              <ChevronRightIcon />
+            </button>
+          </HoverTip>
+          <HoverTip label="Contexts" detail="Pick a cluster. Hide context tabs and return to the start page.">
+            <button
+              type="button"
+              className="topbar-nav-btn"
+              onClick={() => onNavHome?.()}
+              aria-label="Contexts"
+            >
+              <HomeIcon />
+            </button>
+          </HoverTip>
         </div>
-        <div className="topbar-scope">
-          <ContextPopover
-            cluster={cluster}
-            disabled={starting}
-            contextLocked={contextLocked}
-            onContextChange={onContextChange}
-            connection={connection}
-            onReconnect={onReconnect}
-            onDisconnect={onDisconnect}
-            reconnectBusy={reconnectBusy}
-            monitoringPaused={monitoringPaused}
-            defaultContext={defaultContext}
-            favoriteContexts={favoriteContexts}
-            onSetDefaultContext={onSetDefaultContext}
-            onToggleFavoriteContext={onToggleFavoriteContext}
-          />
-          <ClusterConnectionDot
-            connection={connection}
-            onReconnect={onReconnect}
-            reconnectBusy={reconnectBusy}
-            contextLabel={activeContextLabel(cluster, { connecting, connectingTarget })}
-          />
-          <EventRecordingDot contextName={cluster?.selectedContext || cluster?.currentContext || ''} />
-        </div>
+        {showContextTabs && (
+          <div className="topbar-scope">
+            <ContextTabs
+              tabs={contextTabs}
+              // The clicked tab becomes active at once, while the cluster connects.
+              active={connecting && connectingTarget?.kind === 'context' && connectingTarget.name
+                ? connectingTarget.name
+                : (cluster?.selectedContext || cluster?.currentContext || '')}
+              statusTone={connection && connection.phase !== 'idle' ? connectionTone(connection.phase) : 'muted'}
+              statusTitle={connection?.phase === 'paused' ? 'monitoring paused' : (connection?.phase || '')}
+              locked={contextLocked}
+              contextAliases={contextAliases}
+              onSelect={onSelectContextTab}
+              onClose={onCloseContextTab}
+            >
+              <ContextPopover
+                cluster={cluster}
+                disabled={starting}
+                contextLocked={contextLocked}
+                onContextChange={onContextChange}
+                connection={connection}
+                onReconnect={onReconnect}
+                onDisconnect={onDisconnect}
+                reconnectBusy={reconnectBusy}
+                monitoringPaused={monitoringPaused}
+                defaultContext={defaultContext}
+                favoriteContexts={favoriteContexts}
+                contextAliases={contextAliases}
+                onSetDefaultContext={onSetDefaultContext}
+                onToggleFavoriteContext={onToggleFavoriteContext}
+                compact={contextTabs.length > 0}
+              />
+            </ContextTabs>
+            {contextTabs.length === 0 && (
+              <ClusterConnectionDot
+                connection={connection}
+                onReconnect={onReconnect}
+                reconnectBusy={reconnectBusy}
+                contextLabel={activeContextLabel(cluster, { connecting, connectingTarget })}
+              />
+            )}
+            <EventRecordingDot contextName={cluster?.selectedContext || cluster?.currentContext || ''} />
+          </div>
+        )}
       </div>
 
       </div>

@@ -9,7 +9,6 @@ import {
   TOPBAR_SCALE_MIN,
   TOPBAR_SCALE_STEP,
 } from '../lib/topbarScale'
-import { WorkspaceLayoutPicker } from '../components/incident/WorkspaceLayoutPicker'
 import { TerminalShellSelect } from '../components/TerminalShellSelect'
 import { EventHistorySettings } from '../components/EventHistorySettings.jsx'
 import { ExtensionsSettings } from '../components/settings/ExtensionsSettings.jsx'
@@ -29,8 +28,9 @@ import {
   SetKubectlOptions,
   GetNetworkProxy,
   SetNetworkProxy,
+  CheckForUpdate,
 } from '../../wailsjs/go/main/App'
-import { BrowserOpenURL } from '../../wailsjs/runtime/runtime'
+import { BrowserOpenURL, ClipboardSetText } from '../../wailsjs/runtime/runtime'
 import { useAppInfo } from '../hooks/useAppInfo'
 
 const HELP_LINKS = [
@@ -85,7 +85,43 @@ export function SettingsView({
   const [proxyBusy, setProxyBusy] = useState(false)
   const [proxyMsg, setProxyMsg] = useState('')
   const [activeProxy, setActiveProxy] = useState(null)
+  const [updateBusy, setUpdateBusy] = useState(false)
+  const [updateResult, setUpdateResult] = useState(null)
+  const [updateCopied, setUpdateCopied] = useState(false)
   const appInfo = useAppInfo()
+
+  async function checkForUpdate() {
+    if (!CheckForUpdate || updateBusy) return
+    setUpdateBusy(true)
+    setUpdateCopied(false)
+    try {
+      const result = await CheckForUpdate()
+      setUpdateResult(result || null)
+    } catch (err) {
+      setUpdateResult({
+        message: 'Could not check for updates.',
+        error: err?.message || String(err),
+      })
+    } finally {
+      setUpdateBusy(false)
+    }
+  }
+
+  async function copyUpgradeCommand() {
+    const cmd = updateResult?.upgradeCommand
+    if (!cmd) return
+    try {
+      if (ClipboardSetText) {
+        await ClipboardSetText(cmd)
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(cmd)
+      }
+      setUpdateCopied(true)
+      setTimeout(() => setUpdateCopied(false), 1400)
+    } catch {
+      /* ignore */
+    }
+  }
 
   useEffect(() => {
     setKubeDraft(prefs.kubeconfigPath || cluster?.kubeconfigPath || '')
@@ -264,7 +300,15 @@ export function SettingsView({
               </SettingRow>
             </SettingsGroup>
 
-            <SettingsGroup title="About">
+            <SettingsGroup
+              title="About"
+              footer={updateResult ? (
+                <SettingsMessage>
+                  {updateResult.message}
+                  {updateResult.error ? ` (${updateResult.error})` : ''}
+                </SettingsMessage>
+              ) : null}
+            >
               <InfoRow label="Version" value={appInfo?.version ? `Klew v${appInfo.version}` : '—'} mono={false} />
               {appInfo?.commit && appInfo.commit !== 'none' && (
                 <InfoRow label="Build" value={appInfo.commit} />
@@ -272,6 +316,48 @@ export function SettingsView({
               {appInfo?.commit && appInfo.commit !== 'none' && appInfo.date && appInfo.date !== 'unknown' && (
                 <InfoRow label="Built" value={appInfo.date} />
               )}
+              <SettingRow
+                label="Updates"
+                hint="Compares this build to the latest GitHub release. Klew does not install updates itself."
+              >
+                <div className="settings-row-actions">
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    disabled={updateBusy}
+                    onClick={checkForUpdate}
+                  >
+                    {updateBusy ? 'Checking…' : 'Check for updates'}
+                  </button>
+                  {updateResult?.updateAvailable && updateResult?.upgradeCommand && (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={copyUpgradeCommand}
+                    >
+                      {updateCopied ? 'Copied' : 'Copy brew upgrade'}
+                    </button>
+                  )}
+                  {updateResult?.updateAvailable && (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => BrowserOpenURL(updateResult.releaseURL || 'https://github.com/glnreddy421/klew/releases')}
+                    >
+                      Open release
+                    </button>
+                  )}
+                  {updateResult?.updateAvailable && updateResult?.downloadURL && updateResult?.channel !== 'homebrew' && (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => BrowserOpenURL(updateResult.downloadURL)}
+                    >
+                      Download
+                    </button>
+                  )}
+                </div>
+              </SettingRow>
               <InfoRow label="Install" value="brew tap glnreddy421/klew && brew install --cask klew" />
               <InfoRow label="Upgrade" value="brew update && brew upgrade --cask klew" />
               <SettingRow label="Releases">
@@ -288,7 +374,7 @@ export function SettingsView({
         )}
 
         {section === 'appearance' && (
-          <SettingsSection title="Appearance" subtitle="Theme, fonts, workspace layout, and live-tail typography.">
+          <SettingsSection title="Appearance" subtitle="Theme, fonts, top bar size, and live-tail typography.">
             <SettingsGroup
               title="Theme"
               description="Light, dark, or follow the system appearance. Applied instantly."
@@ -325,18 +411,6 @@ export function SettingsView({
                   applyTopbarScale(next)
                 }}
               />
-            </SettingsGroup>
-
-            <SettingsGroup
-              title="Workspace layout"
-              description="How resources, entities, and signals are arranged on Overview. You can also switch from the header while investigating."
-            >
-              <SettingRow stacked>
-                <WorkspaceLayoutPicker
-                  value={prefs.workspaceLayout}
-                  onChange={(id) => set({ workspaceLayout: id })}
-                />
-              </SettingRow>
             </SettingsGroup>
 
             <SettingsGroup title="Live tail">

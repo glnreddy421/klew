@@ -123,6 +123,7 @@ export function contextRecordingLabel(status, now = new Date()) {
 /** Hide the label for contexts that are neither recorded nor have history. */
 export function shouldShowContextRecording(status) {
   if (!status) return false
+  // status.favorite means opted into the recorded-contexts list (not Home star).
   return isRecordingStatus(status) || Boolean(status.active || status.favorite || status.since)
 }
 

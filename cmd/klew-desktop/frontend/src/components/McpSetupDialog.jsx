@@ -11,6 +11,7 @@ import {
   mcpSnippet,
   MCP_APP_PATH,
 } from '../lib/mcpSetup.js'
+import { KLEW_CLI_GO_INSTALL } from '../lib/klewCli.js'
 
 const CLOSE_MS = 140
 
@@ -40,30 +41,16 @@ function CopyBlock({ text, label }) {
   )
 }
 
-function SourceOption({ value, current, onChange, title, children }) {
-  const selected = value === current
-  return (
-    <label className={`mcp-source ${selected ? 'is-selected' : ''}`}>
-      <input type="radio" name="mcp-source" value={value} checked={selected} onChange={() => onChange(value)} />
-      <span className="mcp-source-body">
-        <span className="mcp-source-title">{title}</span>
-        <span className="mcp-source-text">{children}</span>
-      </span>
-    </label>
-  )
-}
-
 /**
  * Set Up MCP: shows how to point Claude Code, Claude Desktop, Cursor and
- * other clients at Klew's read-only MCP server, either this app's built-in
- * server ("<app> mcp") or the standalone klew command ("klew mcp"). It only shows text to copy;
- * it changes no client configuration itself.
+ * other clients at Klew's read-only MCP server. Desktop (built into this app)
+ * and CLI (`klew mcp`) each get their own section with a ready-made snippet.
+ * The dialog only shows text to copy; it changes no client configuration.
  */
 export function McpSetupDialog({ open, onClose, contexts = [] }) {
   const [mounted, setMounted] = useState(open)
   const [closing, setClosing] = useState(false)
   const [info, setInfo] = useState(null)
-  const [source, setSource] = useState('app')
   const [client, setClient] = useState(MCP_CLIENTS[0].id)
   const [context, setContext] = useState('')
   const [noLogSamples, setNoLogSamples] = useState(false)
@@ -103,12 +90,20 @@ export function McpSetupDialog({ open, onClose, contexts = [] }) {
   }, [open, onClose])
 
   const appUsable = Boolean(info?.executable) && !info?.translocated
-  const effectiveSource = appUsable ? source : 'standalone'
-  const server = mcpServerCommand({ source: effectiveSource })
   const elsewhere = appUsable && info.executable !== MCP_APP_PATH
+  const standaloneInstalled = Boolean(info?.standalonePath)
   const flags = mcpFlags({ context, noLogSamples, noHistory })
   const clientMeta = MCP_CLIENTS.find((c) => c.id === client) || MCP_CLIENTS[0]
-  const snippet = useMemo(() => mcpSnippet(client, server, flags), [client, server.command, server.args.join(' '), flags.join(' ')])
+  const desktopServer = useMemo(() => mcpServerCommand({ source: 'app' }), [])
+  const cliServer = useMemo(() => mcpServerCommand({ source: 'standalone' }), [])
+  const desktopSnippet = useMemo(
+    () => mcpSnippet(client, desktopServer, flags),
+    [client, desktopServer, flags.join(' ')],
+  )
+  const cliSnippet = useMemo(
+    () => mcpSnippet(client, cliServer, flags),
+    [client, cliServer, flags.join(' ')],
+  )
   const contextNames = contexts.map((c) => c?.name).filter(Boolean)
 
   if (!mounted) return null
@@ -140,40 +135,6 @@ export function McpSetupDialog({ open, onClose, contexts = [] }) {
         </header>
 
         <div className="mcp-body">
-          <section className="mcp-section" aria-labelledby="mcp-server-h">
-            <h3 id="mcp-server-h">Server</h3>
-            {info?.translocated && (
-              <p className="mcp-warn" role="status">
-                Klew is running from a temporary location, so a client could not start it later.
-                Move Klew to Applications and open it from there to use the built-in server.
-              </p>
-            )}
-            <div className="mcp-sources">
-              <SourceOption value="app" current={effectiveSource} onChange={setSource} title="Built into this app">
-                {appUsable
-                  ? 'Nothing else to install. Includes the events this app records, older than the API keeps.'
-                  : 'Unavailable from this location.'}
-              </SourceOption>
-              <SourceOption value="standalone" current={effectiveSource} onChange={setSource} title="Standalone klew command">
-                {info?.standalonePath
-                  ? <>Installed at <code>{info.standalonePath}</code>.</>
-                  : 'For machines without the app, such as Linux or a devbox. Not installed here.'}
-              </SourceOption>
-            </div>
-            {effectiveSource === 'app' && elsewhere && (
-              <p className="mcp-hint muted">
-                This copy of Klew runs from <code>{info.executable}</code>. The configuration below uses{' '}
-                <code>{MCP_APP_PATH}</code>, so move Klew to Applications or change the path.
-              </p>
-            )}
-            {effectiveSource === 'standalone' && !info?.standalonePath && (
-              <>
-                <p className="mcp-step">Install it with Homebrew (macOS or Linux):</p>
-                <CopyBlock text={`brew install ${MCP_BREW_FORMULA}`} label="Install command" />
-              </>
-            )}
-          </section>
-
           <section className="mcp-section" aria-labelledby="mcp-options-h">
             <h3 id="mcp-options-h">Options</h3>
             <div className="mcp-options">
@@ -217,18 +178,66 @@ export function McpSetupDialog({ open, onClose, contexts = [] }) {
                 </button>
               ))}
             </div>
-            <CopyBlock text={snippet} label={`${clientMeta.label} configuration`} />
             <p className="mcp-hint muted">{clientMeta.hint}</p>
-            {effectiveSource === 'standalone' && clientMeta.kind === 'json' && (
-              <p className="mcp-hint muted">
-                If the client cannot find klew, replace it with the full path <code>command -v klew</code> prints.
-              </p>
-            )}
             {clientMeta.existing && (
               <div className="mcp-existing">
                 <p className="mcp-hint muted">{clientMeta.existing.text}</p>
                 <CopyBlock text={clientMeta.existing.check} label="Check command" />
               </div>
+            )}
+          </section>
+
+          <section className="mcp-section mcp-path" aria-labelledby="mcp-desktop-h">
+            <div className="mcp-path-head">
+              <h3 id="mcp-desktop-h">Desktop</h3>
+              <span className="mcp-path-badge">Built into this app</span>
+            </div>
+            <p className="mcp-path-lead muted">
+              Nothing else to install. Includes events this app recorded that the API no longer keeps.
+            </p>
+            {info?.translocated && (
+              <p className="mcp-warn" role="status">
+                Klew is running from a temporary location, so a client could not start it later.
+                Move Klew to Applications and open it from there to use the built-in server.
+              </p>
+            )}
+            {elsewhere && (
+              <p className="mcp-hint muted">
+                This copy of Klew runs from <code>{info.executable}</code>. The configuration below uses{' '}
+                <code>{MCP_APP_PATH}</code>, so move Klew to Applications or change the path.
+              </p>
+            )}
+            {appUsable ? (
+              <CopyBlock text={desktopSnippet} label={`${clientMeta.label} desktop configuration`} />
+            ) : (
+              <p className="mcp-hint muted">Unavailable from this location.</p>
+            )}
+          </section>
+
+          <section className="mcp-section mcp-path" aria-labelledby="mcp-cli-h">
+            <div className="mcp-path-head">
+              <h3 id="mcp-cli-h">CLI</h3>
+              <span className="mcp-path-badge">klew mcp</span>
+            </div>
+            <p className="mcp-path-lead muted">
+              Same server as a standalone command. Use on machines without the app, such as Linux or a devbox.
+            </p>
+            {standaloneInstalled ? (
+              <p className="mcp-hint muted">
+                Installed at <code>{info.standalonePath}</code>.
+              </p>
+            ) : (
+              <>
+                <p className="mcp-step">Install the <code>klew</code> command, then use the configuration below:</p>
+                <CopyBlock text={`brew install ${MCP_BREW_FORMULA}`} label="Homebrew install" />
+                <CopyBlock text={KLEW_CLI_GO_INSTALL} label="Go install" />
+              </>
+            )}
+            <CopyBlock text={cliSnippet} label={`${clientMeta.label} CLI configuration`} />
+            {clientMeta.kind === 'json' && (
+              <p className="mcp-hint muted">
+                If the client cannot find klew, replace it with the full path <code>command -v klew</code> prints.
+              </p>
             )}
           </section>
 

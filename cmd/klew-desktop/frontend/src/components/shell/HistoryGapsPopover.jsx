@@ -3,10 +3,20 @@ import { gapRows } from '../../lib/eventHistory'
 
 /**
  * Hover/click popover listing history gaps with their reasons.
- * `trigger` is the visible content (text or a dot); the list shows on hover,
- * focus, or click (click pins it until Escape or an outside click).
+ * Pass `header` for a structured top row (status + toggle); `title` stays for
+ * simple one-line headings (CoverageLine).
  */
-export function HistoryGapsPopover({ history, trigger, title, className = '', align = 'start' }) {
+export function HistoryGapsPopover({
+  history,
+  trigger,
+  title,
+  header = null,
+  note = 'History covers only the time Klew was recording.',
+  emptyText = 'No gaps in recorded history.',
+  triggerTitle = '',
+  className = '',
+  align = 'start',
+}) {
   const rows = gapRows(history)
   const [hover, setHover] = useState(false)
   const [pinned, setPinned] = useState(false)
@@ -38,6 +48,7 @@ export function HistoryGapsPopover({ history, trigger, title, className = '', al
         className="history-gaps-trigger"
         aria-expanded={open}
         aria-controls={panelId}
+        title={triggerTitle || undefined}
         onClick={() => setPinned((v) => !v)}
         onFocus={() => setHover(true)}
         onBlur={() => setHover(false)}
@@ -46,9 +57,9 @@ export function HistoryGapsPopover({ history, trigger, title, className = '', al
       </button>
       {open && (
         <span id={panelId} role="dialog" className={`history-gaps-panel align-${align}`}>
-          {title && <span className="history-gaps-title">{title}</span>}
+          {header || (title ? <span className="history-gaps-title">{title}</span> : null)}
           {rows.length === 0 ? (
-            <span className="history-gaps-empty">No gaps in recorded history.</span>
+            <span className="history-gaps-empty">{emptyText}</span>
           ) : (
             <span className="history-gaps-list">
               {rows.map((g) => (
@@ -59,10 +70,7 @@ export function HistoryGapsPopover({ history, trigger, title, className = '', al
               ))}
             </span>
           )}
-          <span className="history-gaps-note">
-            History covers only the time Klew was recording. A fresh start recovers
-            events the cluster still holds (about one event TTL).
-          </span>
+          {note ? <span className="history-gaps-note">{note}</span> : null}
         </span>
       )}
     </span>

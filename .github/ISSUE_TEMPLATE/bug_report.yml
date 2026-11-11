@@ -1,0 +1,52 @@
+name: Bug report
+description: Something in Klew is wrong, broken, or reports the wrong verdict.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Klew output and screenshots are **not redacted**: remove names, log lines and anything else you cannot share before posting.
+        Security problems go through [a private advisory](https://github.com/glnreddy421/klew/security/advisories/new), not an issue.
+  - type: input
+    id: version
+    attributes:
+      label: Klew version
+      description: Output of `klew version`, or the desktop app's version from About.
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where did it happen?
+      options:
+        - Desktop app
+        - klew investigate
+        - klew mcp
+        - Install or update
+    validations:
+      required: true
+  - type: input
+    id: install
+    attributes:
+      label: How you installed it
+      placeholder: Homebrew, release download, built from source
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: macOS or Linux version, and the Kubernetes version and distribution.
+      placeholder: macOS 26.3, Kubernetes 1.34 on EKS
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: verdict
+    attributes:
+      label: Wrong or missing verdict (optional)
+      description: The workload's state as `kubectl` shows it, and what Klew reported.

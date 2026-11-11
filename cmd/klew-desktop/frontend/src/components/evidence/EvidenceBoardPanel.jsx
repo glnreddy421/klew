@@ -2,7 +2,8 @@ import { useState } from 'react'
 
 /**
  * Correlated signals — infra event patterns linked to log patterns by
- * minute-overlap similarity (≥ threshold from backend).
+ * co-movement (≥ Jaccard threshold) or failure coverage (BackOff/OOM/… covering
+ * the log's active minutes on the same pod).
  */
 export function EvidenceBoardPanel({ board, onFilterLogs, compactEmpty = false }) {
   const cards = board?.cards || []
@@ -14,7 +15,7 @@ export function EvidenceBoardPanel({ board, onFilterLogs, compactEmpty = false }
         <div>
           <h3 id="ev-chains-title">Correlated signals</h3>
           <p className="ev-chains-sub muted">
-            Infrastructure events linked to log templates by minute overlap
+            Events linked to logs by co-movement or failure coverage on the same pod
           </p>
         </div>
         <div className="ev-chains-stats">
@@ -22,7 +23,9 @@ export function EvidenceBoardPanel({ board, onFilterLogs, compactEmpty = false }
             <strong>{cards.length}</strong>
             <em>linked</em>
           </span>
-          <span className="ev-stat muted">≥{thresholdPct}%</span>
+          <span className="ev-stat muted" title="Co-movement Jaccard threshold; failure events also link when they cover the log's minutes">
+            ≥{thresholdPct}%
+          </span>
         </div>
       </header>
 
@@ -44,8 +47,9 @@ export function EvidenceBoardPanel({ board, onFilterLogs, compactEmpty = false }
             <span className="ev-slot on" />
           </div>
           <p>
-            No linked patterns yet. When an event template and a log template share active minutes
-            (≥{thresholdPct}% overlap), they appear here.
+            No linked patterns yet. Links appear when an event and a log rise together
+            (≥{thresholdPct}% minute overlap), or when a failure event such as BackOff
+            covers the log&apos;s active minutes on the same pod.
           </p>
         </div>
       ) : (
