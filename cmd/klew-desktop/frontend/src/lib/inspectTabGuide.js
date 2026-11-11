@@ -9,11 +9,18 @@ export const INSPECT_TAB_META = {
     scanFor: 'Image, env, and resource changes just before trouble started; rollbacks and restarts.',
     kinds: ['Deployment', 'StatefulSet', 'DaemonSet'],
   },
+  compare: {
+    description: 'Two stored revisions of the pod template side by side as YAML, with added and removed lines marked.',
+    whenAvailable: 'Shown for Deployments, StatefulSets, and DaemonSets once the cluster keeps two revisions.',
+    emptyHint: 'The cluster keeps only one revision of this workload.',
+    scanFor: 'Every line that changed between two rollouts, including fields the Changes table does not list.',
+    kinds: ['Deployment', 'StatefulSet', 'DaemonSet'],
+  },
   summary: {
-    description: 'Status, readiness, scheduling, and the first fields to check on this resource.',
+    description: 'Status, readiness, scheduling, desired spec, live usage, and labels for this resource.',
     whenAvailable: 'Available for every resource once live details load from the cluster.',
     emptyHint: 'No summary fields yet. Details may still be loading, or the API returned an empty status.',
-    scanFor: 'Phase, replicas, conditions, node placement, and scheduling rules.',
+    scanFor: 'Phase, replicas, conditions, node placement, CPU/memory use, and selector labels.',
     kinds: null,
   },
   containers: {
@@ -67,15 +74,45 @@ export function tabAppliesToKind(tabId, kind) {
   return meta.kinds.includes(kind)
 }
 
+/** Groups shown as sections of Summary rather than tabs of their own, in this order. */
+export const SUMMARY_FOLDED_GROUPS = ['spec', 'runtime', 'metadata']
+
+/**
+ * Fold Spec, Runtime and Metadata sections into Summary so the inspector has
+ * fewer tabs. Section keys stay unique across the merged groups.
+ */
+export function foldIntoSummary(groups) {
+  const list = groups || []
+  const folded = SUMMARY_FOLDED_GROUPS
+    .map((id) => list.find((g) => g.id === id))
+    .filter((g) => g?.sections?.length)
+  if (!folded.length) return list
+
+  const summary = list.find((g) => g.id === 'summary') || { id: 'summary', label: 'Summary', sections: [] }
+  const seen = new Set((summary.sections || []).map((sec) => sec.id || sec.title))
+  const sections = [...(summary.sections || [])]
+  for (const g of folded) {
+    for (const sec of g.sections) {
+      let key = sec.id || sec.title
+      if (seen.has(key)) key = `${g.id}-${key}`
+      seen.add(key)
+      sections.push(key === (sec.id || sec.title) ? sec : { ...sec, id: key })
+    }
+  }
+
+  const rest = list.filter((g) => g.id !== 'summary' && !SUMMARY_FOLDED_GROUPS.includes(g.id))
+  return [{ ...summary, sections }, ...rest]
+}
+
 /**
  * Merge live detail groups with browse tab catalog so users see what each tab is for,
  * even before data arrives.
  */
 export function buildBrowseTabs(groups, inspect, { loading = false } = {}) {
   const kind = inspect?.kind || ''
-  const byId = new Map((groups || []).map((g) => [g.id, g]))
+  const byId = new Map(foldIntoSummary(groups).map((g) => [g.id, g]))
 
-  return DETAIL_TAB_ORDER.map((tab) => {
+  return DETAIL_TAB_ORDER.filter((tab) => !SUMMARY_FOLDED_GROUPS.includes(tab.id)).map((tab) => {
     const meta = INSPECT_TAB_META[tab.id] || {}
     const live = byId.get(tab.id)
     const sections = live?.sections || []

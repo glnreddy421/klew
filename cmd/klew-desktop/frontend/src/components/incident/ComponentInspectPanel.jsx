@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { StreamLogsGlyph } from '../DockLauncher.jsx'
 import { useLogStreamActions } from '../../context/LogStreamContext.jsx'
 import { streamLogsTitle } from '../../lib/logStream.js'
@@ -19,6 +19,8 @@ import { collectRelatedPods, isWorkloadWithPods } from '../../lib/relatedPods.js
 import { useShellInspector } from '../../context/ShellInspectorContext.jsx'
 import { InspectContainersPanel } from './InspectContainersPanel'
 import { RelationshipGraphPanel } from './RelationshipGraph'
+import { ResourceManifestView } from '../shell/ResourceManifestView.jsx'
+import { useInspectorManifest } from '../../context/InspectorManifestContext.jsx'
 import { ServiceEndpointSummary } from './ServiceEndpointSummary'
 import { HelmReleaseInspectView } from './HelmReleaseInspectView.jsx'
 import { hasContainerPanelData, parseInspectContainers } from '../../lib/inspectContainers'
@@ -26,13 +28,20 @@ import { buildRelationshipGraph } from '../../lib/relationshipGraph'
 import { findServiceEndpointFields } from '../../lib/serviceEndpoints'
 import { isRbacForbiddenMessage } from '../../lib/rbacAccess.js'
 import { EntityRowsSkeleton, InlineLoading, LoadingBar } from '../LoadingSpinner.jsx'
-import { activeTabGuide, buildBrowseTabs, INSPECT_TAB_META } from '../../lib/inspectTabGuide.js'
+import {
+  activeTabGuide,
+  buildBrowseTabs,
+  foldIntoSummary,
+  INSPECT_TAB_META,
+  SUMMARY_FOLDED_GROUPS,
+} from '../../lib/inspectTabGuide.js'
 import { WorkloadTraceGraph } from '../workloads/WorkloadTraceGraph.jsx'
 import { historySinceLine } from '../../lib/eventHistory'
 import { CoverageLine } from '../shell/HistoryGapsPopover.jsx'
 import { useWorkloadChanges, usePodRevision } from '../../hooks/useWorkloadChanges'
 import { changesTargetFor, withChangesTab } from '../../lib/workloadChanges'
 import { ChangesTab, PodRevisionLine, RecentChangeBadge, ReplicaSetRevision } from '../inspect/WorkloadChanges.jsx'
+import { CompareTab } from '../inspect/CompareTab.jsx'
 import { consumeInspectorTab } from '../../lib/inspectorTabRequest'
 
 /**
@@ -252,18 +261,9 @@ function fallbackGroups(inspect) {
   return groups
 }
 
-function InspectIdentityHeader({ inspect, onInspect, loading, error }) {
-  const namespaceRef = inspect.namespace
-    ? resolveInspectRef(inspect.namespace, {
-      fieldKey: 'Namespace',
-      inspectNamespace: inspect.namespace,
-    })
-    : null
-  const showToolbar = Boolean(
-    loading || inspect.adhoc || error
-      || (namespaceRef && onInspect && inspect.namespace),
-  )
-  if (!showToolbar) return null
+function InspectIdentityHeader({ inspect, error }) {
+  // Opening the namespace lives on the inspector header's namespace label.
+  if (!inspect.adhoc && !error) return null
 
   return (
     <header className="inspect-toolbar">
@@ -273,16 +273,6 @@ function InspectIdentityHeader({ inspect, onInspect, loading, error }) {
             On demand
           </span>
         )}
-        {namespaceRef && onInspect && inspect.namespace ? (
-          <button
-            type="button"
-            className="inspect-toolbar-link mono"
-            onClick={() => onInspect(namespaceRef.key)}
-            title={`Inspect Namespace/${inspect.namespace}`}
-          >
-            Open namespace
-          </button>
-        ) : null}
       </div>
       {error && (
         <div
@@ -486,9 +476,16 @@ function DetailTabsPanel({
     () => (browseMode ? buildBrowseTabs(groups, inspect, { loading }) : null),
     [browseMode, groups, inspect, loading],
   )
-  const baseTabs = browseTabs || groups
-  // Workloads get a Changes tab (revision history), loaded lazily from the cluster.
-  const tabs = useMemo(() => withChangesTab(baseTabs, inspect?.kind), [baseTabs, inspect?.kind])
+  const foldedGroups = useMemo(() => foldIntoSummary(groups), [groups])
+  const baseTabs = browseTabs || foldedGroups
+  const manifest = useInspectorManifest()
+  // Workloads get a Changes tab (revision history), loaded lazily from the cluster;
+  // anything with a manifest gets a read-only YAML tab last.
+  const tabs = useMemo(() => {
+    const withChanges = withChangesTab(baseTabs, inspect?.kind)
+    if (!manifest?.target) return withChanges
+    return [...withChanges, YAML_TAB]
+  }, [baseTabs, inspect?.kind, manifest?.target])
   const cacheScope = useShellInspector()?.inspectorCacheScope
   const changesTarget = changesTargetFor(inspect)
   const changesState = useWorkloadChanges({
@@ -506,6 +503,13 @@ function DetailTabsPanel({
     enabled: inspect?.kind === 'Pod',
   })
   const [tab, setTab] = useState(tabs[0]?.id || 'summary')
+  // The revision pair the Changes tab asked Compare to open.
+  const [comparePair, setComparePair] = useState(null)
+  useEffect(() => setComparePair(null), [inspect.key])
+  const openCompare = useCallback((pair) => {
+    setComparePair(pair)
+    setTab('compare')
+  }, [])
   const showWorkloadPods = isWorkloadWithPods(inspect?.kind)
   const hasSummaryTab = tabs.some((g) => g.id === 'summary')
   const lastInspectKeyRef = useRef(inspect.key)
@@ -530,7 +534,9 @@ function DetailTabsPanel({
     lastInspectKeyRef.current = inspect.key
     const ids = new Set(tabs.map((g) => g.id))
 
-    const requested = objectChanged ? consumeInspectorTab(inspect.kind, inspect.name) : null
+    const asked = objectChanged ? consumeInspectorTab(inspect.kind, inspect.name) : null
+    // Spec, Runtime and Metadata are sections of Summary now.
+    const requested = SUMMARY_FOLDED_GROUPS.includes(asked) ? 'summary' : asked
     setTab((current) => {
       if (requested && ids.has(requested)) return requested
       if (objectChanged) return tabs[0]?.id || 'summary'
@@ -565,13 +571,25 @@ function DetailTabsPanel({
     />
   ) : null
 
-  const workloadTraceBlock = browseMode ? (
+  // The connection trace lives in the Relationships tab; it only sits above
+  // the tabs when this object has no Relationships tab to hold it.
+  const hasTrace = browseMode && (workloadTraceLoading || (workloadTrace?.nodes?.length || 0) > 1)
+  const relationshipsTabShown = tabs.some((g) => g.id === 'relationships' && g.state !== 'unavailable')
+  const traceInTab = hasTrace && relationshipsTabShown
+  const workloadTraceBlock = hasTrace && !traceInTab ? (
     <WorkloadTraceGraph
       trace={workloadTrace}
       loading={workloadTraceLoading}
       onInspect={onInspect}
     />
   ) : null
+  const traceNodes = workloadTrace?.nodes || []
+  const traceKeys = new Set(traceNodes.map((n) => `${n.kind}/${n.name}`))
+  // A "+N" trace step already stands for the rest of that kind.
+  const traceGroupedKinds = new Set(traceNodes.filter((n) => n.extraCount > 0).map((n) => n.kind))
+  const extraRelations = relationshipsTabGraph.nodes.filter((n) => n.role !== 'Current'
+    && !traceKeys.has(`${n.kind}/${n.name}`)
+    && !traceGroupedKinds.has(n.kind))
 
   return (
     <div className="inspect-panel mode-detail-tabs">
@@ -587,11 +605,6 @@ function DetailTabsPanel({
       />
       {tabs.length > 0 && (
         <>
-          {browseMode && (
-            <p className="inspect-browse-intro">
-              Browse live object details from your cluster. Tabs below explain what to look for and fill in as API data arrives.
-            </p>
-          )}
           {!hasSummaryTab && relatedPodsBlock}
           <div className="inspect-tabs-scroll">
           <div className="inspect-tabs" role="tablist" aria-label="Detail sections">
@@ -603,7 +616,7 @@ function DetailTabsPanel({
                 aria-selected={tab === g.id}
                 aria-disabled={g.state === 'unavailable'}
                 disabled={g.state === 'unavailable'}
-                title={browseMode ? (INSPECT_TAB_META[g.id]?.description || g.label) : undefined}
+                title={browseMode ? tabTooltip(g) : undefined}
                 className={[
                   'inspect-tab',
                   tab === g.id ? 'active' : '',
@@ -628,7 +641,12 @@ function DetailTabsPanel({
           </div>
           </div>
           <div className="inspect-tab-panel" role="tabpanel">
-            {browseMode && active?.id !== 'changes' && <InspectTabGuide guide={tabGuide} />}
+            {active?.id === 'yaml' && manifest?.target && (
+              <ResourceManifestView target={manifest.target} cluster={manifest.cluster} embedded />
+            )}
+            {browseMode && active?.id !== 'changes' && active?.id !== 'compare' && active?.id !== 'yaml' && !(active?.id === 'relationships' && traceInTab) && (
+              <InspectTabGuide guide={tabGuide} />
+            )}
             {active?.id === 'summary' && (
               <>
                 <RecentChangeBadge state={changesState} onOpen={() => setTab('changes')} />
@@ -636,7 +654,14 @@ function DetailTabsPanel({
                 {inspect.kind === 'ReplicaSet' && <ReplicaSetRevision state={changesState} rsName={inspect.name} />}
               </>
             )}
-            {active?.id === 'changes' && <ChangesTab state={changesState} />}
+            {active?.id === 'changes' && <ChangesTab state={changesState} onCompare={openCompare} />}
+            {active?.id === 'compare' && changesTarget && (
+              <CompareTab
+                state={changesState}
+                target={{ kind: changesTarget.kind, namespace: inspect.namespace, name: changesTarget.name }}
+                requestedPair={comparePair}
+              />
+            )}
             {active?.id === 'summary' && metrics.length > 0 && !active.sections.some((s) => s.fields?.length) && (
               <InspectSummaryMetrics
                 metrics={metrics}
@@ -647,19 +672,21 @@ function DetailTabsPanel({
             {active?.id === 'summary' && serviceEndpoints && (
               <ServiceEndpointSummary {...serviceEndpoints} />
             )}
-            {active?.id === 'summary' && summaryRelationshipsBlock}
+            {active?.id === 'summary' && !relationshipsTabShown && summaryRelationshipsBlock}
             {active?.id === 'summary' && relatedPodsBlock}
-            {active?.id === 'relationships' && relationshipsTabGraph.nodes.length > 1 && (
-              <RelationshipGraphPanel
-                center={relationshipCenter}
-                items={relationshipItems}
-                sections={active.sections}
-                showTitle={false}
-                inspectNamespace={inspect.namespace}
+            {active?.id === 'relationships' && traceInTab && (
+              <WorkloadTraceGraph
+                trace={workloadTrace}
+                loading={workloadTraceLoading}
                 onInspect={onInspect}
+                compact
+                showHeader={false}
               />
             )}
-            {active?.id === 'relationships' && relationshipsTabGraph.nodes.length <= 1 && (!browseMode || activeHasContent) && (
+            {active?.id === 'relationships' && extraRelations.length > 0 && (
+              <RelatedObjectList items={extraRelations} onInspect={onInspect} />
+            )}
+            {active?.id === 'relationships' && !traceInTab && relationshipsTabGraph.nodes.length <= 1 && (!browseMode || activeHasContent) && (
               <GroupBody
                 group={active}
                 inspect={inspect}
@@ -672,14 +699,14 @@ function DetailTabsPanel({
                 hidePodsTable={hidePodsTable}
               />
             )}
-            {(active?.id === 'containers' || active?.id === 'spec') && showWorkloadPods && relatedPodsBlock}
+            {active?.id === 'containers' && showWorkloadPods && relatedPodsBlock}
             {active?.id === 'containers' && inspect.kind === 'Pod' && hasContainerPanelData(parseInspectContainers(active.sections)) ? (
               <InspectContainersPanel
                 sections={active.sections}
                 inspectNamespace={inspect.namespace}
                 onInspect={onInspect}
               />
-            ) : active && active.id !== 'relationships' && active.id !== 'changes' && (!browseMode || activeHasContent) ? (
+            ) : active && active.id !== 'relationships' && active.id !== 'changes' && active.id !== 'compare' && active.id !== 'yaml' && (!browseMode || activeHasContent) ? (
               <GroupBody
                 group={active}
                 inspect={inspect}
@@ -695,6 +722,29 @@ function DetailTabsPanel({
         </>
       )}
     </div>
+  )
+}
+
+/** Linked objects as flat rows: role, kind icon and name. Click opens the object. */
+function RelatedObjectList({ items, onInspect }) {
+  return (
+    <ul className="inspect-related-list" aria-label="Relationships">
+      {items.map((n) => (
+        <li key={n.key || `${n.kind}/${n.name}`}>
+          <button
+            type="button"
+            className="inspect-related-row"
+            onClick={() => n.key && onInspect?.(n.key)}
+            disabled={!n.key}
+            title={`${n.kind}/${n.name}`}
+          >
+            <span className="inspect-related-row-role">{n.role}</span>
+            <KindIcon kind={n.kind} size={14} />
+            <span className="inspect-related-row-name mono">{n.name}</span>
+          </button>
+        </li>
+      ))}
+    </ul>
   )
 }
 
@@ -1126,22 +1176,32 @@ function EyeOffIcon() {
   )
 }
 
+const YAML_TAB = {
+  id: 'yaml',
+  label: 'YAML',
+  sections: [],
+  hasContent: true,
+  state: 'ready',
+  description: 'The live manifest, as kubectl get -o yaml returns it. Read-only.',
+}
+
+/** What a tab holds and what to look for — shown on hover instead of above the panel. */
+function tabTooltip(tab) {
+  const guide = activeTabGuide(tab) || {}
+  const description = guide.description || INSPECT_TAB_META[tab.id]?.description || tab.label
+  return guide.scanFor ? `${description}\n\nLook for: ${guide.scanFor}` : description
+}
+
+/** Loading and empty states only; the tab's description lives in its tooltip. */
 function InspectTabGuide({ guide }) {
-  if (!guide) return null
+  if (!guide || guide.state === 'ready') return null
   return (
     <div className={`inspect-tab-guide state-${guide.state}`}>
-      <p className="inspect-tab-guide-desc">{guide.description}</p>
       {guide.state === 'loading' && (
         <InlineLoading message="Loading live details from the cluster…" className="inspect-tab-guide-status muted" />
       )}
       {guide.state === 'empty' && (
         <p className="inspect-tab-guide-status muted">{guide.emptyHint}</p>
-      )}
-      {guide.state === 'ready' && guide.scanFor && (
-        <p className="inspect-tab-guide-scan muted">
-          <span className="inspect-tab-guide-scan-label">Look for</span>
-          <span>{guide.scanFor}</span>
-        </p>
       )}
       {(guide.state === 'empty' || guide.state === 'loading') && guide.whenAvailable && (
         <p className="inspect-tab-guide-when muted">{guide.whenAvailable}</p>

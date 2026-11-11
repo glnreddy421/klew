@@ -37,7 +37,7 @@ export function ChangeDiffTable({ change }) {
   )
 }
 
-function ChangeRow({ change, now }) {
+function ChangeRow({ change, now, prevRevision, onCompare }) {
   const [open, setOpen] = useState(false)
   const actor = actorBadge(change.actor)
   const source = sourceLabel(change.source)
@@ -56,12 +56,21 @@ function ChangeRow({ change, now }) {
         {change.changeCause && <span className="changes-cause muted" title={change.changeCause}>{change.changeCause}</span>}
       </button>
       {open && <ChangeDiffTable change={change} />}
+      {open && onCompare && change.revision > 0 && prevRevision > 0 && (
+        <button
+          type="button"
+          className="changes-compare-link"
+          onClick={() => onCompare({ from: prevRevision, to: change.revision })}
+        >
+          Compare YAML with rev {prevRevision}
+        </button>
+      )}
     </li>
   )
 }
 
 /** Inspector → Changes tab. */
-export function ChangesTab({ state, now = new Date() }) {
+export function ChangesTab({ state, onCompare, now = new Date() }) {
   const { data, loading, error } = state || {}
   if (!data && loading) return <InlineLoading message="Loading revision history…" className="muted" />
   if (error && !data) return <p className="changes-state tone-warn">{error}</p>
@@ -73,7 +82,15 @@ export function ChangesTab({ state, now = new Date() }) {
     <section className="changes-tab">
       {data.helmNote && <p className="changes-note muted">{data.helmNote}</p>}
       <ol className="changes-timeline">
-        {changes.map((c, i) => <ChangeRow key={`${c.revision}-${c.helmRevision ?? ''}-${i}`} change={c} now={now} />)}
+        {changes.map((c, i) => (
+          <ChangeRow
+            key={`${c.revision}-${c.helmRevision ?? ''}-${i}`}
+            change={c}
+            now={now}
+            prevRevision={changes.slice(i + 1).find((x) => x.revision > 0 && x.revision !== c.revision)?.revision}
+            onCompare={onCompare}
+          />
+        ))}
       </ol>
       <p className="changes-footer muted">{historyFooter(data)}</p>
     </section>

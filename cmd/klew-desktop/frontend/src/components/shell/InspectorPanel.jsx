@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { KindIcon } from '../KindIcon.jsx'
 import { LoadingBar } from '../LoadingSpinner.jsx'
 import { useScopeBrowse } from '../../context/ScopeBrowseContext.jsx'
@@ -10,9 +10,47 @@ import { InspectorHeaderActions } from './InspectorHeaderActions.jsx'
 import { useInvestigable } from '../../context/InvestigableContext.jsx'
 import { rowInvestigateState } from '../../lib/investigable.js'
 import { inspectScope } from '../../lib/inspectScope.js'
+import { resolveInspectRef } from '../../lib/inspectEnrich.js'
 import { canStreamKind, streamLogsTitle } from '../../lib/logStream.js'
 import { useLogStreamActions } from '../../context/LogStreamContext.jsx'
-import { ResourceManifestView } from './ResourceManifestView.jsx'
+import { InspectorManifestProvider } from '../../context/InspectorManifestContext.jsx'
+import {
+  canStepInspectHistory,
+  EMPTY_INSPECT_HISTORY,
+  stepInspectHistory,
+  visitInspectKey,
+} from '../../lib/inspectHistory.js'
+
+/** Back / forward through the objects opened in the inspector. */
+function useInspectHistory(currentKey, open) {
+  const [history, setHistory] = useState(EMPTY_INSPECT_HISTORY)
+  const steppingRef = useRef(false)
+
+  useEffect(() => {
+    if (!currentKey) return
+    // A step already moved the index; only fresh opens are recorded.
+    if (steppingRef.current) {
+      steppingRef.current = false
+      return
+    }
+    setHistory((h) => visitInspectKey(h, currentKey))
+  }, [currentKey])
+
+  const step = useCallback((delta) => {
+    const result = stepInspectHistory(history, delta)
+    if (!result) return
+    steppingRef.current = true
+    setHistory(result.history)
+    open?.(result.key)
+  }, [history, open])
+
+  return {
+    back: () => step(-1),
+    forward: () => step(1),
+    canBack: canStepInspectHistory(history, -1),
+    canForward: canStepInspectHistory(history, 1),
+  }
+}
 
 function statusTone(inspect, inspectRow) {
   const raw = inspect?.status?.tone || inspectRow?.status || 'unknown'
@@ -20,7 +58,7 @@ function statusTone(inspect, inspectRow) {
 }
 
 /**
- * Inspector chrome + body with optional read-only kubectl manifest view.
+ * Inspector chrome + body. The read-only kubectl manifest is the details' YAML tab.
  */
 export function InspectorPanel({
   placement = 'right',
@@ -32,9 +70,9 @@ export function InspectorPanel({
 }) {
   const workbench = useResourcesWorkbench()
   const browse = useScopeBrowse()
-  const [manifestOpen, setManifestOpen] = useState(false)
 
   const inspectRow = workbench?.inspectRow
+  const nav = useInspectHistory(workbench?.inspectKey, workbench?.handleInspect)
   const inspect = workbench?.inspect
   const detailLoading = workbench?.detailLoading
   const kindGroup = browse?.nav?.selectedKindGroup || browse?.effectiveKindGroup
@@ -47,6 +85,10 @@ export function InspectorPanel({
     tree: browse?.tree,
     kindGroup,
   })
+  const detailNamespace = inspect?.namespace
+  const namespaceRef = detailNamespace && scope.namespaced && workbench?.handleInspect
+    ? resolveInspectRef(detailNamespace, { fieldKey: 'Namespace', inspectNamespace: detailNamespace })
+    : null
   const statusLabel = inspect?.status?.label
     || (inspectRow?.status === 'healthy' ? 'Ready' : inspectRow?.signal)
     || null
@@ -57,15 +99,15 @@ export function InspectorPanel({
     () => buildManifestTarget(inspectRow, kindGroup),
     [inspectRow, kindGroup],
   )
-  const manifestEnabled = Boolean(manifestTarget)
+  const manifestCluster = cluster || workbench?.cluster
+  const manifestValue = useMemo(
+    () => (manifestTarget ? { target: manifestTarget, cluster: manifestCluster } : null),
+    [manifestTarget, manifestCluster],
+  )
   const podStreamContainers = useMemo(() => {
     const t = resolvePodLogsTarget(inspectRow, workbench?.view)
     return t?.containers || []
   }, [inspectRow, workbench?.view])
-
-  useEffect(() => {
-    setManifestOpen(false)
-  }, [inspectRow?.key])
 
   const logStreamActions = useLogStreamActions()
   const streamResource = useMemo(() => {
@@ -88,6 +130,34 @@ export function InspectorPanel({
     <>
       <header className={`inspector-header ${inspectRow ? `tone-${tone}` : ''}`.trim()}>
         <div className="inspector-header-brand">
+          {(nav.canBack || nav.canForward) && (
+            <div className="inspector-history" role="group" aria-label="Inspector history">
+              <button
+                type="button"
+                className="inspector-history-btn"
+                onClick={nav.back}
+                disabled={!nav.canBack}
+                title="Back to the previous object"
+                aria-label="Back"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <path d="M15 6l-6 6 6 6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                className="inspector-history-btn"
+                onClick={nav.forward}
+                disabled={!nav.canForward}
+                title="Forward to the next object"
+                aria-label="Forward"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            </div>
+          )}
           {inspectRow ? (
             <>
               <span className={`inspector-accent-led tone-${tone}`} aria-hidden="true" />
@@ -95,9 +165,6 @@ export function InspectorPanel({
                 <KindIcon kind={inspectRow.kind} size={16} />
               </span>
               <div className="inspector-header-copy">
-                {manifestOpen ? (
-                  <span className="inspector-header-kicker">Manifest</span>
-                ) : null}
                 <h2 className="inspector-header-name" title={inspectRow.name}>
                   {inspectRow.name}
                 </h2>
@@ -106,7 +173,18 @@ export function InspectorPanel({
                   {scope.label ? (
                     <>
                       <span className="inspect-meta-sep">·</span>
-                      <span className={scope.namespaced ? 'mono' : undefined}>{scope.label}</span>
+                      {namespaceRef ? (
+                        <button
+                          type="button"
+                          className="inspector-header-ns mono"
+                          onClick={() => workbench.handleInspect(namespaceRef.key)}
+                          title={`Open Namespace/${detailNamespace}`}
+                        >
+                          {scope.label}
+                        </button>
+                      ) : (
+                        <span className={scope.namespaced ? 'mono' : undefined}>{scope.label}</span>
+                      )}
                     </>
                   ) : null}
                   {statusLabel && !detailLoading ? (
@@ -129,9 +207,6 @@ export function InspectorPanel({
           placement={placement}
           onPlacementChange={onPlacementChange}
           onClose={onClose}
-          manifestOpen={manifestOpen}
-          manifestEnabled={manifestEnabled}
-          onToggleManifest={() => setManifestOpen((v) => !v)}
           podStreamContainers={podStreamContainers}
           investigateEnabled={Boolean(onInvestigate && inspectRow?.kind && inspectRow?.name && investigate.ok)}
           investigateTitle={investigate.title}
@@ -153,20 +228,10 @@ export function InspectorPanel({
         <LoadingBar className="inspector-loading-bar" label="Loading details" />
       ) : null}
       <div className="inspector-body">
-        {manifestTarget ? (
-          <div className="inspector-pane inspector-pane-manifest" hidden={!manifestOpen}>
-            <ResourceManifestView
-              target={manifestTarget}
-              cluster={cluster || workbench?.cluster}
-              onClose={() => setManifestOpen(false)}
-            />
-          </div>
-        ) : null}
-        <div
-          className="inspector-pane inspector-pane-details"
-          hidden={Boolean(manifestOpen && manifestTarget)}
-        >
-          {children}
+        <div className="inspector-pane inspector-pane-details">
+          <InspectorManifestProvider value={manifestValue}>
+            {children}
+          </InspectorManifestProvider>
         </div>
       </div>
     </>

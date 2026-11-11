@@ -70,6 +70,10 @@ export function GetResourceManifest(arg1) {
   return window['go']['main']['App']['GetResourceManifest'](arg1);
 }
 
+export function GetRevisionCompare(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['GetRevisionCompare'](arg1, arg2, arg3, arg4, arg5);
+}
+
 export function GetTerminalShellChoices() {
   return window['go']['main']['App']['GetTerminalShellChoices']();
 }
