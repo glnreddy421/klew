@@ -4,6 +4,10 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 
 ## [Unreleased]
 
+### Security
+
+- **Go toolchain** — builds use Go 1.26.11, which fixes a reachable `net/http` vulnerability in Go 1.26.10 ([GO-2026-6859](https://pkg.go.dev/vuln/GO-2026-6859)).
+
 ### Fixed
 
 - **`klew mcp -extensions-dir`** with a folder that does not exist now stops with "is not a directory" (exit status 2), as `klew investigate` does, instead of loading no rules and reporting no problems.

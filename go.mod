@@ -2,7 +2,7 @@ module github.com/glnreddy421/klew/v2
 
 go 1.26.0
 
-toolchain go1.26.10
+toolchain go1.26.11
 
 require (
 	cel.dev/cel-go v0.33.2
