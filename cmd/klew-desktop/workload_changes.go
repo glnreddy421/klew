@@ -27,6 +27,22 @@ func (a *App) GetWorkloadChanges(kind, namespace, name string) (model.WorkloadCh
 	return service.WorkloadChanges(ctx, client, kind, ns, name)
 }
 
+// GetRevisionCompare returns two stored revisions of a Deployment,
+// StatefulSet or DaemonSet as pod-template YAML for the inspector's Compare
+// tab. Read-only; secret-like values are redacted, best effort.
+func (a *App) GetRevisionCompare(kind, namespace, name string, from, to int64) (model.RevisionCompare, error) {
+	client, ns, err := a.resolveBrowseClient(namespace)
+	if err != nil {
+		return model.RevisionCompare{}, err
+	}
+	if name == "" {
+		return model.RevisionCompare{}, fmt.Errorf("workload name is required")
+	}
+	ctx, cancel := context.WithTimeout(a.baseContext(), workloadChangesTimeout)
+	defer cancel()
+	return changes.CompareRevisions(ctx, client.Clientset, kind, ns, name, from, to)
+}
+
 // GetPodRevision reports which workload revision a Pod runs and whether it is
 // behind the current one.
 func (a *App) GetPodRevision(namespace, name string) (model.PodRevision, error) {

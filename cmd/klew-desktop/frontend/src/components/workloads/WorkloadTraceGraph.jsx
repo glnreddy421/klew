@@ -7,6 +7,7 @@ export function WorkloadTraceGraph({
   loading = false,
   onInspect,
   compact = false,
+  showHeader = true,
 }) {
   const nodes = trace?.nodes || []
   const edges = trace?.edges || []
@@ -15,7 +16,7 @@ export function WorkloadTraceGraph({
     return (
       <section className={`workload-trace ${compact ? 'is-compact' : ''}`} aria-busy="true">
         <header className="workload-trace-head">
-          <h5 className="workload-trace-title">Connection trace</h5>
+          {showHeader && <h5 className="workload-trace-title">Connection trace</h5>}
           <InlineLoading label="Loading related resources…" />
         </header>
         <div className="workload-trace-skeleton" aria-hidden="true">
@@ -29,6 +30,7 @@ export function WorkloadTraceGraph({
 
   return (
     <section className={`workload-trace ${compact ? 'is-compact' : ''}`}>
+      {showHeader && (
       <header className="workload-trace-head">
         <div className="workload-trace-head-copy">
           <h5 className="workload-trace-title">Connection trace</h5>
@@ -38,6 +40,7 @@ export function WorkloadTraceGraph({
           </p>
         </div>
       </header>
+      )}
 
       <div className="workload-trace-scroll">
         <div className="workload-trace-track" role="list">
@@ -60,7 +63,7 @@ export function WorkloadTraceGraph({
                   <KindIcon kind={node.kind} size={16} />
                 </span>
                 <span className="workload-trace-node-kind">{node.kind}</span>
-                <span className="workload-trace-node-name mono">{shortenNodeName(node.name, 22)}</span>
+                <span className="workload-trace-node-name mono">{compact ? node.name : shortenNodeName(node.name, 22)}</span>
                 {node.extraCount > 0 && (
                   <span className="workload-trace-node-more">+{node.extraCount}</span>
                 )}

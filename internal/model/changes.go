@@ -108,3 +108,25 @@ type PinnedChange struct {
 	// BeforeIncident is true when the change preceded the first incident.
 	BeforeIncident bool `json:"beforeIncident,omitempty"`
 }
+
+// RevisionYAML is one stored revision's pod template as YAML.
+type RevisionYAML struct {
+	Revision   int64     `json:"revision"`
+	ObjectName string    `json:"objectName,omitempty"`
+	Time       Timestamp `json:"time"`
+	YAML       string    `json:"yaml"`
+}
+
+// RevisionCompare holds two revisions of one workload's pod template as YAML,
+// for the inspector's Compare tab. Secret-like values are redacted, best effort.
+type RevisionCompare struct {
+	Kind          string       `json:"kind"`
+	Namespace     string       `json:"namespace"`
+	Name          string       `json:"name"`
+	From          RevisionYAML `json:"from"`
+	To            RevisionYAML `json:"to"`
+	AccessState   string       `json:"accessState"`
+	AccessMessage string       `json:"accessMessage,omitempty"`
+	// Redacted counts values hidden on either side.
+	Redacted int `json:"redacted,omitempty"`
+}

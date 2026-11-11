@@ -78,6 +78,13 @@ func deploymentChanges(out model.WorkloadChanges, d *appsv1.Deployment, replicaS
 	out.UID, out.Generation = string(d.UID), d.Generation
 	out.HistoryLimit = historyLimit(d.Spec.RevisionHistoryLimit)
 	out.HelmRelease = helmReleaseOf(d.Annotations)
+	out.Changes = buildChanges(deploymentRevisions(d, replicaSets), d.ManagedFields)
+	finish(&out)
+	return out
+}
+
+// deploymentRevisions is one revision per ReplicaSet the Deployment owns.
+func deploymentRevisions(d *appsv1.Deployment, replicaSets []appsv1.ReplicaSet) []revision {
 	var revs []revision
 	for i := range replicaSets {
 		rs := &replicaSets[i]
@@ -104,12 +111,26 @@ func deploymentChanges(out model.WorkloadChanges, d *appsv1.Deployment, replicaS
 		}
 		revs = append(revs, r)
 	}
-	out.Changes = buildChanges(revs, d.ManagedFields)
-	finish(&out)
-	return out
+	return revs
 }
 
 func forControllerRevisions(ctx context.Context, cs kubernetes.Interface, out model.WorkloadChanges) (model.WorkloadChanges, error) {
+	out, revs, managed, currentCR, err := controllerRevisions(ctx, cs, out)
+	if err != nil || out.AccessState != model.ChangesAccessAllowed {
+		return out, err
+	}
+	out.Changes = buildChanges(revs, managed)
+	if currentCR != "" {
+		for i := range out.Changes {
+			out.Changes[i].Current = out.Changes[i].ObjectName == currentCR
+		}
+	}
+	finish(&out)
+	return out, nil
+}
+
+// controllerRevisions reads a StatefulSet's or DaemonSet's stored revisions.
+func controllerRevisions(ctx context.Context, cs kubernetes.Interface, out model.WorkloadChanges) (model.WorkloadChanges, []revision, []metav1.ManagedFieldsEntry, string, error) {
 	var (
 		uid       types.UID
 		selector  *metav1.LabelSelector
@@ -120,7 +141,8 @@ func forControllerRevisions(ctx context.Context, cs kubernetes.Interface, out mo
 	case "StatefulSet":
 		s, err := cs.AppsV1().StatefulSets(out.Namespace).Get(ctx, out.Name, metav1.GetOptions{})
 		if err != nil {
-			return deniedOr(out, err, "statefulsets get")
+			out, err = deniedOr(out, err, "statefulsets get")
+			return out, nil, nil, "", err
 		}
 		uid, selector, managed, currentCR = s.UID, s.Spec.Selector, s.ManagedFields, s.Status.UpdateRevision
 		out.UID, out.Generation = string(s.UID), s.Generation
@@ -129,7 +151,8 @@ func forControllerRevisions(ctx context.Context, cs kubernetes.Interface, out mo
 	default:
 		ds, err := cs.AppsV1().DaemonSets(out.Namespace).Get(ctx, out.Name, metav1.GetOptions{})
 		if err != nil {
-			return deniedOr(out, err, "daemonsets get")
+			out, err = deniedOr(out, err, "daemonsets get")
+			return out, nil, nil, "", err
 		}
 		uid, selector, managed = ds.UID, ds.Spec.Selector, ds.ManagedFields
 		out.UID, out.Generation = string(ds.UID), ds.Generation
@@ -138,11 +161,12 @@ func forControllerRevisions(ctx context.Context, cs kubernetes.Interface, out mo
 	}
 	sel, err := metav1.LabelSelectorAsSelector(selector)
 	if err != nil {
-		return out, err
+		return out, nil, nil, "", err
 	}
 	list, err := cs.AppsV1().ControllerRevisions(out.Namespace).List(ctx, metav1.ListOptions{LabelSelector: sel.String()})
 	if err != nil {
-		return deniedOr(out, err, "controllerrevisions list")
+		out, err = deniedOr(out, err, "controllerrevisions list")
+		return out, nil, nil, "", err
 	}
 	var revs []revision
 	for i := range list.Items {
@@ -171,14 +195,7 @@ func forControllerRevisions(ctx context.Context, cs kubernetes.Interface, out mo
 			}
 		}
 	}
-	out.Changes = buildChanges(revs, managed)
-	if currentCR != "" {
-		for i := range out.Changes {
-			out.Changes[i].Current = out.Changes[i].ObjectName == currentCR
-		}
-	}
-	finish(&out)
-	return out, nil
+	return out, revs, managed, currentCR, nil
 }
 
 // DecodeControllerRevision reads the pod template stored in a ControllerRevision

@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { KindIcon } from '../KindIcon'
+import { HeaderSlot } from '../../context/HeaderSlotContext.jsx'
 import { isAccessDenied, isAccessError, isUnavailable, kindDisplayLabel, resourceMetadataTitle } from '../../lib/resourceCatalog.js'
-import { resourceCategoryToneClass } from '../../lib/resourceCategoryIcons.js'
 import { singleBrowseScope, normalizeBrowseScope } from '../../lib/browseScope.js'
 import {
   enrichEntitiesForTable,
@@ -43,6 +42,8 @@ import { rowKeysMatch } from '../../lib/matches.js'
 
 /** Fixed width for the log-stream checkbox column (not in column picker / persisted widths). */
 const STREAM_PICK_COLUMN_PX = 40
+/** Trailing header cell that holds the column picker. */
+const TOOLS_COLUMN_PX = 36
 
 function StatusCell({ row }) {
   const tone = row.status || 'unknown'
@@ -115,7 +116,91 @@ function ColumnResizeHandle({ col, width, onResizeStart, onFit, onNudge }) {
   )
 }
 
-function SortableColumnHeader({ col, sort, onSort, width, resize }) {
+/** Header checkbox for the pick column: all, none, or some (indeterminate). */
+function SelectAllCheckbox({ total, picked, onChange }) {
+  const ref = useRef(null)
+  const all = total > 0 && picked === total
+  const some = picked > 0 && !all
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = some
+  }, [some])
+  return (
+    <label className="entity-table-stream-pick" title={all ? 'Clear selection' : 'Select all rows'}>
+      <input
+        ref={ref}
+        type="checkbox"
+        checked={all}
+        disabled={total === 0}
+        onChange={onChange}
+        aria-label={all ? 'Clear selection' : `Select all ${total} rows`}
+      />
+    </label>
+  )
+}
+
+/** Right-click menu on a column header: hide it or fit its width. */
+function ColumnHeaderMenu({ menu, onHide, onFit, onClose }) {
+  const ref = useRef(null)
+  useEffect(() => {
+    if (!menu) return undefined
+    function onDoc(e) {
+      if (!ref.current?.contains(e.target)) onClose()
+    }
+    function onKey(e) {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('mousedown', onDoc)
+    document.addEventListener('keydown', onKey)
+    window.addEventListener('blur', onClose)
+    window.addEventListener('resize', onClose)
+    document.addEventListener('scroll', onClose, true)
+    return () => {
+      document.removeEventListener('mousedown', onDoc)
+      document.removeEventListener('keydown', onKey)
+      window.removeEventListener('blur', onClose)
+      window.removeEventListener('resize', onClose)
+      document.removeEventListener('scroll', onClose, true)
+    }
+  }, [menu, onClose])
+
+  if (!menu) return null
+  const { col, x, y, canHide } = menu
+  const left = Math.max(8, Math.min(x, window.innerWidth - 188))
+  const top = Math.max(8, Math.min(y, window.innerHeight - 90))
+  return createPortal(
+    <div
+      ref={ref}
+      className="entity-table-header-menu"
+      role="menu"
+      aria-label={`${col.label} column`}
+      style={{ left, top }}
+    >
+      <button
+        type="button"
+        role="menuitem"
+        className="entity-table-header-menu-item"
+        disabled={!canHide}
+        title={canHide ? undefined : (col.required ? 'This column is always shown' : 'At least one column stays visible')}
+        onClick={() => { onHide(col.id); onClose() }}
+      >
+        Hide “{col.label}”
+      </button>
+      {onFit && (
+        <button
+          type="button"
+          role="menuitem"
+          className="entity-table-header-menu-item"
+          onClick={() => { onFit(col.id); onClose() }}
+        >
+          Fit width to content
+        </button>
+      )}
+    </div>,
+    document.body,
+  )
+}
+
+function SortableColumnHeader({ col, sort, onSort, width, resize, onContextMenu }) {
   const active = sort.columnId === col.id
   const ascending = active && sort.direction === 'asc'
   const descending = active && sort.direction === 'desc'
@@ -126,6 +211,10 @@ function SortableColumnHeader({ col, sort, onSort, width, resize }) {
       data-col-id={col.id}
       className={[col.className, 'entity-table-sortable', active ? 'is-sorted' : ''].filter(Boolean).join(' ')}
       aria-sort={active ? (ascending ? 'ascending' : 'descending') : 'none'}
+      onContextMenu={onContextMenu ? (e) => {
+        e.preventDefault()
+        onContextMenu(col, e.clientX, e.clientY)
+      } : undefined}
     >
       <button
         type="button"
@@ -633,6 +722,7 @@ function TableRow({
           }
         }
       })}
+      <td className="entity-table-col-tools" aria-hidden="true" />
     </tr>
   )
 }
@@ -643,7 +733,6 @@ function TableRow({
 export function EntityTable({
   kind,
   kindGroup,
-  categoryId = '',
   entities = [],
   filteredEntities = [],
   entitiesLoading = false,
@@ -721,6 +810,18 @@ export function EntityTable({
     [fitColumn, nudgeColumn, startColumnResize],
   )
 
+  // Right-click a header to hide that column. Name (required) and the last
+  // visible column cannot be hidden; the ⋮ picker brings columns back.
+  const [headerMenu, setHeaderMenu] = useState(null)
+  const closeHeaderMenu = useCallback(() => setHeaderMenu(null), [])
+  const openHeaderMenu = useCallback((col, x, y) => {
+    setHeaderMenu({ col, x, y, canHide: !col.required && visibleIds.length > 1 })
+  }, [visibleIds.length])
+  const hideColumn = useCallback((colId) => {
+    if (visibleIds.length <= 1) return
+    setVisibleIds(visibleIds.filter((id) => id !== colId))
+  }, [visibleIds, setVisibleIds])
+
   useEffect(() => {
     setSort({ columnId: 'name', direction: 'asc' })
   }, [resolvedKind])
@@ -747,7 +848,9 @@ export function EntityTable({
   const logStreamActions = useLogStreamActions()
   const multiPick = Boolean(logStreamActions) && canStreamKind(resolvedKind)
   const tableWidthPx = useMemo(
-    () => (manualWidths ? STREAM_PICK_COLUMN_PX * (multiPick ? 1 : 0) + totalColumnWidth(widths, layoutIds) : undefined),
+    () => (manualWidths
+      ? STREAM_PICK_COLUMN_PX * (multiPick ? 1 : 0) + TOOLS_COLUMN_PX + totalColumnWidth(widths, layoutIds)
+      : undefined),
     [manualWidths, multiPick, widths, layoutIds],
   )
   const [picked, setPicked] = useState(() => new Set())
@@ -782,6 +885,19 @@ export function EntityTable({
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [picked.size])
+
+  // Header box: picks every row in view, or clears them when all are picked.
+  const pickedVisibleCount = useMemo(
+    () => sortedRows.reduce((n, r) => (picked.has(r.key) ? n + 1 : n), 0),
+    [sortedRows, picked],
+  )
+  const toggleAllPicked = useCallback(() => {
+    if (!multiPick) return
+    pickAnchor.current = ''
+    setPicked(pickedVisibleCount === sortedRows.length
+      ? new Set()
+      : new Set(sortedRows.map((r) => r.key)))
+  }, [multiPick, pickedVisibleCount, sortedRows])
 
   const toggleStreamPick = useCallback((key, e) => {
     if (!multiPick) return
@@ -854,60 +970,35 @@ export function EntityTable({
     && !catalogPending
     && (isAccessDenied(kindGroup) || isUnavailable(kindGroup) || isAccessError(kindGroup))
 
-  const toneClass = resourceCategoryToneClass(categoryId)
+  const apiPath = kindGroup && (kindGroup.apiVersion || kindGroup.group)
+    ? `${kindGroup.group || 'core'}/${kindGroup.resource || kind}`
+    : kind
+  const badgeTitle = [apiPath, kindGroup ? resourceMetadataTitle(kindGroup) : '']
+    .filter(Boolean)
+    .join('\n')
 
   return (
     <section ref={sectionRef} className="entity-table" aria-label={`${label} entities`}>
-      <header className={`entity-table-header ${toneClass}`.trim()}>
-        <div className="entity-table-heading">
-          {kind ? (
-            <span className="entity-table-icon-badge">
-              <KindIcon kind={kind} size={16} />
+      {/* Kind, count and column controls live in the toolbar row, not a band of their own. */}
+      <HeaderSlot name="entity-title">
+        <h4 className="entity-kind-badge" title={badgeTitle}>
+          <span className="entity-kind-badge-label">{label}</span>
+          {resolvedKind === 'Endpoints' && (
+            <span className="entity-table-legacy-tag">legacy</span>
+          )}
+          {!accessBlocked && (
+            <span className="entity-kind-badge-count">
+              {entitiesLoading && entities.length === 0 ? '…' : entities.length}
             </span>
-          ) : null}
-          <div className="entity-table-heading-copy">
-            <div className="entity-table-heading-row">
-              <h4 className="entity-table-title">
-                {label}
-                {resolvedKind === 'Endpoints' && (
-                  <span className="entity-table-legacy-tag">legacy</span>
-                )}
-              </h4>
-              {!accessBlocked && (
-                <span className="entity-table-count">
-                  {entitiesLoading && entities.length === 0 ? '…' : entities.length}
-                </span>
-              )}
-            </div>
-            {kindGroup && (
-              <p className="entity-table-meta" title={resourceMetadataTitle(kindGroup)}>
-                <span className="entity-table-api mono">
-                  {kindGroup.apiVersion || kindGroup.group
-                    ? `${kindGroup.group || 'core'}/${kindGroup.resource || kind}`
-                    : kind}
-                </span>
-              </p>
-            )}
-          </div>
-          {!accessBlocked && manualWidths && (
-            <button
-              type="button"
-              className="text-link-btn entity-table-reset-widths"
-              onClick={resetWidths}
-              title="Return all columns to automatic widths"
-            >
-              Auto widths
-            </button>
           )}
-          {!accessBlocked && selectable.length > 0 && (
-            <EntityTableColumnPicker
-              columns={selectable}
-              visibleIds={visibleIds}
-              onChange={setVisibleIds}
-            />
-          )}
-        </div>
-      </header>
+        </h4>
+      </HeaderSlot>
+      <ColumnHeaderMenu
+        menu={headerMenu}
+        onHide={hideColumn}
+        onFit={columnResize?.onFit}
+        onClose={closeHeaderMenu}
+      />
 
       <div className="entity-table-body">
         {accessBlocked ? (
@@ -971,13 +1062,18 @@ export function EntityTable({
                   {layoutIds.map((id) => (
                     <col key={id} style={{ width: `${completeColumnWidths(widths, [id])[id]}px` }} />
                   ))}
+                  <col className="col-tools" style={{ width: `${TOOLS_COLUMN_PX}px` }} />
                 </colgroup>
               )}
               <thead>
                 <tr>
                   {multiPick && (
                     <th className="entity-table-col-stream-pick" scope="col">
-                      <span className="sr-only">Pick for log stream</span>
+                      <SelectAllCheckbox
+                        total={sortedRows.length}
+                        picked={pickedVisibleCount}
+                        onChange={toggleAllPicked}
+                      />
                     </th>
                   )}
                   {columns.map((col) => (
@@ -988,8 +1084,19 @@ export function EntityTable({
                       onSort={handleSort}
                       width={widths[col.id]}
                       resize={columnResize}
+                      onContextMenu={openHeaderMenu}
                     />
                   ))}
+                  <th className="entity-table-col-tools" scope="col">
+                    {selectable.length > 0 && (
+                      <EntityTableColumnPicker
+                        columns={selectable}
+                        visibleIds={visibleIds}
+                        onChange={setVisibleIds}
+                        onAutoWidths={manualWidths ? resetWidths : undefined}
+                      />
+                    )}
+                  </th>
                 </tr>
               </thead>
               <tbody>

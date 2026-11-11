@@ -12,7 +12,7 @@ import { clusterScopeKey, useLazyResourceCounts } from '../../hooks/useLazyResou
 import { useScopeBrowse } from '../../context/ScopeBrowseContext.jsx'
 import { InlineLoading } from '../LoadingSpinner.jsx'
 import { useShellInspector } from '../../context/ShellInspectorContext.jsx'
-import { HeaderSlot } from '../../context/HeaderSlotContext.jsx'
+import { HeaderSlot, useHeaderSlotRef } from '../../context/HeaderSlotContext.jsx'
 import { DataAgeLabel } from '../DataAgeLabel.jsx'
 import { RefreshButton } from '../RefreshButton.jsx'
 import { ResourceNav } from './ResourceNav.jsx'
@@ -127,12 +127,15 @@ export function ScopePanel({
     reconnectBusy,
   }
 
+  const entityTitleSlot = useHeaderSlotRef('entity-title')
+
   return (
     <div className="scope-panel scope-panel-browse">
       {/* Shares the Watch / Investigate bar's row when that bar is shown. */}
       <HeaderSlot name="tools">
       <div className="scope-toolbar">
         <div className="scope-toolbar-controls">
+          {!isOverview && <div className="scope-toolbar-slot" ref={entityTitleSlot} />}
           {!isOverview && (
           <input
             type="search"

@@ -133,7 +133,8 @@ function ManifestYamlDisplay({ text }) {
   return <YamlHighlightedViewer lines={deferredMeta.lines} />
 }
 
-export function ResourceManifestView({ target, cluster, onClose }) {
+/** embedded: shown inside the inspector's YAML tab, where the tab already names the object. */
+export function ResourceManifestView({ target, cluster, onClose, embedded = false }) {
   const { manifest, loading, refreshing, error, refresh } = useResourceManifest(target, cluster)
   const command = manifest?.command || ''
   const yaml = manifest?.yaml || ''
@@ -158,12 +159,14 @@ export function ResourceManifestView({ target, cluster, onClose }) {
   }
 
   return (
-    <div className="resource-manifest">
+    <div className={`resource-manifest${embedded ? ' is-embedded' : ''}`}>
       <div className="resource-manifest-toolbar">
+        {!embedded && (
         <div className="resource-manifest-title-block">
           <span className="resource-manifest-kicker">kubectl get -o yaml</span>
           <strong className="resource-manifest-title mono">{title}</strong>
         </div>
+        )}
         <div className="resource-manifest-actions">
           {(refreshing || highlighting) && (
             <InlineLoading

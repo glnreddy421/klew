@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   CATEGORY_OVERVIEW_KIND,
   entitiesForKind,
+  filterCategoriesByQuery,
   filterEntitiesBySearch,
   pickDefaultKindSelection,
   resolveKindSelection,
@@ -159,5 +160,39 @@ describe('expandGroup', () => {
   it('returns the same set when already open (no re-render)', () => {
     const prev = new Set(['workloads', 'network'])
     expect(expandGroup(prev, 'network')).toBe(prev)
+  })
+})
+
+describe('filterCategoriesByQuery', () => {
+  const cats = [
+    { id: 'workloads', kinds: [
+      { kind: 'Pod', label: 'Pods', resource: 'pods' },
+      { kind: 'Deployment', label: 'Deployments', resource: 'deployments', group: 'apps' },
+    ] },
+    { id: 'network', kinds: [
+      { kind: 'Service', label: 'Services', resource: 'services' },
+      { kind: 'NetworkPolicy', label: 'NetworkPolicies', resource: 'networkpolicies', group: 'networking.k8s.io' },
+    ] },
+  ]
+
+  it('returns everything for an empty query', () => {
+    expect(filterCategoriesByQuery(cats, '  ').categories).toBe(cats)
+  })
+
+  it('matches labels and drops empty categories', () => {
+    const { categories, best } = filterCategoriesByQuery(cats, 'deploy')
+    expect(categories.map((c) => c.id)).toEqual(['workloads'])
+    expect(categories[0].kinds.map((k) => k.kind)).toEqual(['Deployment'])
+    expect(best.kindGroup.kind).toBe('Deployment')
+  })
+
+  it('understands kubectl short names', () => {
+    expect(filterCategoriesByQuery(cats, 'svc').best.kindGroup.kind).toBe('Service')
+    expect(filterCategoriesByQuery(cats, 'po').best.kindGroup.kind).toBe('Pod')
+  })
+
+  it('prefers a prefix match over a substring match', () => {
+    const { best } = filterCategoriesByQuery(cats, 'net')
+    expect(best.kindGroup.kind).toBe('NetworkPolicy')
   })
 })

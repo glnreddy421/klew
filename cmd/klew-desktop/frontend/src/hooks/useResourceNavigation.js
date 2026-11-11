@@ -11,13 +11,14 @@ import {
   visibleCategories,
 } from '../lib/resourceNavigation.js'
 
-const DEFAULT_EXPANDED = new Set(['workloads'])
-
 /**
  * Resource navigation state — independently expandable groups, kind selection.
+ * Every category starts expanded the first time it appears; collapsing is
+ * remembered for the life of the view.
  */
 export function useResourceNavigation(tree, { enabled = true } = {}) {
-  const [expandedGroups, setExpandedGroups] = useState(() => new Set(DEFAULT_EXPANDED))
+  const [expandedGroups, setExpandedGroups] = useState(() => new Set())
+  const seenGroupsRef = useRef(new Set())
   const [selectedGroupId, setSelectedGroupId] = useState(null)
   const [selectedKind, setSelectedKind] = useState(null)
   const [selectedResourceId, setSelectedResourceId] = useState(null)
@@ -28,6 +29,15 @@ export function useResourceNavigation(tree, { enabled = true } = {}) {
     () => (enabled ? visibleCategories(tree, showEmptyKinds) : []),
     [tree, showEmptyKinds, enabled],
   )
+
+  // Expand categories on first sight only, so a group the user collapsed
+  // stays collapsed when counts refresh.
+  useEffect(() => {
+    const fresh = categories.map((c) => c.id).filter((id) => !seenGroupsRef.current.has(id))
+    if (!fresh.length) return
+    fresh.forEach((id) => seenGroupsRef.current.add(id))
+    setExpandedGroups((prev) => new Set([...prev, ...fresh]))
+  }, [categories])
 
   const selectionRef = useRef({ selectedGroupId, selectedKind, selectedResourceId })
   selectionRef.current = { selectedGroupId, selectedKind, selectedResourceId }

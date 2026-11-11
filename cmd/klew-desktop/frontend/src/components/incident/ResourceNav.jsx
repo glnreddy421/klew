@@ -1,6 +1,10 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { getKindCountDisplay, resourceMetadataTitle } from '../../lib/resourceCatalog.js'
-import { categorySupportsOverview, isCategoryOverview } from '../../lib/resourceNavigation.js'
+import {
+  categorySupportsOverview,
+  filterCategoriesByQuery,
+  isCategoryOverview,
+} from '../../lib/resourceNavigation.js'
 import { resourceCategoryToneClass } from '../../lib/resourceCategoryIcons.js'
 import { ResourceCategoryIcon } from '../ResourceCategoryIcon.jsx'
 
@@ -12,6 +16,10 @@ function Chevron({ open }) {
       </svg>
     </span>
   )
+}
+
+function kindKey(kindGroup) {
+  return kindGroup.resourceId || kindGroup.kind
 }
 
 function countLabel(kindGroup, countsLoading) {
@@ -30,6 +38,8 @@ function ResourceKindList({
   onSelectKind,
   onSelectOverview,
   countsLoading = false,
+  filtering = false,
+  bestKey = null,
 }) {
   const activeInGroup = selectedGroupId === category.id
   const overviewSelected = activeInGroup && isCategoryOverview(selectedKind)
@@ -37,7 +47,7 @@ function ResourceKindList({
 
   return (
     <ul className={`resource-nav-kinds ${toneClass}`}>
-      {categorySupportsOverview(category.id) && (
+      {!filtering && categorySupportsOverview(category.id) && (
         <li>
           <button
             type="button"
@@ -60,13 +70,15 @@ function ResourceKindList({
           && selectedKind === kindGroup.kind
           && (!selectedResourceId || selectedResourceId === kindGroup.resourceId)
         const count = countLabel(kindGroup, countsLoading)
+        const isBest = filtering && bestKey === kindKey(kindGroup)
         return (
-          <li key={kindGroup.resourceId || kindGroup.kind}>
+          <li key={kindKey(kindGroup)}>
             <button
               type="button"
               className={[
                 'resource-nav-kind-row',
                 selected ? 'selected' : '',
+                isBest ? 'is-best' : '',
                 count.className,
               ].filter(Boolean).join(' ')}
               aria-selected={selected}
@@ -108,6 +120,8 @@ function ResourceGroupSection({
   onSelectKind,
   onSelectOverview,
   countsLoading = false,
+  filtering = false,
+  bestKey = null,
 }) {
   const activeInGroup = selectedGroupId === category.id
   const categoryCount = category.kinds.reduce((sum, k) => {
@@ -176,6 +190,8 @@ function ResourceGroupSection({
             onSelectKind={onSelectKind}
             onSelectOverview={onSelectOverview}
             countsLoading={countsLoading}
+            filtering={filtering}
+            bestKey={bestKey}
           />
           )}
         </div>
@@ -198,14 +214,53 @@ export function ResourceNav({
   onSelectOverview,
   countsLoading = false,
 }) {
+  const [query, setQuery] = useState('')
+  const filtering = query.trim() !== ''
+  const { categories: shown, best } = filterCategoriesByQuery(categories, query)
+  const bestKey = best ? kindKey(best.kindGroup) : null
+
+  function onSearchKeyDown(e) {
+    if (e.key === 'Enter' && best) {
+      e.preventDefault()
+      onSelectKind(best.categoryId, best.kindGroup.kind, best.kindGroup.resourceId)
+      setQuery('')
+    } else if (e.key === 'Escape') {
+      if (query) {
+        e.preventDefault()
+        setQuery('')
+      } else {
+        e.currentTarget.blur()
+      }
+    }
+  }
+
   return (
     <nav className="resource-nav resource-nav-accordion" aria-label="Resource kinds">
+      <div className="resource-nav-search">
+        <svg className="resource-nav-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+          <circle cx="11" cy="11" r="6.5" />
+          <path d="M20 20l-4-4" strokeLinecap="round" />
+        </svg>
+        <input
+          type="search"
+          className="resource-nav-search-input"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={onSearchKeyDown}
+          placeholder="Find resource"
+          aria-label="Find resource"
+          spellCheck={false}
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+        />
+      </div>
       <div className="resource-nav-tree">
-        {categories.map((cat) => (
+        {shown.map((cat) => (
           <ResourceGroupSection
             key={cat.id}
             category={cat}
-            expanded={expandedGroups.has(cat.id)}
+            expanded={filtering || expandedGroups.has(cat.id)}
             onToggle={() => onToggleGroup(cat.id)}
             selectedGroupId={selectedGroupId}
             selectedKind={selectedKind}
@@ -213,10 +268,15 @@ export function ResourceNav({
             onSelectKind={onSelectKind}
             onSelectOverview={onSelectOverview}
             countsLoading={countsLoading}
+            filtering={filtering}
+            bestKey={bestKey}
           />
         ))}
         {!categories.length && (
           <p className="scope-empty muted">No resources in scope.</p>
+        )}
+        {filtering && categories.length > 0 && !shown.length && (
+          <p className="scope-empty muted">No resources match “{query.trim()}”.</p>
         )}
       </div>
     </nav>

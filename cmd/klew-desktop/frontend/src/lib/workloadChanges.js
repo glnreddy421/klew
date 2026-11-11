@@ -128,12 +128,21 @@ const CHANGES_TAB = {
   state: 'ready',
 }
 
-/** Add the Changes tab after Summary for Deployment / StatefulSet / DaemonSet. */
+const COMPARE_TAB = {
+  id: 'compare',
+  label: 'Compare',
+  sections: [],
+  applies: true,
+  hasContent: true,
+  state: 'ready',
+}
+
+/** Add the Changes and Compare tabs after Summary for Deployment / StatefulSet / DaemonSet. */
 export function withChangesTab(tabs, kind) {
   if (!CHANGES_KINDS.has(kind) || kind === 'HelmRelease' || tabs.some((t) => t.id === 'changes')) return tabs
   const out = [...tabs]
   const at = out.findIndex((t) => t.id === 'summary')
-  out.splice(at >= 0 ? at + 1 : 0, 0, CHANGES_TAB)
+  out.splice(at >= 0 ? at + 1 : 0, 0, CHANGES_TAB, COMPARE_TAB)
   return out
 }
 
