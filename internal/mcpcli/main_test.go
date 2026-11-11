@@ -2,6 +2,7 @@ package mcpcli
 
 import (
 	"bytes"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -28,6 +29,28 @@ func TestMainVersionAndFlagErrors(t *testing.T) {
 	}
 	if !strings.Contains(errOut.String(), "-no-log-samples") {
 		t.Errorf("usage lacks flags:\n%s", errOut.String())
+	}
+}
+
+func TestMainRejectsMissingExtensionsDir(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "team-rules")
+	for _, args := range [][]string{
+		{"-extensions-dir", missing},
+		{"-extensions-dir", missing, "-check-extensions"},
+		{"-extensions-dir", missing, "-dry-run-all", "-namespace", "shop"},
+	} {
+		var out, errOut bytes.Buffer
+		if code := Main(CLIProg, args, &out, &errOut); code != 2 {
+			t.Errorf("%v: exit %d, want 2", args, code)
+		}
+		if !strings.Contains(errOut.String(), "is not a directory") || out.Len() != 0 {
+			t.Errorf("%v: stdout %q, stderr %q", args, out.String(), errOut.String())
+		}
+	}
+
+	var out, errOut bytes.Buffer
+	if code := Main(CLIProg, []string{"-extensions-dir", t.TempDir(), "-check-extensions"}, &out, &errOut); code != 0 {
+		t.Errorf("existing empty folder: exit %d, stderr %s", code, errOut.String())
 	}
 }
 

@@ -2,6 +2,12 @@
 
 All notable changes to Klew are documented here. Version tags follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **`klew mcp -extensions-dir`** with a folder that does not exist now stops with "is not a directory" (exit status 2), as `klew investigate` does, instead of loading no rules and reporting no problems.
+
 ## [2.0.0] — 2026-11-08
 
 ### Upgrading to 2.0
