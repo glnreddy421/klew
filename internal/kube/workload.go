@@ -13,6 +13,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 
@@ -285,11 +286,43 @@ func (col *Collector) collectLogs(ctx context.Context, ns string, tailLines int,
 	}
 }
 
-func (col *Collector) collectDeployment(ctx context.Context, ns, name string) (model.WorkloadSummary, error) {
-	d, err := col.Client.Clientset.AppsV1().Deployments(ns).Get(ctx, name, metav1.GetOptions{})
-	if err != nil {
-		return model.WorkloadSummary{}, fmt.Errorf("get deployment %s: %w", name, err)
+// getDeploymentsUpTo is how many Deployments are read one at a time. More
+// than that are read with one List, which costs one request however many
+// Deployments the namespace has.
+const getDeploymentsUpTo = 3
+
+// readDeployments returns the named Deployments by name, with a warning for
+// each one that could not be read.
+func (col *Collector) readDeployments(ctx context.Context, ns string, names []string) (map[string]*appsv1.Deployment, []string) {
+	out := make(map[string]*appsv1.Deployment, len(names))
+	var warnings []string
+	if len(names) <= getDeploymentsUpTo {
+		for _, name := range names {
+			d, err := col.Client.Clientset.AppsV1().Deployments(ns).Get(ctx, name, metav1.GetOptions{})
+			if err != nil {
+				warnings = append(warnings, fmt.Sprintf("get deployment %s: %v", name, err))
+				continue
+			}
+			out[name] = d
+		}
+		return out, warnings
 	}
+	list, err := col.Client.Clientset.AppsV1().Deployments(ns).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return out, []string{fmt.Sprintf("list deployments: %v", err)}
+	}
+	for i := range list.Items {
+		out[list.Items[i].Name] = &list.Items[i]
+	}
+	for _, name := range names {
+		if out[name] == nil {
+			warnings = append(warnings, fmt.Sprintf("get deployment %s: %v", name, apierrors.NewNotFound(appsv1.Resource("deployments"), name)))
+		}
+	}
+	return out, warnings
+}
+
+func summarizeDeployment(d *appsv1.Deployment) model.WorkloadSummary {
 	sel, _ := metav1.LabelSelectorAsSelector(d.Spec.Selector)
 	w := model.WorkloadSummary{
 		Kind:        "Deployment",
@@ -312,7 +345,7 @@ func (col *Collector) collectDeployment(ctx context.Context, ns, name string) (m
 			w.FailedConditions = append(w.FailedConditions, fmt.Sprintf("%s: %s: %s", c.Type, c.Reason, c.Message))
 		}
 	}
-	return w, nil
+	return w
 }
 
 func summarizeRS(rs appsv1.ReplicaSet) model.ReplicaSetSummary {
@@ -552,12 +585,39 @@ func (col *Collector) collectServices(ctx context.Context, ns string, selectors 
 		for _, p := range svc.Spec.Ports {
 			sum.Ports = append(sum.Ports, fmt.Sprintf("%d/%s", p.Port, p.Protocol))
 		}
-		if allowed(perms, "endpointslices", "list") {
-			sum.ReadyEndpoints, sum.TotalEndpoints = col.serviceEndpointCounts(ctx, ns, svc.Name)
-		}
 		out = append(out, sum)
 	}
+	if allowed(perms, "endpointslices", "list") {
+		col.fillEndpointCounts(ctx, ns, out)
+	}
 	return out
+}
+
+// listEndpointSlicesOver is how many Services make one namespace-wide
+// EndpointSlice list cheaper than one list per Service.
+const listEndpointSlicesOver = 2
+
+// fillEndpointCounts sets each Service's ready and total endpoint counts.
+func (col *Collector) fillEndpointCounts(ctx context.Context, ns string, svcs []model.ServiceSummary) {
+	if len(svcs) <= listEndpointSlicesOver {
+		for i := range svcs {
+			svcs[i].ReadyEndpoints, svcs[i].TotalEndpoints = col.serviceEndpointCounts(ctx, ns, svcs[i].Name)
+		}
+		return
+	}
+	slices, err := col.Client.Clientset.DiscoveryV1().EndpointSlices(ns).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return
+	}
+	byService := map[string][]discoveryv1.EndpointSlice{}
+	for _, sl := range slices.Items {
+		if name := sl.Labels[discoveryv1.LabelServiceName]; name != "" {
+			byService[name] = append(byService[name], sl)
+		}
+	}
+	for i := range svcs {
+		svcs[i].ReadyEndpoints, svcs[i].TotalEndpoints = countReadyEndpointSliceAddresses(byService[svcs[i].Name])
+	}
 }
 
 func (col *Collector) serviceEndpointCounts(ctx context.Context, ns, svcName string) (ready, total int) {
@@ -626,6 +686,9 @@ func summarizeHPA(h autoscalingv2.HorizontalPodAutoscaler) model.HPASummary {
 	return sum
 }
 
+// maxConcurrentNodeReads bounds parallel node requests during a snapshot.
+const maxConcurrentNodeReads = 8
+
 func (col *Collector) collectNodes(ctx context.Context, pods []model.PodSummary) []model.NodeSummary {
 	nodeNames := map[string]bool{}
 	for _, p := range pods {
@@ -633,42 +696,73 @@ func (col *Collector) collectNodes(ctx context.Context, pods []model.PodSummary)
 			nodeNames[p.Node] = true
 		}
 	}
-	var out []model.NodeSummary
+	names := make([]string, 0, len(nodeNames))
 	for name := range nodeNames {
-		n, err := col.Client.Clientset.CoreV1().Nodes().Get(ctx, name, metav1.GetOptions{})
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	results := make([]*model.NodeSummary, len(names))
+	forEachLimited(len(names), maxConcurrentNodeReads, func(i int) {
+		n, err := col.Client.Clientset.CoreV1().Nodes().Get(ctx, names[i], metav1.GetOptions{})
 		if err != nil {
-			continue
+			return
 		}
-		sum := model.NodeSummary{Name: n.Name, KubeletVersion: n.Status.NodeInfo.KubeletVersion}
-		if cpu := n.Status.Allocatable.Cpu(); cpu != nil {
-			sum.AllocatableCPUM = cpu.MilliValue()
+		results[i] = summarizeNode(n)
+	})
+	var out []model.NodeSummary
+	for _, r := range results {
+		if r != nil {
+			out = append(out, *r)
 		}
-		if mem := n.Status.Allocatable.Memory(); mem != nil {
-			sum.AllocatableMemMi = mem.Value() / (1024 * 1024)
-		}
-		if cpu := n.Status.Capacity.Cpu(); cpu != nil {
-			sum.CapacityCPUM = cpu.MilliValue()
-		}
-		if mem := n.Status.Capacity.Memory(); mem != nil {
-			sum.CapacityMemMi = mem.Value() / (1024 * 1024)
-		}
-		for _, c := range n.Status.Conditions {
-			switch c.Type {
-			case corev1.NodeReady:
-				sum.Ready = c.Status == corev1.ConditionTrue
-			case corev1.NodeMemoryPressure:
-				sum.MemoryPressure = c.Status == corev1.ConditionTrue
-			case corev1.NodeDiskPressure:
-				sum.DiskPressure = c.Status == corev1.ConditionTrue
-			case corev1.NodePIDPressure:
-				sum.PIDPressure = c.Status == corev1.ConditionTrue
-			}
-			sum.Conditions = append(sum.Conditions, fmt.Sprintf("%s=%s", c.Type, c.Status))
-		}
-		sum.Unschedulable = n.Spec.Unschedulable
-		out = append(out, sum)
 	}
 	return out
+}
+
+func summarizeNode(n *corev1.Node) *model.NodeSummary {
+	sum := model.NodeSummary{Name: n.Name, KubeletVersion: n.Status.NodeInfo.KubeletVersion}
+	if cpu := n.Status.Allocatable.Cpu(); cpu != nil {
+		sum.AllocatableCPUM = cpu.MilliValue()
+	}
+	if mem := n.Status.Allocatable.Memory(); mem != nil {
+		sum.AllocatableMemMi = mem.Value() / (1024 * 1024)
+	}
+	if cpu := n.Status.Capacity.Cpu(); cpu != nil {
+		sum.CapacityCPUM = cpu.MilliValue()
+	}
+	if mem := n.Status.Capacity.Memory(); mem != nil {
+		sum.CapacityMemMi = mem.Value() / (1024 * 1024)
+	}
+	for _, c := range n.Status.Conditions {
+		switch c.Type {
+		case corev1.NodeReady:
+			sum.Ready = c.Status == corev1.ConditionTrue
+		case corev1.NodeMemoryPressure:
+			sum.MemoryPressure = c.Status == corev1.ConditionTrue
+		case corev1.NodeDiskPressure:
+			sum.DiskPressure = c.Status == corev1.ConditionTrue
+		case corev1.NodePIDPressure:
+			sum.PIDPressure = c.Status == corev1.ConditionTrue
+		}
+		sum.Conditions = append(sum.Conditions, fmt.Sprintf("%s=%s", c.Type, c.Status))
+	}
+	sum.Unschedulable = n.Spec.Unschedulable
+	return &sum
+}
+
+// forEachLimited calls fn for 0..n-1 with at most limit calls running at once.
+func forEachLimited(n, limit int, fn func(i int)) {
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, limit)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			fn(i)
+		}()
+	}
+	wg.Wait()
 }
 
 func (col *Collector) collectPodsOnNodes(ctx context.Context, nodes []model.NodeSummary, scoped []model.PodSummary) []model.PodSummary {
@@ -676,16 +770,19 @@ func (col *Collector) collectPodsOnNodes(ctx context.Context, nodes []model.Node
 	for _, p := range scoped {
 		scopedKeys[p.Namespace+"/"+p.Name] = true
 	}
+	lists := make([][]corev1.Pod, len(nodes))
+	forEachLimited(len(nodes), maxConcurrentNodeReads, func(i int) {
+		list, err := col.Client.Clientset.CoreV1().Pods(metav1.NamespaceAll).List(ctx, metav1.ListOptions{
+			FieldSelector: "spec.nodeName=" + nodes[i].Name,
+		})
+		if err == nil {
+			lists[i] = list.Items
+		}
+	})
 	var out []model.PodSummary
 	seen := map[string]bool{}
-	for _, node := range nodes {
-		list, err := col.Client.Clientset.CoreV1().Pods(metav1.NamespaceAll).List(ctx, metav1.ListOptions{
-			FieldSelector: "spec.nodeName=" + node.Name,
-		})
-		if err != nil {
-			continue
-		}
-		for _, pod := range list.Items {
+	for _, items := range lists {
+		for _, pod := range items {
 			if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
 				continue
 			}

@@ -1,23 +1,19 @@
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef } from 'react'
 import { CollectingMatchesSplash } from '../components/incident/CollectingMatchesSplash'
-import { InvestigationHeader } from '../components/overview/InvestigationHeader'
 import { RecordedHistoryLine } from '../components/overview/RecordedHistoryLine.jsx'
-import { IncidentList } from '../components/overview/IncidentList.jsx'
-import { getState } from '../lib/investigationViews'
-import { InvestigationChain } from '../components/overview/InvestigationChain'
-import { KeyFindings } from '../components/overview/KeyFindings'
 import { InvestigationTimeline } from '../components/overview/InvestigationTimeline'
-import { AffectedResourcePath, AffectedResourcesList } from '../components/overview/AffectedResourcePath'
 import { EvidencePreview } from '../components/overview/EvidencePreview'
 import { ClusterContextBar } from '../components/overview/ClusterContextBar'
 import { buildClusterContext } from '../lib/clusterContext'
 import { deriveMatchRows, getMatchedObjects } from '../lib/matches'
 import { buildInvestigationOverview } from '../lib/investigationOverview'
 import { InvestigationSurfaceGuide } from '../components/incident/InvestigationSurfaceGuide.jsx'
-import { PinnedChange } from '../components/overview/PinnedChange.jsx'
+import { OverviewBrief } from '../components/overview/OverviewBrief.jsx'
+import { buildOverviewBrief } from '../lib/overviewBrief.js'
 
 /**
- * Overview — Investigation Brief with visual correlation graphics.
+ * Overview — the investigation brief: verdict, what is failing, why, what
+ * changed, warning patterns and next checks. Timeline and evidence are collapsed.
  */
 export function OverviewView({
   view,
@@ -48,7 +44,7 @@ export function OverviewView({
     [view, allRows, timeWindowLabel, live, snapshotRefreshSec],
   )
 
-  const [highlightedNodeIds, setHighlightedNodeIds] = useState(() => new Set())
+  const brief = useMemo(() => buildOverviewBrief(view), [view])
   const visibilityRef = useRef(null)
 
   const clusterContext = useMemo(
@@ -61,16 +57,6 @@ export function OverviewView({
     if (action === 'visibility') {
       visibilityRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     }
-  }
-
-  const handleResourceSelect = (resource) => {
-    if (!resource?.key) return
-    onInspectKeyChange?.(resource.key)
-    onNavigate?.('resources')
-  }
-
-  const handleChainNodeSelect = (node) => {
-    if (node?.navTab) onNavigate?.(node.navTab)
   }
 
   if (collecting) {
@@ -99,23 +85,15 @@ export function OverviewView({
     )
   }
 
-  const {
-    verdict,
-    stats,
-    findings,
-    visualChain,
-    timelineVisual,
-    affectedResources,
-    resourcePathVisual,
-    evidencePreview,
-    visibilityWarning,
-    recentObservations,
-    nextPaths,
-    phase,
-    windowLabel,
-  } = overview
-
-  const showChainEmpty = phase === 'active' && !visualChain
+  const { stats, timelineVisual, evidencePreview, visibilityWarning, windowLabel } = overview
+  const meta = (
+    <>
+      {live ? <span className="brief-live">● Live</span> : null}
+      {live && ' · '}
+      {windowLabel || timeWindowLabel}
+      <RecordedHistoryLine view={view} className="ob-history" />
+    </>
+  )
 
   return (
     <div className="workbench-surface overview-brief overview-visual">
@@ -124,16 +102,6 @@ export function OverviewView({
         onNavigate={onNavigate}
         onChipAction={handleChipAction}
       />
-      <PinnedChange pinned={getState(view).pinnedChange} onInspectKeyChange={onInspectKeyChange} />
-      <InvestigationHeader
-        verdict={verdict}
-        stats={stats}
-        timeWindowLabel={timeWindowLabel}
-        visibilityWarning={visibilityWarning}
-        onNavigate={onNavigate}
-      />
-      <RecordedHistoryLine view={view} />
-      <IncidentList incidents={getState(view).incidents} />
 
       {visibilityWarning && (
         <div
@@ -147,132 +115,30 @@ export function OverviewView({
         </div>
       )}
 
-      {phase === 'quiet' && (
-        <section className="inv-visual-section inv-quiet-banner">
-          <h2 className="inv-section-title">No significant failure chain detected</h2>
-          <p className="muted">
-            Klew is correlating signals, Kubernetes events, resource state and evidence
-            in the current window.
-          </p>
-          <p className="inv-quiet-meta muted">
-            {verdict.snapshotStale && verdict.snapshotAgeLabel ? (
-              <span className="data-age-label is-stale">
-                Workload state · {verdict.snapshotAgeLabel.replace(/^Updated /, '')}
-              </span>
-            ) : live ? (
-              <span className="brief-live">● Live</span>
-            ) : null}
-            {(live || verdict.snapshotStale) && ' · '}
-            {windowLabel || timeWindowLabel}
-          </p>
-        </section>
-      )}
-
-      {phase === 'quiet' && recentObservations.length > 0 && (
-        <section className="inv-visual-section inv-quiet-activity">
-          <h2 className="inv-section-title">Recent observations</h2>
-          <ul className="brief-activity-list">
-            {recentObservations.map((obs, i) => (
-              <li key={`${obs.text}-${i}`}>
-                {obs.timestamp && (
-                  <span className="mono muted brief-activity-time">
-                    {new Date(obs.timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false })}
-                  </span>
-                )}
-                <span>{obs.text}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {showChainEmpty && (
-        <section className="inv-visual-section inv-chain-empty">
-          <h2 className="inv-section-title">What Klew connected</h2>
-          <p className="muted">
-            Not enough correlated observations yet to draw a connection chain.
-            Klew continues correlating signals, events, and evidence in the current window.
-          </p>
-        </section>
-      )}
-
-      {visualChain && (
-        <div className="inv-chain-row">
-          <InvestigationChain
-            chain={visualChain}
-            incidents={getState(view).incidents}
-            highlightedNodeIds={highlightedNodeIds}
-            onNodeSelect={handleChainNodeSelect}
-            onNavigate={onNavigate}
-          />
-          {resourcePathVisual && resourcePathVisual.length >= 2 && (
-            <AffectedResourcePath
-              path={resourcePathVisual}
-              onNavigate={onNavigate}
-              onResourceSelect={handleResourceSelect}
-              compact
-            />
-          )}
-        </div>
-      )}
-
-      <div className="inv-visual-grid">
-        <div className="inv-visual-main">
-          {(findings.length > 0 || phase === 'active') && (
-            <KeyFindings
-              findings={findings}
-              onNavigate={onNavigate}
-              onHighlightNodes={(ids) => setHighlightedNodeIds(new Set(ids))}
-            />
-          )}
-
-          <InvestigationTimeline
-            timelineVisual={timelineVisual}
-            onNavigate={onNavigate}
-          />
-
+      <OverviewBrief
+        brief={brief}
+        meta={meta}
+        onInspect={(key) => {
+          onInspectKeyChange?.(key)
+          onNavigate?.('resources')
+        }}
+        onInspectKeyChange={onInspectKeyChange}
+        onNavigate={onNavigate}
+      >
+        <details className="ob-details">
+          <summary>Timeline</summary>
+          <InvestigationTimeline timelineVisual={timelineVisual} onNavigate={onNavigate} />
+        </details>
+        <details className="ob-details">
+          <summary>Evidence · {stats.evidence}</summary>
           <EvidencePreview
             items={evidencePreview}
             totalCount={stats.evidence}
             onNavigate={onNavigate}
             onOpenEvidence={onOpenEvidence}
           />
-        </div>
-
-        <aside className="inv-visual-aside">
-          {!visualChain && resourcePathVisual && resourcePathVisual.length >= 2 && (
-            <AffectedResourcePath
-              path={resourcePathVisual}
-              onNavigate={onNavigate}
-              onResourceSelect={handleResourceSelect}
-            />
-          )}
-
-          <AffectedResourcesList
-            resources={affectedResources}
-            onNavigate={onNavigate}
-            onResourceSelect={handleResourceSelect}
-          />
-        </aside>
-      </div>
-
-      {nextPaths.length > 0 && phase === 'active' && (
-        <footer className="brief-next-paths">
-          <span className="inv-section-title">Next</span>
-          <div className="brief-next-links">
-            {nextPaths.map((p) => (
-              <button
-                key={p.tab}
-                type="button"
-                className="brief-next-link"
-                onClick={() => onNavigate?.(p.tab)}
-              >
-                {p.label} →
-              </button>
-            ))}
-          </div>
-        </footer>
-      )}
+        </details>
+      </OverviewBrief>
 
       {inspectRow && (
         <p className="brief-context-note muted">

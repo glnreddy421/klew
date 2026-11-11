@@ -170,3 +170,64 @@ export function flattenTreeEntities(tree) {
   }
   return out
 }
+
+/** kubectl short names, so `po`, `deploy` or `svc` find their kind. */
+const KIND_SHORT_NAMES = {
+  Pod: ['po'],
+  Deployment: ['deploy'],
+  ReplicaSet: ['rs'],
+  ReplicationController: ['rc'],
+  StatefulSet: ['sts'],
+  DaemonSet: ['ds'],
+  CronJob: ['cj'],
+  Service: ['svc'],
+  Endpoints: ['ep'],
+  Ingress: ['ing'],
+  NetworkPolicy: ['netpol'],
+  PersistentVolume: ['pv'],
+  PersistentVolumeClaim: ['pvc'],
+  StorageClass: ['sc'],
+  ConfigMap: ['cm'],
+  ServiceAccount: ['sa'],
+  HorizontalPodAutoscaler: ['hpa'],
+  PodDisruptionBudget: ['pdb'],
+  Namespace: ['ns'],
+  Node: ['no'],
+  Event: ['ev'],
+  CustomResourceDefinition: ['crd', 'crds'],
+}
+
+function kindMatchRank(kindGroup, q) {
+  const short = KIND_SHORT_NAMES[kindGroup.kind] || []
+  const names = [kindGroup.label, kindGroup.kind, kindGroup.resource]
+    .filter(Boolean)
+    .map((s) => String(s).toLowerCase())
+  if (short.includes(q) || names.includes(q)) return 0
+  if (names.some((n) => n.startsWith(q))) return 1
+  if (names.some((n) => n.includes(q))) return 2
+  if (kindGroup.group && String(kindGroup.group).toLowerCase().includes(q)) return 3
+  return -1
+}
+
+/**
+ * Narrow categories to kinds matching query (label, kind, plural, API group or
+ * kubectl short name). Categories with no match are dropped. `best` is the
+ * closest match, for Enter-to-open.
+ */
+export function filterCategoriesByQuery(categories, query) {
+  const q = String(query || '').trim().toLowerCase()
+  if (!q) return { categories, best: null }
+  let best = null
+  const out = []
+  for (const cat of categories || []) {
+    const kinds = []
+    for (const kindGroup of cat.kinds || []) {
+      const rank = kindMatchRank(kindGroup, q)
+      if (rank < 0) continue
+      kinds.push(kindGroup)
+      if (!best || rank < best.rank) best = { rank, categoryId: cat.id, kindGroup }
+    }
+    if (kinds.length) out.push({ ...cat, kinds })
+  }
+  return { categories: out, best }
+}

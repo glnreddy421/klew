@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"sync"
 
+	appsv1 "k8s.io/api/apps/v1"
+
 	"github.com/glnreddy421/klew/v2/internal/changes"
 	"github.com/glnreddy421/klew/v2/internal/model"
 )
@@ -17,11 +19,13 @@ var changeMarkerCache = struct {
 	m map[string]*model.WorkloadChangeMarker
 }{m: map[string]*model.WorkloadChangeMarker{}}
 
-const changeMarkerCacheMax = 256
+const changeMarkerCacheMax = 2048
 
 // collectChangeMarkers returns the latest change of each in-scope workload
-// that has one. Errors and denied access are skipped silently.
-func (col *Collector) collectChangeMarkers(ctx context.Context, workloads []model.WorkloadSummary) []model.WorkloadChangeMarker {
+// that has one. A Deployment in deployments is read from replicaSets with no
+// API calls; any other workload is read from the cluster. Errors and denied
+// access are skipped silently.
+func (col *Collector) collectChangeMarkers(ctx context.Context, workloads []model.WorkloadSummary, deployments map[string]*appsv1.Deployment, replicaSets []appsv1.ReplicaSet) []model.WorkloadChangeMarker {
 	var out []model.WorkloadChangeMarker
 	for _, w := range workloads {
 		if w.UID == "" {
@@ -36,21 +40,35 @@ func (col *Collector) collectChangeMarkers(ctx context.Context, workloads []mode
 			if kind == "" {
 				kind = "Deployment"
 			}
-			var err error
-			m, err = changes.LatestChange(ctx, col.Client.Clientset, kind, w.Namespace, w.Name)
-			if err != nil {
-				continue
+			if d := deployments[w.Name]; kind == "Deployment" && d != nil && string(d.UID) == w.UID {
+				m = changes.LatestDeploymentChange(d, replicaSets)
+			} else {
+				var err error
+				m, err = changes.LatestChange(ctx, col.Client.Clientset, kind, w.Namespace, w.Name)
+				if err != nil {
+					continue
+				}
 			}
-			changeMarkerCache.Lock()
-			if len(changeMarkerCache.m) >= changeMarkerCacheMax {
-				changeMarkerCache.m = map[string]*model.WorkloadChangeMarker{}
-			}
-			changeMarkerCache.m[key] = m
-			changeMarkerCache.Unlock()
+			cacheChangeMarker(key, m)
 		}
 		if m != nil {
 			out = append(out, *m)
 		}
 	}
 	return out
+}
+
+// cacheChangeMarker stores m, making room by dropping one entry when the
+// cache is full rather than emptying it, so a namespace with more workloads
+// than the cache holds still hits it for most of them.
+func cacheChangeMarker(key string, m *model.WorkloadChangeMarker) {
+	changeMarkerCache.Lock()
+	defer changeMarkerCache.Unlock()
+	if _, ok := changeMarkerCache.m[key]; !ok && len(changeMarkerCache.m) >= changeMarkerCacheMax {
+		for k := range changeMarkerCache.m {
+			delete(changeMarkerCache.m, k)
+			break
+		}
+	}
+	changeMarkerCache.m[key] = m
 }

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -48,6 +49,28 @@ type CollectEnv struct {
 	coverage   map[string]model.CollectorStatus
 	groupsOnce sync.Once
 	groups     *metav1.APIGroupList
+
+	// deployments are the in-scope Deployments the workloads collector read,
+	// by name, so later collectors need not read them again.
+	deployments map[string]*appsv1.Deployment
+	// rsOnce lists the namespace's ReplicaSets once for every collector.
+	rsOnce sync.Once
+	rsList []appsv1.ReplicaSet
+	rsErr  error
+}
+
+// replicaSets lists the namespace's ReplicaSets on first use and returns the
+// same list afterwards. Callers must not modify it.
+func (e *CollectEnv) replicaSets(ctx context.Context) ([]appsv1.ReplicaSet, error) {
+	e.rsOnce.Do(func() {
+		list, err := e.Client.Clientset.AppsV1().ReplicaSets(e.Namespace).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			e.rsErr = err
+			return
+		}
+		e.rsList = list.Items
+	})
+	return e.rsList, e.rsErr
 }
 
 // Allowed reports whether the permission probe allowed verb on resource.
@@ -137,32 +160,38 @@ func collectWorkloads(ctx context.Context, env *CollectEnv, b *model.EvidenceBun
 	if b.Target != nil && !b.Target.Found {
 		return // the coverage note says the target was not found
 	}
+	deployments, warnings := env.Collector.readDeployments(ctx, env.Namespace, env.DeployNames)
+	b.Warnings = append(b.Warnings, warnings...)
+	env.deployments = deployments
 	for _, dn := range env.DeployNames {
-		w, err := env.Collector.collectDeployment(ctx, env.Namespace, dn)
-		if err != nil {
-			b.Warnings = append(b.Warnings, err.Error())
-			continue
+		if d := deployments[dn]; d != nil {
+			b.Workloads = append(b.Workloads, summarizeDeployment(d))
 		}
-		b.Workloads = append(b.Workloads, w)
 	}
 }
 
 func collectChanges(ctx context.Context, env *CollectEnv, b *model.EvidenceBundle) {
-	if env.Allowed("replicasets", "list") {
-		b.WorkloadChanges = env.Collector.collectChangeMarkers(ctx, b.Workloads)
+	if !env.Allowed("replicasets", "list") {
+		return
 	}
+	// Errors are reported by the replicasets collector; markers are optional.
+	rss, err := env.replicaSets(ctx)
+	if err != nil {
+		return
+	}
+	b.WorkloadChanges = env.Collector.collectChangeMarkers(ctx, b.Workloads, env.deployments, rss)
 }
 
 func collectReplicaSets(ctx context.Context, env *CollectEnv, b *model.EvidenceBundle) {
 	if !env.Allowed("replicasets", "list") {
 		return
 	}
-	rss, err := env.Client.Clientset.AppsV1().ReplicaSets(env.Namespace).List(ctx, metav1.ListOptions{})
+	rss, err := env.replicaSets(ctx)
 	if err != nil {
 		b.Warnings = append(b.Warnings, fmt.Sprintf("list replicasets: %v", err))
 		return
 	}
-	for _, rs := range rss.Items {
+	for _, rs := range rss {
 		if env.target != nil {
 			if env.target.hasObject("ReplicaSet", rs.Name) {
 				b.ReplicaSets = append(b.ReplicaSets, summarizeRS(rs))

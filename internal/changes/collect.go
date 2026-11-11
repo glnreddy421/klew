@@ -60,21 +60,34 @@ func forDeployment(ctx context.Context, cs kubernetes.Interface, out model.Workl
 	if err != nil {
 		return deniedOr(out, err, "deployments get")
 	}
-	out.UID, out.Generation = string(d.UID), d.Generation
-	out.HistoryLimit = historyLimit(d.Spec.RevisionHistoryLimit)
-	out.HelmRelease = helmReleaseOf(d.Annotations)
-
 	sel, err := metav1.LabelSelectorAsSelector(d.Spec.Selector)
 	if err != nil {
-		return out, err
+		return deploymentChanges(out, d, nil), err
 	}
 	list, err := cs.AppsV1().ReplicaSets(out.Namespace).List(ctx, metav1.ListOptions{LabelSelector: sel.String()})
 	if err != nil {
-		return deniedOr(out, err, "replicasets list")
+		return deniedOr(deploymentChanges(out, d, nil), err, "replicasets list")
 	}
+	return deploymentChanges(out, d, list.Items), nil
+}
+
+// deploymentChanges builds a Deployment's history from its ReplicaSets.
+// replicaSets may hold any ReplicaSets in the namespace; only those the
+// Deployment owns are read.
+func deploymentChanges(out model.WorkloadChanges, d *appsv1.Deployment, replicaSets []appsv1.ReplicaSet) model.WorkloadChanges {
+	out.UID, out.Generation = string(d.UID), d.Generation
+	out.HistoryLimit = historyLimit(d.Spec.RevisionHistoryLimit)
+	out.HelmRelease = helmReleaseOf(d.Annotations)
+	out.Changes = buildChanges(deploymentRevisions(d, replicaSets), d.ManagedFields)
+	finish(&out)
+	return out
+}
+
+// deploymentRevisions is one revision per ReplicaSet the Deployment owns.
+func deploymentRevisions(d *appsv1.Deployment, replicaSets []appsv1.ReplicaSet) []revision {
 	var revs []revision
-	for i := range list.Items {
-		rs := &list.Items[i]
+	for i := range replicaSets {
+		rs := &replicaSets[i]
 		if !ownedBy(rs.OwnerReferences, d.UID) {
 			continue
 		}
@@ -98,12 +111,26 @@ func forDeployment(ctx context.Context, cs kubernetes.Interface, out model.Workl
 		}
 		revs = append(revs, r)
 	}
-	out.Changes = buildChanges(revs, d.ManagedFields)
+	return revs
+}
+
+func forControllerRevisions(ctx context.Context, cs kubernetes.Interface, out model.WorkloadChanges) (model.WorkloadChanges, error) {
+	out, revs, managed, currentCR, err := controllerRevisions(ctx, cs, out)
+	if err != nil || out.AccessState != model.ChangesAccessAllowed {
+		return out, err
+	}
+	out.Changes = buildChanges(revs, managed)
+	if currentCR != "" {
+		for i := range out.Changes {
+			out.Changes[i].Current = out.Changes[i].ObjectName == currentCR
+		}
+	}
 	finish(&out)
 	return out, nil
 }
 
-func forControllerRevisions(ctx context.Context, cs kubernetes.Interface, out model.WorkloadChanges) (model.WorkloadChanges, error) {
+// controllerRevisions reads a StatefulSet's or DaemonSet's stored revisions.
+func controllerRevisions(ctx context.Context, cs kubernetes.Interface, out model.WorkloadChanges) (model.WorkloadChanges, []revision, []metav1.ManagedFieldsEntry, string, error) {
 	var (
 		uid       types.UID
 		selector  *metav1.LabelSelector
@@ -114,7 +141,8 @@ func forControllerRevisions(ctx context.Context, cs kubernetes.Interface, out mo
 	case "StatefulSet":
 		s, err := cs.AppsV1().StatefulSets(out.Namespace).Get(ctx, out.Name, metav1.GetOptions{})
 		if err != nil {
-			return deniedOr(out, err, "statefulsets get")
+			out, err = deniedOr(out, err, "statefulsets get")
+			return out, nil, nil, "", err
 		}
 		uid, selector, managed, currentCR = s.UID, s.Spec.Selector, s.ManagedFields, s.Status.UpdateRevision
 		out.UID, out.Generation = string(s.UID), s.Generation
@@ -123,7 +151,8 @@ func forControllerRevisions(ctx context.Context, cs kubernetes.Interface, out mo
 	default:
 		ds, err := cs.AppsV1().DaemonSets(out.Namespace).Get(ctx, out.Name, metav1.GetOptions{})
 		if err != nil {
-			return deniedOr(out, err, "daemonsets get")
+			out, err = deniedOr(out, err, "daemonsets get")
+			return out, nil, nil, "", err
 		}
 		uid, selector, managed = ds.UID, ds.Spec.Selector, ds.ManagedFields
 		out.UID, out.Generation = string(ds.UID), ds.Generation
@@ -132,11 +161,12 @@ func forControllerRevisions(ctx context.Context, cs kubernetes.Interface, out mo
 	}
 	sel, err := metav1.LabelSelectorAsSelector(selector)
 	if err != nil {
-		return out, err
+		return out, nil, nil, "", err
 	}
 	list, err := cs.AppsV1().ControllerRevisions(out.Namespace).List(ctx, metav1.ListOptions{LabelSelector: sel.String()})
 	if err != nil {
-		return deniedOr(out, err, "controllerrevisions list")
+		out, err = deniedOr(out, err, "controllerrevisions list")
+		return out, nil, nil, "", err
 	}
 	var revs []revision
 	for i := range list.Items {
@@ -165,14 +195,7 @@ func forControllerRevisions(ctx context.Context, cs kubernetes.Interface, out mo
 			}
 		}
 	}
-	out.Changes = buildChanges(revs, managed)
-	if currentCR != "" {
-		for i := range out.Changes {
-			out.Changes[i].Current = out.Changes[i].ObjectName == currentCR
-		}
-	}
-	finish(&out)
-	return out, nil
+	return out, revs, managed, currentCR, nil
 }
 
 // DecodeControllerRevision reads the pod template stored in a ControllerRevision
@@ -394,16 +417,31 @@ func deniedOr(out model.WorkloadChanges, err error, what string) (model.Workload
 // touches Helm history.
 func LatestChange(ctx context.Context, cs kubernetes.Interface, kind, namespace, name string) (*model.WorkloadChangeMarker, error) {
 	wc, err := ForWorkload(ctx, cs, kind, namespace, name)
-	if err != nil || wc.AccessState != model.ChangesAccessAllowed || len(wc.Changes) == 0 {
+	if err != nil || wc.AccessState != model.ChangesAccessAllowed {
 		return nil, err
+	}
+	return latestMarker(wc), nil
+}
+
+// LatestDeploymentChange is LatestChange for a Deployment whose ReplicaSets
+// were already listed, so it makes no API calls. replicaSets may hold every
+// ReplicaSet in the namespace.
+func LatestDeploymentChange(d *appsv1.Deployment, replicaSets []appsv1.ReplicaSet) *model.WorkloadChangeMarker {
+	out := model.WorkloadChanges{Kind: "Deployment", Namespace: d.Namespace, Name: d.Name, AccessState: model.ChangesAccessAllowed}
+	return latestMarker(deploymentChanges(out, d, replicaSets))
+}
+
+func latestMarker(wc model.WorkloadChanges) *model.WorkloadChangeMarker {
+	if len(wc.Changes) == 0 {
+		return nil
 	}
 	c := wc.Changes[0]
 	if len(wc.Changes) == 1 && c.Source == model.ChangeSourceRollout {
 		// Only the oldest retained revision: nothing to say about a change.
-		return nil, nil
+		return nil
 	}
 	return &model.WorkloadChangeMarker{
-		Kind: kind, Namespace: namespace, Name: name, Revision: c.Revision, Time: c.Time,
+		Kind: wc.Kind, Namespace: wc.Namespace, Name: wc.Name, Revision: c.Revision, Time: c.Time,
 		Source: c.Source, Summary: c.Summary, Areas: Areas(c.Diffs), ObjectName: c.ObjectName,
-	}, nil
+	}
 }

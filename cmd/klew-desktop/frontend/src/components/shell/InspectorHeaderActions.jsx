@@ -6,9 +6,6 @@ export function InspectorHeaderActions({
   placement = 'right',
   onPlacementChange,
   onClose,
-  manifestOpen = false,
-  manifestEnabled = false,
-  onToggleManifest,
   podStreamContainers = [],
   investigateEnabled = false,
   investigateTitle = '',
@@ -138,22 +135,6 @@ export function InspectorHeaderActions({
           )}
         </div>
       )}
-      <button
-        type="button"
-        className={[
-          'explorer-collapse-btn',
-          'inspector-manifest-btn',
-          manifestOpen ? 'is-active' : '',
-          !manifestEnabled ? 'is-disabled' : '',
-        ].filter(Boolean).join(' ')}
-        onClick={onToggleManifest}
-        disabled={!manifestEnabled}
-        title={manifestEnabled ? 'View kubectl manifest (YAML)' : 'Select a resource to view manifest'}
-        aria-label="View kubectl manifest"
-        aria-pressed={manifestOpen}
-      >
-        <KubectlIcon />
-      </button>
       <div className="inspector-split-anchor" ref={anchorRef}>
         <button
           type="button"
@@ -255,19 +236,6 @@ function CloseIcon() {
   return (
     <InspectorIcon strokeWidth="1.85">
       <path d="M4.25 4.25l7.5 7.5M11.75 4.25l-7.5 7.5" />
-    </InspectorIcon>
-  )
-}
-
-/** Folded YAML document — distinct from the terminal window icon. */
-function KubectlIcon() {
-  return (
-    <InspectorIcon>
-      <path d="M4.25 2.75h5.35L12.25 5.4V12.8a1 1 0 01-1 1H4.25a1 1 0 01-1-1V3.75a1 1 0 011-1z" />
-      <path d="M9.6 2.75V5.4H12.25" />
-      <path d="M5.35 7.15h5.3" />
-      <path d="M5.35 9.05h3.35" />
-      <path d="M5.35 10.95h4.55" />
     </InspectorIcon>
   )
 }

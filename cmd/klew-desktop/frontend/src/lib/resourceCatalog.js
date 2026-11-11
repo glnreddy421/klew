@@ -31,9 +31,24 @@ export function isBrowsableCatalogResource(resource) {
   return Boolean(resource) && !NON_BROWSABLE_CATALOG_RESOURCES.has(resource)
 }
 
-export function kindDisplayLabel(kind, fallback) {
+/**
+ * Plural display label for a kind. Prefers the API's own plural resource name
+ * (cleanuppolicies → CleanupPolicies), keeping the kind's capitalisation;
+ * falls back to English rules when the plural is unknown.
+ */
+export function kindDisplayLabel(kind, fallback, plural) {
   if (fallback) return fallback
   if (!kind) return ''
+  if (plural) {
+    const k = kind.toLowerCase()
+    const p = String(plural).toLowerCase()
+    let n = 0
+    while (n < k.length && n < p.length && k[n] === p[n]) n++
+    // Only trust the plural when it is clearly the same word.
+    if (n >= Math.min(k.length - 1, 3)) return kind.slice(0, n) + p.slice(n)
+  }
+  if (/[^aeiou]y$/i.test(kind)) return `${kind.slice(0, -1)}ies`
+  if (/(s|x|z|ch|sh)$/i.test(kind)) return `${kind}es`
   return `${kind}s`
 }
 
@@ -236,7 +251,7 @@ function mergeCustomEntry(desc, matchEntities) {
     presentationKey: presentationKey(desc.group, desc.resource),
     resourceId: desc.id,
     kind: desc.kind,
-    label: kindDisplayLabel(desc.kind),
+    label: kindDisplayLabel(desc.kind, undefined, desc.resource),
     sortOrder: 999,
     apiVersion: desc.apiVersion,
     group: desc.group,

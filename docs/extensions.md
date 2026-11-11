@@ -35,7 +35,7 @@ In the desktop app, open **Settings → Extensions**:
 - **Loaded** lists every collector and rule, file by file, as *loaded* or *skipped* with the reason.
 - **Test** runs every rule against a namespace and shows what each one matches (see [Testing a rule](#testing-a-rule)).
 
-Klew's own folder is `~/Library/Application Support/Klew/extensions/` (Windows: `%USERPROFILE%\AppData\Roaming\Klew\extensions\`). Linked folders are listed in `extension-sources.json` next to it. The `klew` command reads both, so the app, the command line and your AI assistant always use the same extensions. To use one folder instead, such as a git repository of rules, pass it to either command: `klew investigate -extensions-dir ./team-rules` or `klew mcp -extensions-dir ./team-rules`.
+Klew's own folder is `~/Library/Application Support/Klew/extensions/` (Windows: `%USERPROFILE%\AppData\Roaming\Klew\extensions\`). Linked folders are listed in `extension-sources.json` next to it. The `klew` command reads both, so the app, the command line and your AI assistant always use the same extensions. To use one folder instead, such as a git repository of rules, pass it to either command: `klew investigate -extensions-dir ./team-rules` or `klew mcp -extensions-dir ./team-rules`. A folder that does not exist is an error, so a mistyped path cannot silently load no rules.
 
 You can also put files in Klew's folder by hand; restart `klew mcp` (or Reload in the app) after editing.
 

@@ -38,31 +38,27 @@ export function totalColumnWidth(widths = {}, ids = []) {
   return ids.reduce((sum, id) => sum + (widths[id] ?? COLUMN_FALLBACK_WIDTH), 0)
 }
 
+// Manual widths last for this session only: every launch starts on automatic
+// widths, which fit the content. Widths saved by older builds are cleared once.
+const sessionWidths = new Map()
+
+try {
+  for (const key of Object.keys(localStorage)) {
+    if (key.startsWith(`${ENTITY_TABLE_WIDTHS_KEY}.`)) localStorage.removeItem(key)
+  }
+} catch {
+  // storage unavailable
+}
+
 export function loadColumnWidths(kind) {
   if (!kind) return {}
-  try {
-    const raw = localStorage.getItem(`${ENTITY_TABLE_WIDTHS_KEY}.${kind}`)
-    const parsed = raw ? JSON.parse(raw) : null
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
-    const out = {}
-    for (const [id, w] of Object.entries(parsed)) {
-      if (Number.isFinite(w)) out[id] = clampColumnWidth(w)
-    }
-    return out
-  } catch {
-    return {}
-  }
+  return { ...(sessionWidths.get(kind) || {}) }
 }
 
 export function saveColumnWidths(kind, widths) {
   if (!kind) return
-  try {
-    const key = `${ENTITY_TABLE_WIDTHS_KEY}.${kind}`
-    if (hasColumnWidths(widths)) localStorage.setItem(key, JSON.stringify(widths))
-    else localStorage.removeItem(key)
-  } catch {
-    // ignore quota / unavailable storage
-  }
+  if (hasColumnWidths(widths)) sessionWidths.set(kind, { ...widths })
+  else sessionWidths.delete(kind)
 }
 
 /** Rendered header widths keyed by `data-col-id`. */

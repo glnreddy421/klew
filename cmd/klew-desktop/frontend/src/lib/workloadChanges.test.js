@@ -105,7 +105,7 @@ describe('badges and lines', () => {
 describe('inspector wiring', () => {
   it('adds the Changes tab after Summary for workloads only', () => {
     const tabs = [{ id: 'summary' }, { id: 'spec' }]
-    expect(withChangesTab(tabs, 'Deployment').map((t) => t.id)).toEqual(['summary', 'changes', 'spec'])
+    expect(withChangesTab(tabs, 'Deployment').map((t) => t.id)).toEqual(['summary', 'changes', 'compare', 'spec'])
     expect(withChangesTab(tabs, 'Pod')).toBe(tabs)
     expect(withChangesTab(tabs, 'HelmRelease')).toBe(tabs)
   })

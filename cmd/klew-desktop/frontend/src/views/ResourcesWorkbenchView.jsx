@@ -358,22 +358,6 @@ function useResourcesWorkbenchState({
     if (preferred) onInspectKeyChange?.(preferred)
   }, [allRows, inspectKey, onInspectKeyChange, inspectKeyAllowed, catalogBrowseActive, investigationLoading])
 
-  // The inspected workload's connection trace (ingress → service → pods).
-  const traceRow = useMemo(() => {
-    if (!inspectKey) return null
-    return findRowByKey(catalogEntities, inspectKey) || findRowByKey(allRows, inspectKey)
-  }, [inspectKey, catalogEntities, allRows])
-
-  const traceCatalogEnabled = Boolean(traceRow) && isWorkloadTraceKind(traceRow.kind)
-
-  const traceCatalog = useFocusChainCatalog({
-    cluster,
-    catalog,
-    browseScope,
-    focusRow: traceRow,
-    enabled: traceCatalogEnabled,
-  })
-
   const rows = allRows
 
   const inspectRow = useMemo(() => {
@@ -389,6 +373,23 @@ function useResourcesWorkbenchState({
     if (catalogBrowseActive) return null
     return rows[0] || null
   }, [rows, allRows, inspectKey, view, catalogBrowseActive, catalogEntities])
+
+  // The inspected workload's connection trace (ingress → service → pods).
+  // Objects opened on demand are not in the lists, so fall back to inspectRow.
+  const traceRow = useMemo(() => {
+    if (!inspectKey) return null
+    return findRowByKey(catalogEntities, inspectKey) || findRowByKey(allRows, inspectKey) || inspectRow
+  }, [inspectKey, catalogEntities, allRows, inspectRow])
+
+  const traceCatalogEnabled = Boolean(traceRow) && isWorkloadTraceKind(traceRow.kind)
+
+  const traceCatalog = useFocusChainCatalog({
+    cluster,
+    catalog,
+    browseScope,
+    focusRow: traceRow,
+    enabled: traceCatalogEnabled,
+  })
 
   const snapshotInspect = useMemo(
     () => (inspectRow ? buildComponentInspect(view, inspectRow) : null),

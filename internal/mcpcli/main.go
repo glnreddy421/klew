@@ -57,6 +57,13 @@ func Main(prog string, args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "%s %s (%s, %s)\n", prog, v.Version, v.Commit, v.Date)
 		return 0
 	}
+	// A mistyped folder would otherwise load no rules without a word.
+	if *extensionsDir != "" {
+		if fi, err := os.Stat(*extensionsDir); err != nil || !fi.IsDir() {
+			fmt.Fprintf(stderr, "%s: -extensions-dir %s is not a directory\n", prog, *extensionsDir)
+			return 2
+		}
+	}
 
 	// stdout carries the MCP protocol; every log line goes to stderr.
 	slog.SetDefault(slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: slog.LevelWarn})))

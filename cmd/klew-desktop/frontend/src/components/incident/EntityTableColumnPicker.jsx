@@ -6,6 +6,7 @@ export function EntityTableColumnPicker({
   columns = [],
   visibleIds = [],
   onChange,
+  onAutoWidths,
 }) {
   const [open, setOpen] = useState(false)
   const [coords, setCoords] = useState({ top: 0, left: 0 })
@@ -125,6 +126,24 @@ export function EntityTableColumnPicker({
           </div>
         )
       })}
+      {onAutoWidths && (
+        <>
+          <div className="entity-table-columns-sep" aria-hidden="true" />
+          <button
+            type="button"
+            role="menuitem"
+            className="entity-table-columns-option entity-table-columns-action"
+            onClick={() => {
+              onAutoWidths()
+              setOpen(false)
+            }}
+            title="Return all columns to automatic widths"
+          >
+            <span className="entity-table-columns-check" aria-hidden="true" />
+            <span>Auto widths</span>
+          </button>
+        </>
+      )}
     </div>
   ) : null
 

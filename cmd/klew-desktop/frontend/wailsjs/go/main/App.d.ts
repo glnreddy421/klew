@@ -43,6 +43,8 @@ export function GetResourceCatalog(arg1:main.CatalogOptions):Promise<model.Resou
 
 export function GetResourceManifest(arg1:main.ResourceManifestOptions):Promise<kube.ResourceManifest>;
 
+export function GetRevisionCompare(arg1:string,arg2:string,arg3:string,arg4:number,arg5:number):Promise<model.RevisionCompare>;
+
 export function GetTerminalShellChoices():Promise<Array<main.TerminalShellChoice>>;
 
 export function GetView():Promise<api.View>;
