@@ -63,12 +63,12 @@ type App struct {
 	history    *eventHistory
 	historyErr string
 
-	logStreamMu     sync.Mutex
-	logStreams      map[string]*logstream.Session
+	logStreamMu sync.Mutex
+	logStreams  map[string]*logstream.Session
 	// logStreamContexts maps a stream ID to the kube context it was started in.
 	logStreamContexts map[string]string
-	logStreamSeq    int
-	logStreamClient *kube.Client
+	logStreamSeq      int
+	logStreamClient   *kube.Client
 }
 
 func NewApp(boot bootOptions) *App { return &App{boot: boot} }

@@ -84,7 +84,7 @@ type ContextStatus struct {
 	Reason     string `json:"reason,omitempty"`
 	Scope      string `json:"scope,omitempty"`
 	HighVolume bool   `json:"highVolume,omitempty"`
-	Active bool `json:"active,omitempty"`
+	Active     bool   `json:"active,omitempty"`
 	// Favorite is true when this context is opted into recording (the
 	// "recorded contexts" list from the UI — not the Home star).
 	Favorite bool `json:"favorite,omitempty"`
