@@ -8,6 +8,10 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 
 - **Go toolchain** — builds use Go 1.26.11, which fixes a reachable `net/http` vulnerability in Go 1.26.10 ([GO-2026-6859](https://pkg.go.dev/vuln/GO-2026-6859)).
 
+### Performance
+
+- **Faster investigations of large namespaces** — a whole-namespace snapshot reads Deployments, ReplicaSets and EndpointSlices with one List each instead of one request per Deployment or Service, and works out each workload's latest change from objects it already read. Outside container logs, a snapshot now makes the same number of API requests however many Deployments the namespace has; with 500 Deployments that is about 2,000 fewer requests behind the client rate limit. Nodes, and the pods on them, are read in parallel. An investigation of one Deployment still reads only that Deployment.
+
 ### Fixed
 
 - **`klew mcp -extensions-dir`** with a folder that does not exist now stops with "is not a directory" (exit status 2), as `klew investigate` does, instead of loading no rules and reporting no problems.
