@@ -13769,6 +13769,11 @@ button.cluster-context-chip.is-link:hover {
   display: none;
 }
 
+/* Only the top bar is left of the shell; let the dock take the rest. */
+.app-root.stream-maximized > .app-shell {
+  flex: 0 0 auto;
+}
+
 .app-root.stream-maximized .stream-dock {
   flex: 1;
   min-height: 0;
