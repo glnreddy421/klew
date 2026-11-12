@@ -20,6 +20,10 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 
 ### Fixed
 
+- **`klew investigate -context`** — the report header, catalog and RBAC cache keys and the event-history lookup now use the context you pass, not the kubeconfig's current-context. The desktop app, which always passes a context, was affected the same way.
+- **Settings → Investigation → Event history** shows again. The Settings dialog sat outside the event-history state, so the section rendered nothing.
+- **Terminal pre-fill** — commands opened from the CLI and install buttons are typed once the shell has finished starting, so zsh no longer draws the line garbled.
+- **Maximized terminal** fills the window below the top bar instead of only the bottom half.
 - **`klew mcp -extensions-dir`** with a folder that does not exist now stops with "is not a directory" (exit status 2), as `klew investigate` does, instead of loading no rules and reporting no problems.
 
 ## [2.0.0] — 2026-11-08

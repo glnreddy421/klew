@@ -1547,8 +1547,6 @@ export default function App() {
       </LogStreamProvider>
       </InvestigableProvider>
       </TerminalLaunchProvider>
-      </EventHistoryProvider>
-      </HeaderSlotProvider>
 
       <McpSetupDialog
         open={mcpSetupOpen}
@@ -1575,6 +1573,9 @@ export default function App() {
         section={settingsSection}
         onSectionChange={setSettingsSection}
       />
+      {/* Settings → Investigation → Event history reads this context. */}
+      </EventHistoryProvider>
+      </HeaderSlotProvider>
 
       <TerminalShellModal
         open={terminalShellPickerOpen}

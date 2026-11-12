@@ -79,7 +79,12 @@ func NewFromFlags(kubeconfig, context, namespace string) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read raw config: %w", err)
 	}
+	// RawConfig ignores overrides, so an explicit context wins over the
+	// kubeconfig's current-context here as it does in ClientConfig above.
 	currentCtx := raw.CurrentContext
+	if context != "" {
+		currentCtx = context
+	}
 	ctxCfg, ok := raw.Contexts[currentCtx]
 	if !ok {
 		return nil, fmt.Errorf("context %q not found", currentCtx)

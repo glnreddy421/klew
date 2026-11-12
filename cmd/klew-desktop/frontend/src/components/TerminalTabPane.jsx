@@ -14,6 +14,7 @@ import { EventsOn } from '../../wailsjs/runtime/runtime'
 import { shellLabel } from '../lib/shellLabel'
 import { terminalNotice } from '../lib/terminalBanner'
 import { terminalXtermTheme } from '../lib/terminalAppearance'
+import { waitForShellQuiet } from '../lib/shellReady'
 
 const MAX_EARLY_OUTPUT_CHUNKS = 256
 
@@ -41,6 +42,7 @@ export function TerminalTabPane({
   const restartSeenRef = useRef(tab.restartToken)
   const startingRef = useRef(false)
   const earlyOutputRef = useRef([])
+  const lastOutputAtRef = useRef(0)
   const shellPrefRef = useRef(shellPref)
   const activeRef = useRef(active)
   const mountedRef = useRef(false)
@@ -140,6 +142,7 @@ export function TerminalTabPane({
     const rows = Math.max(term.rows || 0, 24)
 
     earlyOutputRef.current = []
+    lastOutputAtRef.current = 0
     startingRef.current = true
     try {
       const info = await StartTerminal({
@@ -163,10 +166,6 @@ export function TerminalTabPane({
       if (notice) term.write(notice)
       for (const chunk of early) term.write(chunk.data)
       flushPendingInput(info.id)
-      if (tab.initialInput && !tab.initialInputSent) {
-        await WriteTerminal(info.id, tab.initialInput).catch(() => {})
-        report({ initialInputSent: true })
-      }
       term.focus()
       report({
         sessionId: info.id,
@@ -177,6 +176,13 @@ export function TerminalTabPane({
         // Persist the context this PTY was started with (including fallback).
         contextName: info.context || contextName || tab.contextName || '',
       })
+      if (tab.initialInput && !tab.initialInputSent) {
+        // Let the shell finish starting first, or zsh draws the line garbled.
+        await waitForShellQuiet(() => lastOutputAtRef.current)
+        if (gen !== startGenRef.current || sessionRef.current !== info.id) return
+        await WriteTerminal(info.id, tab.initialInput).catch(() => {})
+        report({ initialInputSent: true })
+      }
     } catch (err) {
       if (gen !== startGenRef.current) return
       startingRef.current = false
@@ -243,9 +249,11 @@ export function TerminalTabPane({
       if (payload.id !== sessionRef.current) {
         if (startingRef.current && earlyOutputRef.current.length < MAX_EARLY_OUTPUT_CHUNKS) {
           earlyOutputRef.current.push({ id: payload.id, data: payload.data || '' })
+          lastOutputAtRef.current = Date.now()
         }
         return
       }
+      lastOutputAtRef.current = Date.now()
       term.write(payload.data || '')
     })
     const offExit = EventsOn('terminal:exit', (payload) => {
