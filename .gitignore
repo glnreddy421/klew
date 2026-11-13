@@ -32,3 +32,6 @@ dist/
 
 # klew command release staging (.github/scripts/build-cli.sh)
 /build/
+
+# Local preview config (machine-specific paths)
+.claude/launch.json
