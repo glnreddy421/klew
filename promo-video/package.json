@@ -17,5 +17,8 @@
   },
   "devDependencies": {
     "playwright": "^1.56.1"
+  },
+  "overrides": {
+    "zod": "^4.6.6"
   }
 }
