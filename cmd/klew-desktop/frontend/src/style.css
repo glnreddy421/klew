@@ -18,23 +18,23 @@
   --sidebar-w: var(--rail-w);
   --sidebar-w-collapsed: var(--rail-w-collapsed);
 
-  /* Defaults — overridden by lib/themes.js (Ocean) */
-  --sidebar-bg: #14171c;
-  --sidebar-hover: #1e232b;
+  /* Defaults — overridden by lib/themes.js (cream / tour-video near-black) */
+  --sidebar-bg: #12151a;
+  --sidebar-hover: #1e2228;
   --sidebar-active: transparent;
-  --workspace-bg: #101418;
-  --surface: #171b21;
-  --surface-2: #1e242c;
-  --border: #2d3540;
-  --border-light: #3d4654;
-  --text: #e8eaed;
-  --text-secondary: #9aa3af;
-  --accent: #1d8fe1;
-  --accent-hover: #2496ed;
-  --accent-dim: rgba(29, 143, 225, 0.15);
-  --on-accent: #ffffff;
-  --surface-hover: rgba(255, 255, 255, 0.04);
-  --surface-hover-strong: rgba(255, 255, 255, 0.06);
+  --workspace-bg: #181b21;
+  --surface: #1e2228;
+  --surface-2: #252a31;
+  --border: #2e333b;
+  --border-light: #3a4049;
+  --text: #ededed;
+  --text-secondary: #a1a1a1;
+  --accent: #ededed;
+  --accent-hover: #ffffff;
+  --accent-dim: rgba(237, 237, 237, 0.12);
+  --on-accent: #181b21;
+  --surface-hover: rgba(255, 255, 255, 0.05);
+  --surface-hover-strong: rgba(255, 255, 255, 0.09);
   --crit: #f25555;
   --warn: #f0a030;
   --ok: #2ecc71;

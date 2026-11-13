@@ -30,54 +30,64 @@ export function onAccentForColor(accent) {
   return l > 0.55 ? '#0a0a0a' : '#ffffff'
 }
 
+/** Brand — cream light; dark matches tour video near-black (#181b21). */
+export const BRAND_LIGHT = '#f0ebd8'
+/** Light-mode accent / text. */
+export const BRAND_SLATE = '#181b21'
+export const BRAND_ACCENT = BRAND_SLATE
+/** Dark workspace — sampled from klew-tour.mp4 chrome. */
+export const BRAND_DARK_BG = '#181b21'
+/** Primary text / accent on dark workspace. */
+export const BRAND_DARK_FG = '#ededed'
+
 /** The two palettes. Everything else in the app derives from these tokens. */
 export const THEMES = [
   {
     id: 'light',
     name: 'Light',
-    description: 'Bright workspace',
+    description: 'Warm cream workspace',
     mode: 'light',
-    swatch: ['#eef1f5', '#1d8fe1'],
+    swatch: [BRAND_LIGHT, BRAND_ACCENT],
     vars: {
-      '--sidebar-bg': '#eef1f5',
-      '--sidebar-hover': '#e3e8ee',
-      '--sidebar-active': '#d8e0e8',
-      '--workspace-bg': '#f8f9fb',
-      '--surface': '#ffffff',
-      '--surface-2': '#f0f3f6',
-      '--border': '#d8dee6',
-      '--border-light': '#c4ccd6',
-      '--text': '#1a1d21',
-      '--text-secondary': '#5f6b7a',
-      '--accent': '#1d8fe1',
-      '--accent-hover': '#1578c2',
-      '--accent-dim': 'rgba(29, 143, 225, 0.12)',
-      '--surface-hover': 'rgba(0, 0, 0, 0.04)',
-      '--surface-hover-strong': 'rgba(0, 0, 0, 0.07)',
+      '--sidebar-bg': '#e8e2cf',
+      '--sidebar-hover': '#ddd6c0',
+      '--sidebar-active': '#d4cdb6',
+      '--workspace-bg': BRAND_LIGHT,
+      '--surface': '#f7f3e8',
+      '--surface-2': '#ebe5d2',
+      '--border': '#d2cbb6',
+      '--border-light': '#c0b89f',
+      '--text': BRAND_SLATE,
+      '--text-secondary': '#3d4a56',
+      '--accent': BRAND_SLATE,
+      '--accent-hover': '#2a2e36',
+      '--accent-dim': 'rgba(24, 27, 33, 0.10)',
+      '--surface-hover': 'rgba(24, 27, 33, 0.05)',
+      '--surface-hover-strong': 'rgba(24, 27, 33, 0.09)',
     },
   },
   {
     id: 'dark',
     name: 'Dark',
-    description: 'Dim workspace',
+    description: 'Near-black workspace',
     mode: 'dark',
-    swatch: ['#1b1f26', '#1d8fe1'],
+    swatch: [BRAND_DARK_BG, BRAND_DARK_FG],
     vars: {
-      '--sidebar-bg': '#1b1f26',
-      '--sidebar-hover': '#252a33',
-      '--sidebar-active': '#2a3140',
-      '--workspace-bg': '#101418',
-      '--surface': '#171b21',
-      '--surface-2': '#1e242c',
-      '--border': '#2d3540',
-      '--border-light': '#3d4654',
-      '--text': '#e8eaed',
-      '--text-secondary': '#9aa3af',
-      '--accent': '#1d8fe1',
-      '--accent-hover': '#2496ed',
-      '--accent-dim': 'rgba(29, 143, 225, 0.15)',
-      '--surface-hover': 'rgba(255, 255, 255, 0.04)',
-      '--surface-hover-strong': 'rgba(255, 255, 255, 0.06)',
+      '--sidebar-bg': '#12151a',
+      '--sidebar-hover': '#1e2228',
+      '--sidebar-active': '#252a31',
+      '--workspace-bg': BRAND_DARK_BG,
+      '--surface': '#1e2228',
+      '--surface-2': '#252a31',
+      '--border': '#2e333b',
+      '--border-light': '#3a4049',
+      '--text': BRAND_DARK_FG,
+      '--text-secondary': '#a1a1a1',
+      '--accent': BRAND_DARK_FG,
+      '--accent-hover': '#ffffff',
+      '--accent-dim': 'rgba(237, 237, 237, 0.12)',
+      '--surface-hover': 'rgba(255, 255, 255, 0.05)',
+      '--surface-hover-strong': 'rgba(255, 255, 255, 0.09)',
     },
   },
 ]
