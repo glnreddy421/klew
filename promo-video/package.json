@@ -1,0 +1,24 @@
+{
+  "name": "klew-promo-video",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "record": "node record.mjs && node assemble.mjs",
+    "studio": "remotion studio src/index.jsx",
+    "render": "remotion render src/index.jsx KlewResourcesDemo out/klew-resources-demo.mp4"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.536",
+    "@remotion/google-fonts": "4.0.536",
+    "@remotion/transitions": "4.0.536",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "remotion": "4.0.536"
+  },
+  "devDependencies": {
+    "playwright": "^1.56.1"
+  },
+  "overrides": {
+    "zod": "^4.6.6"
+  }
+}

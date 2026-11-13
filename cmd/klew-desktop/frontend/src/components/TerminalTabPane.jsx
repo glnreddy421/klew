@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
+import { Unicode11Addon } from '@xterm/addon-unicode11'
 import '@xterm/xterm/css/xterm.css'
 import { buildTerminalFindOptions, countTerminalMatches, runTerminalSearch } from '../lib/terminalFind'
 import {
@@ -15,6 +16,7 @@ import { shellLabel } from '../lib/shellLabel'
 import { terminalNotice } from '../lib/terminalBanner'
 import { terminalXtermTheme } from '../lib/terminalAppearance'
 import { waitForShellQuiet } from '../lib/shellReady'
+import { createSerialWriter } from '../lib/serialWriter'
 
 const MAX_EARLY_OUTPUT_CHUNKS = 256
 
@@ -92,25 +94,52 @@ export function TerminalTabPane({
     onStateChange?.(tab.id, patch)
   }, [onStateChange, tab.id])
 
+  // One write in flight at a time, so key presses and pastes reach the shell in order.
+  const writerRef = useRef(null)
+  if (!writerRef.current) {
+    writerRef.current = createSerialWriter((data) => {
+      const id = sessionRef.current
+      return id ? WriteTerminal(id, data) : Promise.resolve()
+    })
+  }
+
   const flushPendingInput = useCallback((id) => {
     if (!id || !pendingInputRef.current) return
     const data = pendingInputRef.current
     pendingInputRef.current = ''
-    WriteTerminal(id, data).catch(() => {})
+    writerRef.current.push(data)
   }, [])
 
   const sendInput = useCallback((data) => {
-    const id = sessionRef.current
-    if (!id) {
+    if (!sessionRef.current) {
       pendingInputRef.current += data
       return
     }
-    WriteTerminal(id, data).catch(() => {})
+    writerRef.current.push(data)
+  }, [])
+
+  // Tell the shell the size xterm actually has. Only a visible pane can be
+  // measured; a hidden one keeps its last size until it is shown again.
+  const lastSizeRef = useRef('')
+  const syncSize = useCallback(() => {
+    const el = containerRef.current
+    const term = termRef.current
+    const fit = fitRef.current
+    if (!el || !term || !fit || !el.clientWidth || !el.clientHeight) return
+    fit.fit()
+    const id = sessionRef.current
+    if (!id || !term.cols || !term.rows) return
+    const key = `${id}:${term.cols}x${term.rows}`
+    if (key === lastSizeRef.current) return
+    lastSizeRef.current = key
+    ResizeTerminal(id, term.cols, term.rows).catch(() => {})
   }, [])
 
   const closeSession = useCallback(async () => {
     const id = sessionRef.current
     sessionRef.current = null
+    writerRef.current?.clear()
+    lastSizeRef.current = ''
     if (id) {
       try {
         await CloseTerminal(id)
@@ -159,6 +188,9 @@ export function TerminalTabPane({
       }
       startingRef.current = false
       sessionRef.current = info.id
+      // The pane may have changed size while the shell started (the dock opening).
+      lastSizeRef.current = `${info.id}:${cols}x${rows}`
+      syncSize()
       // The shell prints its prompt before StartTerminal resolves; replay it.
       const early = earlyOutputRef.current.filter((c) => c.id === info.id)
       earlyOutputRef.current = []
@@ -178,9 +210,12 @@ export function TerminalTabPane({
       })
       if (tab.initialInput && !tab.initialInputSent) {
         // Let the shell finish starting first, or zsh draws the line garbled.
+        // A size change makes the shell redraw its prompt; wait that out too.
         await waitForShellQuiet(() => lastOutputAtRef.current)
+        syncSize()
+        await waitForShellQuiet(() => lastOutputAtRef.current, { quietMs: 200, maxMs: 2000 })
         if (gen !== startGenRef.current || sessionRef.current !== info.id) return
-        await WriteTerminal(info.id, tab.initialInput).catch(() => {})
+        writerRef.current.push(tab.initialInput)
         report({ initialInputSent: true })
       }
     } catch (err) {
@@ -196,6 +231,7 @@ export function TerminalTabPane({
     kubeconfig,
     report,
     flushPendingInput,
+    syncSize,
     tab.initialInput,
     tab.initialInputSent,
   ])
@@ -219,6 +255,11 @@ export function TerminalTabPane({
     const search = new SearchAddon()
     term.loadAddon(fit)
     term.loadAddon(search)
+    // Modern character widths (emoji, symbols). With xterm's Unicode 6 default,
+    // full-screen programs like Claude Code that assume newer widths drift and
+    // leave stray characters.
+    term.loadAddon(new Unicode11Addon())
+    term.unicode.activeVersion = '11'
     termRef.current = term
     fitRef.current = fit
     searchRef.current = search
@@ -267,12 +308,9 @@ export function TerminalTabPane({
         attach()
         return
       }
-      if (!activeRef.current) return
-      fit.fit()
-      const id = sessionRef.current
-      if (id && term.cols && term.rows) {
-        ResizeTerminal(id, term.cols, term.rows).catch(() => {})
-      }
+      // Any visible pane, active or not: a terminal opened from Home is never
+      // marked active, and its shell kept the startup size.
+      syncSize()
     })
     ro.observe(el)
     attach()
@@ -297,14 +335,9 @@ export function TerminalTabPane({
 
   useEffect(() => {
     if (!open || !active || !openedRef.current || !termRef.current || !fitRef.current) return
-    const fit = fitRef.current
     const term = termRef.current
     const frame = requestAnimationFrame(() => {
-      fit.fit()
-      const id = sessionRef.current
-      if (id && term.cols && term.rows) {
-        ResizeTerminal(id, term.cols, term.rows).catch(() => {})
-      }
+      syncSize()
       if (focused) term.focus()
     })
     return () => cancelAnimationFrame(frame)
