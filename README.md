@@ -1,4 +1,6 @@
-# Klew
+<p align="center">
+  <img src="docs/assets/klew-logo.png" alt="Klew" width="150">
+</p>
 
 [![Release](https://img.shields.io/github/v/release/glnreddy421/klew?label=release)](https://github.com/glnreddy421/klew/releases/latest)
 [![Tests](https://github.com/glnreddy421/klew/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/glnreddy421/klew/actions/workflows/tests.yml)
@@ -15,13 +17,16 @@
 
 When something breaks in a cluster you need three answers fast: **what failed**, **why**, and **what else is affected**. Klew discovers the related objects, watches live state, events, and logs, correlates them, and keeps one investigation up to date as the cluster changes — instead of a dozen `kubectl` commands across terminal tabs.
 
-![Klew investigation overview — OOMKilled diagnosis with affected path and key findings](docs/screenshots/overview.png)
+<p align="center">
+  <a href="https://klew-ui.web.app/videos/klew-tour.mp4"><img src="docs/assets/klew-tour.jpg" alt="Watch the Klew tour: resources, live logs, investigate, CLI and MCP" width="860"></a>
+  <br>
+  <sub><a href="https://klew-ui.web.app/videos/klew-tour.mp4">Watch the 3-minute tour</a>: resources, live logs, investigate, CLI and MCP.</sub>
+</p>
 
 ## Contents
 
 - [Get started](#get-started)
 - [What you get](#what-you-get)
-- [Screenshots](#screenshots)
 - [Install](#install)
   - [Desktop app (macOS 12+)](#desktop-app-macos-12)
   - [`klew` command (macOS and Linux)](#klew-command-macos-and-linux)
@@ -77,16 +82,6 @@ All you need is a working kubeconfig (`~/.kube/config` or `KUBECONFIG`). Klew ac
 - **Live logs** — select pods, workloads or Services and stream their logs together, stern-style: one merged, time-ordered stream with a colour per pod. Workloads follow their selector, so new pods join. Works with or without an investigation.
 - **Built in** — cluster terminal pinned to the active context, and one window per cluster.
 - **Extensible** — add your own checks as YAML and CEL; they apply in all three front ends. See [Extensions](#extensions).
-
-## Screenshots
-
-| Failures | Patterns |
-| --- | --- |
-| ![Failures — pod triage and pod investigation](docs/screenshots/failures.png) | ![Patterns — top words, fields, and log templates](docs/screenshots/patterns.png) |
-| **Evidence** | **Resources** |
-| ![Evidence — correlated signals, observations, and claims](docs/screenshots/evidence.png) | ![Resources — catalog, pod list, and live inspector](docs/screenshots/resources.png) |
-
-![Graph — relationships across ingress, services, workloads, and pods](docs/screenshots/graph.png)
 
 ## Install
 
