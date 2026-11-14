@@ -1,0 +1,47 @@
+# Rules over Klew's built-in pod summaries. No collector needed: Klew
+# already reads pods for every investigation.
+#
+# Fields come from Klew's summary (camelCase), not the raw Kubernetes object:
+#   object.name, object.restartCount, object.containers[].image,
+#   object.containers[].limitsMem, object.containers[].init, ...
+
+apiVersion: klew.dev/v1alpha1
+kind: Rule
+metadata:
+  name: no-memory-limit
+spec:
+  resource: pods
+  # A container without a memory limit can use the node's memory until the
+  # kernel kills something else. limitsMem is absent when no limit is set.
+  when: "object.containers.exists(c, !has(c.init) && !has(c.limitsMem))"
+  severity: warning
+  state: NoMemoryLimit
+  facts:
+    - "'no memory limit: ' + object.containers.filter(c, !has(c.init) && !has(c.limitsMem)).map(c, c.name).join(', ')"
+---
+apiVersion: klew.dev/v1alpha1
+kind: Rule
+metadata:
+  name: unpinned-image
+spec:
+  resource: pods
+  # ':latest' or no tag at all means a restart can pull different code.
+  when: "object.containers.exists(c, c.image.endsWith(':latest') || !c.image.substring(c.image.lastIndexOf('/') + 1).contains(':'))"
+  severity: info
+  state: UnpinnedImage
+  facts:
+    - "object.containers.filter(c, c.image.endsWith(':latest') || !c.image.substring(c.image.lastIndexOf('/') + 1).contains(':')).map(c, c.name + ' uses ' + c.image).join(', ')"
+---
+apiVersion: klew.dev/v1alpha1
+kind: Rule
+metadata:
+  name: restart-storm
+spec:
+  resource: pods
+  # Built-in rules already flag CrashLoopBackOff; this one makes a long
+  # history of restarts visible even while the pod is up right now.
+  when: "object.restartCount >= 50"
+  severity: warning
+  state: RestartStorm
+  facts:
+    - "object.name + ' has restarted ' + string(object.restartCount) + ' times'"

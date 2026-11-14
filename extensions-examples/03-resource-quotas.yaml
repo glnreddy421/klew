@@ -1,0 +1,25 @@
+# A collector for a core type Klew does not read by default, and a rule over
+# it. The collector lists ResourceQuotas in the investigated namespace only.
+
+apiVersion: klew.dev/v1alpha1
+kind: Collector
+metadata:
+  name: resourcequotas          # rules refer to this name
+spec:
+  resource: resourcequotas      # plural; core types need no group
+---
+apiVersion: klew.dev/v1alpha1
+kind: Rule
+metadata:
+  name: quota-exhausted
+spec:
+  resource: resourcequotas
+  # A quota at its limit rejects new pods, which shows up as a Deployment
+  # that never scales up, with FailedCreate events on its ReplicaSet.
+  when: >-
+    has(object.status.hard) && has(object.status.used) &&
+    object.status.hard.exists(k, k in object.status.used && object.status.used[k] == object.status.hard[k])
+  severity: high                # high: counts toward the verdict
+  state: QuotaExhausted
+  facts:
+    - "object.metadata.name + ' is full for: ' + object.status.hard.filter(k, k in object.status.used && object.status.used[k] == object.status.hard[k]).join(', ')"

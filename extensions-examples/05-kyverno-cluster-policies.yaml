@@ -1,0 +1,24 @@
+# A cluster-scoped custom resource: Kyverno ClusterPolicies. A policy that is
+# not ready may not be enforcing what you think it is, or (with
+# failurePolicy: Fail) may be blocking pods cluster-wide.
+
+apiVersion: klew.dev/v1alpha1
+kind: Collector
+metadata:
+  name: kyverno-clusterpolicies
+spec:
+  group: kyverno.io
+  resource: clusterpolicies
+  clusterScoped: true           # ClusterPolicies have no namespace
+---
+apiVersion: klew.dev/v1alpha1
+kind: Rule
+metadata:
+  name: kyverno-policy-not-ready
+spec:
+  resource: kyverno-clusterpolicies
+  when: "has(object.status.conditions) && object.status.conditions.exists(c, c.type == 'Ready' && c.status != 'True')"
+  severity: high
+  state: PolicyNotReady
+  facts:
+    - "object.metadata.name + ': ' + object.status.conditions.filter(c, c.type == 'Ready')[0].message"

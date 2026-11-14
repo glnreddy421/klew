@@ -1,0 +1,37 @@
+# A custom resource: cert-manager Certificates. On a cluster without
+# cert-manager the collector reports "not installed" and the rule has nothing
+# to check; nothing fails.
+
+apiVersion: klew.dev/v1alpha1
+kind: Collector
+metadata:
+  name: certificates
+spec:
+  group: cert-manager.io        # the API group of the custom resource
+  resource: certificates        # version is optional: Klew picks one that serves it
+---
+apiVersion: klew.dev/v1alpha1
+kind: Rule
+metadata:
+  name: certificate-not-ready
+spec:
+  resource: certificates
+  when: "has(object.status.conditions) && object.status.conditions.exists(c, c.type == 'Ready' && c.status != 'True')"
+  severity: high
+  state: CertificateNotReady
+  facts:
+    - "object.status.conditions.filter(c, c.type == 'Ready')[0].message"
+---
+apiVersion: klew.dev/v1alpha1
+kind: Rule
+metadata:
+  name: certificate-renewal-failing
+spec:
+  resource: certificates
+  # cert-manager counts failed issuance attempts and backs off between them;
+  # a certificate can still be Ready while its renewal keeps failing.
+  when: "has(object.status.failedIssuanceAttempts) && object.status.failedIssuanceAttempts > 0"
+  severity: warning
+  state: CertificateRenewalFailing
+  facts:
+    - "object.metadata.name + ': ' + string(object.status.failedIssuanceAttempts) + ' failed issuance attempts'"

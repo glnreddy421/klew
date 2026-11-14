@@ -98,6 +98,21 @@ func fakeEnv(groups ...metav1.APIGroup) *CollectEnv {
 	return &CollectEnv{Namespace: "ns", Client: &Client{Clientset: cs}}
 }
 
+// discoveryEnv serves each group version with the named resources. The first
+// version listed for a group is its preferred version.
+func discoveryEnv(served map[string][]string, order ...string) *CollectEnv {
+	cs := kubefake.NewSimpleClientset()
+	disco := cs.Discovery().(*discoveryfake.FakeDiscovery)
+	for _, gv := range order {
+		list := &metav1.APIResourceList{GroupVersion: gv}
+		for _, r := range served[gv] {
+			list.APIResources = append(list.APIResources, metav1.APIResource{Name: r, Namespaced: true})
+		}
+		disco.Resources = append(disco.Resources, list)
+	}
+	return &CollectEnv{Namespace: "ns", Client: &Client{Clientset: cs}}
+}
+
 func TestOptionalCollectorSkipsQuietlyWhenAPIMissing(t *testing.T) {
 	c, _ := NewResourceCollector(ResourceCollectorSpec{Name: "gateways", Group: "gateway.networking.k8s.io", Resource: "gateways", Optional: true})
 	c.(*resourceCollector).newDynamic = func(*Client) (dynamic.Interface, error) {
@@ -122,10 +137,47 @@ func TestOptionalCollectorUsesPreferredVersion(t *testing.T) {
 	}
 	c, _ := NewResourceCollector(ResourceCollectorSpec{Name: "gateways", Group: gvr.Group, Resource: gvr.Resource, Optional: true})
 	c.(*resourceCollector).newDynamic = func(*Client) (dynamic.Interface, error) { return fake, nil }
-	env := fakeEnv(metav1.APIGroup{Name: gvr.Group, PreferredVersion: metav1.GroupVersionForDiscovery{GroupVersion: "gateway.networking.k8s.io/v1", Version: "v1"}})
+	env := discoveryEnv(map[string][]string{"gateway.networking.k8s.io/v1": {"gateways"}}, "gateway.networking.k8s.io/v1")
 	var b model.EvidenceBundle
 	c.Collect(context.Background(), env, &b)
 	if len(b.Resources["gateways"]) != 1 {
+		t.Fatalf("resources = %v, warnings = %v", b.Resources, b.Warnings)
+	}
+}
+
+// A group's preferred version need not serve every resource in it: kyverno.io
+// prefers v2, but ClusterPolicies are served only by v1 and v2beta1.
+func TestCollectorUsesAVersionThatServesTheResource(t *testing.T) {
+	env := discoveryEnv(map[string][]string{
+		"kyverno.io/v2":      {"policyexceptions", "cleanuppolicies"},
+		"kyverno.io/v1":      {"clusterpolicies", "policies"},
+		"kyverno.io/v2beta1": {"clusterpolicies", "policyexceptions"},
+	}, "kyverno.io/v2", "kyverno.io/v1", "kyverno.io/v2beta1")
+	for _, tc := range []struct{ resource, want string }{
+		{"policyexceptions", "v2"}, // the preferred version wins when it serves the resource
+		{"clusterpolicies", "v1"},  // else the first other version that does
+		{"widgets", ""},            // no version serves it
+	} {
+		if got := env.servedVersion("kyverno.io", tc.resource); got != tc.want {
+			t.Errorf("servedVersion(kyverno.io, %s) = %q, want %q", tc.resource, got, tc.want)
+		}
+	}
+	if got := env.servedVersion("example.com", "things"); got != "" {
+		t.Errorf("unserved group: got %q", got)
+	}
+
+	gvr := schema.GroupVersionResource{Group: "kyverno.io", Version: "v1", Resource: "clusterpolicies"}
+	pol := &unstructured.Unstructured{Object: map[string]any{"apiVersion": "kyverno.io/v1", "kind": "ClusterPolicy",
+		"metadata": map[string]any{"name": "require-labels"}}}
+	fake := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), map[schema.GroupVersionResource]string{gvr: "ClusterPolicyList"})
+	if err := fake.Tracker().Create(gvr, pol, ""); err != nil {
+		t.Fatal(err)
+	}
+	c, _ := NewResourceCollector(ResourceCollectorSpec{Name: "kyverno-clusterpolicies", Group: "kyverno.io", Resource: "clusterpolicies", ClusterScoped: true})
+	c.(*resourceCollector).newDynamic = func(*Client) (dynamic.Interface, error) { return fake, nil }
+	var b model.EvidenceBundle
+	c.Collect(context.Background(), env, &b)
+	if len(b.Resources["kyverno-clusterpolicies"]) != 1 || len(b.Warnings) != 0 {
 		t.Fatalf("resources = %v, warnings = %v", b.Resources, b.Warnings)
 	}
 }

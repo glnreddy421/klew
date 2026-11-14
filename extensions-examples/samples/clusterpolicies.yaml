@@ -1,0 +1,14 @@
+# Saved objects for: klew mcp -extensions-dir . -dry-run kyverno-policy-not-ready -object samples/clusterpolicies.yaml
+apiVersion: v1
+kind: List
+items:
+- apiVersion: kyverno.io/v1
+  kind: ClusterPolicy
+  metadata: {name: require-labels}
+  status:
+    conditions: [{type: Ready, status: "True", message: Ready}]
+- apiVersion: kyverno.io/v1
+  kind: ClusterPolicy
+  metadata: {name: restrict-registries}
+  status:
+    conditions: [{type: Ready, status: "False", message: "policy is not ready: webhook is not configured"}]

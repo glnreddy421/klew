@@ -1,0 +1,29 @@
+# Across namespaces: who else breaks when this namespace breaks?
+#
+# clusterScoped: true on a namespaced type (Services) lists it in EVERY
+# namespace. The rule then compares each object with ns, the namespace
+# being investigated, and keeps Services elsewhere that point into it.
+
+apiVersion: klew.dev/v1alpha1
+kind: Collector
+metadata:
+  name: all-services            # a new name: "services" is a built-in resource
+spec:
+  resource: services
+  clusterScoped: true           # needs permission to list Services cluster-wide
+  limit: 1000                   # at most 1000 objects are kept
+---
+apiVersion: klew.dev/v1alpha1
+kind: Rule
+metadata:
+  name: external-dependents
+spec:
+  resource: all-services
+  when: >-
+    object.metadata.namespace != ns &&
+    has(object.spec.externalName) &&
+    object.spec.externalName.contains('.' + ns + '.svc')
+  severity: info                # info: listed, but does not change the verdict
+  state: DependsOnThisNamespace
+  facts:
+    - "object.metadata.namespace + '/' + object.metadata.name + ' -> ' + object.spec.externalName"

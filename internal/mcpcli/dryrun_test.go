@@ -87,6 +87,45 @@ items:
 	}
 }
 
+// Saved objects from a cluster-wide collector span namespaces; -namespace
+// names the investigation namespace that rules compare them with as ns.
+func TestDryRunObjectFileWithNamespace(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "e.yaml", `apiVersion: klew.dev/v1alpha1
+kind: Collector
+metadata: {name: all-services}
+spec: {resource: services, clusterScoped: true}
+---
+apiVersion: klew.dev/v1alpha1
+kind: Rule
+metadata: {name: external-dependents}
+spec:
+  resource: all-services
+  when: "object.metadata.namespace != ns && has(object.spec.externalName) && object.spec.externalName.contains('.' + ns + '.svc')"
+  state: DependsOnThisNamespace
+`)
+	objects := writeFile(t, dir, "svc.yaml", `apiVersion: v1
+kind: List
+items:
+- kind: Service
+  metadata: {name: billing-proxy, namespace: shop}
+  spec: {type: ExternalName, externalName: billing.holdout.svc.cluster.local}
+- kind: Service
+  metadata: {name: alias, namespace: holdout}
+  spec: {type: ExternalName, externalName: billing.holdout.svc.cluster.local}
+`)
+	var out bytes.Buffer
+	opts := dryRunOptions{Rule: "external-dependents", ObjectFile: objects, Namespace: "holdout"}
+	if err := dryRun(&out, engine.LoadExtensions(dir), opts); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"as namespace holdout", "MATCH    Service/billing-proxy", "no match Service/alias", "1 of 2 matched"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output lacks %q:\n%s", want, out.String())
+		}
+	}
+}
+
 func TestDryRunAllNeedsANamespace(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "e.yaml", testExtensions)

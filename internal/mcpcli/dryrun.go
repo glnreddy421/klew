@@ -42,7 +42,8 @@ func checkExtensions(w io.Writer, folders []string, reg *engine.Registry) bool {
 }
 
 // dryRunOptions selects one rule and where its objects come from: a file of
-// saved objects, or a namespace read live (read-only) from the cluster.
+// saved objects, or a namespace read live (read-only) from the cluster. With a
+// file, Namespace only names the investigation namespace rules see as ns.
 type dryRunOptions struct {
 	Rule       string
 	ObjectFile string
@@ -58,8 +59,8 @@ func dryRun(w io.Writer, reg *engine.Registry, opts dryRunOptions) error {
 	if err != nil {
 		return err
 	}
-	if (opts.ObjectFile == "") == (opts.Namespace == "") {
-		return fmt.Errorf("give -object FILE (saved objects) or -namespace NS (read live), not both")
+	if opts.ObjectFile == "" && opts.Namespace == "" {
+		return fmt.Errorf("give -object FILE (saved objects) or -namespace NS (read live)")
 	}
 
 	var bundle model.EvidenceBundle
@@ -73,10 +74,19 @@ func dryRun(w io.Writer, reg *engine.Registry, opts dryRunOptions) error {
 		if err != nil {
 			return fmt.Errorf("%s: %w", opts.ObjectFile, err)
 		}
-		if bundle, err = engine.BundleFromObjects(resource, namespaceOf(objects), objects); err != nil {
+		// Rules see the investigation namespace as ns. Saved objects may span
+		// namespaces (a cluster-wide collector), so -namespace can name it.
+		ns := opts.Namespace
+		if ns == "" {
+			ns = namespaceOf(objects)
+		}
+		if bundle, err = engine.BundleFromObjects(resource, ns, objects); err != nil {
 			return err
 		}
 		source = opts.ObjectFile
+		if opts.Namespace != "" {
+			source += " as namespace " + opts.Namespace
+		}
 	} else if bundle, source, err = collectLive(opts); err != nil {
 		return err
 	}

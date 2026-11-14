@@ -42,7 +42,7 @@ func Main(prog string, args []string, stdout, stderr io.Writer) int {
 	dryRunRule := fs.String("dry-run", "", "run one user rule and print, for each object, whether it matched; needs -object or -namespace; read-only")
 	dryRunObject := fs.String("object", "", "with -dry-run: a file of saved objects (kubectl get -o yaml) to check")
 	dryRunAllRules := fs.Bool("dry-run-all", false, "run every user rule in the extensions folder against -namespace, read once; exit status 1 on any load problem or evaluation error; read-only")
-	dryRunNamespace := fs.String("namespace", "", "with -dry-run or -dry-run-all: a namespace to read live, read-only, and check")
+	dryRunNamespace := fs.String("namespace", "", "with -dry-run or -dry-run-all: a namespace to read live, read-only, and check; with -object: the investigation namespace rules see as ns")
 	fs.Usage = func() { printHelp(fs.Output(), prog, fs) }
 	if err := fs.Parse(args); err != nil {
 		// Matches flag.ExitOnError: -h exits 0, a bad flag exits 2.

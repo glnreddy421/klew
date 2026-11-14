@@ -49,6 +49,10 @@ type CollectEnv struct {
 	coverage   map[string]model.CollectorStatus
 	groupsOnce sync.Once
 	groups     *metav1.APIGroupList
+	// served caches discovery of each group version's resources, by
+	// "group/version"; a nil entry means discovery failed for it.
+	servedMu sync.Mutex
+	served   map[string]map[string]bool
 
 	// deployments are the in-scope Deployments the workloads collector read,
 	// by name, so later collectors need not read them again.

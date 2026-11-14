@@ -74,7 +74,7 @@ func collectedKinds(env *CollectEnv, collectors []EvidenceCollector) (map[string
 	for _, rc := range namespacedResourceCollectors(collectors) {
 		version := rc.spec.Version
 		if version == "" {
-			version = env.preferredVersion(rc.spec.Group)
+			version = env.servedVersion(rc.spec.Group, rc.spec.Resource)
 		}
 		if version == "" {
 			continue // not served: nothing of this group can be a target
