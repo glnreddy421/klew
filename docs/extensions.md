@@ -25,6 +25,8 @@ Built-in rules score the verdict and list **problems**: every unhealthy workload
 
 You add your own as YAML files. No rebuild is needed.
 
+To start quickly, copy from [extensions-examples](../extensions-examples): six commented files with saved objects to try them without a cluster.
+
 ## Where extensions live
 
 In the desktop app, open **Settings → Extensions**:
@@ -52,13 +54,46 @@ metadata:
   name: certificates          # rules refer to this name
 spec:
   group: cert-manager.io      # omit for the core group
-  version: v1                 # optional; omit to use the version the cluster prefers
+  version: v1                 # optional; omit to use the first version that serves the resource
   resource: certificates      # plural resource name
   clusterScoped: false        # default: the investigation namespace only
   limit: 200                  # objects kept; default 200, max 1000
 ```
 
 Collectors can only **list**. They cannot collect Secrets or subresources such as `pods/log`, nor ConfigMaps: Klew's built-in `configmaps` collector already lists them with their **key names only** (`object.keys`), never their values, and rules can use it. The objects they list are given to rules but are not sent to the desktop UI or to MCP clients; only the findings rules produce from them are. `managedFields` and the `last-applied-configuration` annotation are dropped. If your kubeconfig user cannot list the resource, the investigation reports a warning and carries on.
+
+When `version` is left out, Klew uses the group's preferred version if it serves the resource, and otherwise the first other version that does. A group's preferred version does not always serve every resource in it: `kyverno.io` prefers `v2`, but ClusterPolicies are served by `v1`.
+
+### Across namespaces
+
+With `clusterScoped: true` on a namespaced type, a collector lists that type in every namespace, not just the investigated one. Its rules then see objects from all namespaces, so compare each object with `ns` to keep what relates to the investigation. This rule finds Services in other namespaces that point into the investigated one, which tells you who else is affected when it fails:
+
+```yaml
+apiVersion: klew.dev/v1alpha1
+kind: Collector
+metadata:
+  name: all-services
+spec:
+  resource: services
+  clusterScoped: true
+  limit: 1000
+---
+apiVersion: klew.dev/v1alpha1
+kind: Rule
+metadata:
+  name: external-dependents
+spec:
+  resource: all-services
+  when: >-
+    object.metadata.namespace != ns && has(object.spec.externalName) &&
+    object.spec.externalName.contains('.' + ns + '.svc')
+  severity: info
+  state: DependsOnThisNamespace
+  facts:
+    - "object.metadata.namespace + '/' + object.metadata.name + ' -> ' + object.spec.externalName"
+```
+
+A cluster-wide list needs permission to list the type across the cluster, and keeps at most `limit` objects (1000 at most). Findings join the investigation's problems like any other, so give rules about other namespaces a severity that matches how much they matter here: `high` and `critical` findings count toward the verdict.
 
 ## Rules
 
@@ -81,7 +116,7 @@ spec:
 Expressions see two variables:
 
 - `object`: the object as JSON. For a collector this is the Kubernetes object (`object.metadata.name`, `object.status…`). For a built-in resource it is Klew's summary, with camelCase fields as in the desktop app's data (for example `object.restartCount`, `object.containers`, `object.phase`).
-- `namespace`: the investigation namespace.
+- `ns`: the investigation namespace. (`namespace` is a reserved word in CEL, so a rule that uses it is refused with a pointer to `ns`; the object's own `object.metadata.namespace` works as usual.)
 
 Built-in resources: `pods`, `services`, `workloads`, `replicasets`, `jobs`, `events`, `nodes`, and the name of any built-in resource collector above, such as `persistentvolumeclaims`, `networkpolicies` or `gateways`, which give rules the full Kubernetes object.
 
@@ -117,6 +152,10 @@ klew mcp -check-extensions
 # One rule against objects you saved
 kubectl get certificates -n shop -o yaml > certs.yaml
 klew mcp -dry-run certificate-not-ready -object certs.yaml
+
+# Saved objects from every namespace, checked as if investigating holdout (ns)
+kubectl get services -A -o yaml > services.yaml
+klew mcp -dry-run external-dependents -object services.yaml -namespace holdout
 
 # One rule against a namespace, read live
 klew mcp -dry-run certificate-not-ready -namespace shop

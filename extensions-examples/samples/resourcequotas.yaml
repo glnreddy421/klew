@@ -1,0 +1,16 @@
+# Saved objects for: klew mcp -extensions-dir . -dry-run quota-exhausted -object samples/resourcequotas.yaml
+apiVersion: v1
+kind: List
+items:
+- apiVersion: v1
+  kind: ResourceQuota
+  metadata: {name: team-quota, namespace: shop}
+  status:
+    hard: {pods: "10", requests.cpu: "4", requests.memory: 8Gi}
+    used: {pods: "10", requests.cpu: "2500m", requests.memory: 5Gi}
+- apiVersion: v1
+  kind: ResourceQuota
+  metadata: {name: batch-quota, namespace: shop}
+  status:
+    hard: {pods: "20"}
+    used: {pods: "3"}

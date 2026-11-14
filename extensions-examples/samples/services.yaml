@@ -1,0 +1,21 @@
+# Services from several namespaces, as a cluster-wide collector sees them.
+#   klew mcp -extensions-dir . -dry-run external-dependents -object samples/services.yaml -namespace holdout
+apiVersion: v1
+kind: List
+items:
+- apiVersion: v1
+  kind: Service
+  metadata: {name: billing-proxy, namespace: shop}
+  spec: {type: ExternalName, externalName: billing.holdout.svc.cluster.local}
+- apiVersion: v1
+  kind: Service
+  metadata: {name: web, namespace: shop}
+  spec: {type: ClusterIP, ports: [{port: 80}]}
+- apiVersion: v1
+  kind: Service
+  metadata: {name: alias, namespace: holdout}
+  spec: {type: ExternalName, externalName: billing.holdout.svc.cluster.local}
+- apiVersion: v1
+  kind: Service
+  metadata: {name: payments-proxy, namespace: shop}
+  spec: {type: ExternalName, externalName: api.payments.svc.cluster.local}

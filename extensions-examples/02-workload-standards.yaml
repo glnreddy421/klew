@@ -1,0 +1,30 @@
+# Rules over Klew's built-in workload summaries (Deployments, StatefulSets,
+# DaemonSets). Fields: object.kind, object.name, object.replicas,
+# object.ready, object.labels, ...
+
+apiVersion: klew.dev/v1alpha1
+kind: Rule
+metadata:
+  name: single-replica
+spec:
+  resource: workloads
+  # One replica means any restart or node drain takes the service offline.
+  when: "object.kind == 'Deployment' && object.replicas == 1"
+  severity: warning
+  state: SingleReplica
+  facts:
+    - "object.name + ' runs one replica; a single restart takes it offline'"
+---
+apiVersion: klew.dev/v1alpha1
+kind: Rule
+metadata:
+  name: missing-team-label
+spec:
+  resource: workloads
+  # A team convention: every workload names its owner, so on-call knows who
+  # to page. Change 'team' to the label your organisation uses.
+  when: "!has(object.labels) || !('team' in object.labels)"
+  severity: info
+  state: NoOwnerLabel
+  facts:
+    - "object.kind + '/' + object.name + ' has no team label'"

@@ -1,0 +1,16 @@
+# Saved objects for the rules in 04-cert-manager.yaml, for example:
+#   klew mcp -extensions-dir . -dry-run certificate-not-ready -object samples/certificates.yaml
+apiVersion: v1
+kind: List
+items:
+- apiVersion: cert-manager.io/v1
+  kind: Certificate
+  metadata: {name: web-tls, namespace: shop}
+  status:
+    conditions: [{type: Ready, status: "True", message: Certificate is up to date and has not expired}]
+- apiVersion: cert-manager.io/v1
+  kind: Certificate
+  metadata: {name: api-tls, namespace: shop}
+  status:
+    failedIssuanceAttempts: 3
+    conditions: [{type: Ready, status: "False", message: "Issuing certificate as Secret does not exist"}]
