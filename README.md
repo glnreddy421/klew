@@ -306,12 +306,6 @@ Flags, client setup, and data handling are in [docs/mcp.md](docs/mcp.md).
 
 Add your own checks as YAML: a **collector** lists a resource type, and a **rule** tests each object with a [CEL](https://cel.dev) expression. No rebuild is needed, and they apply in the desktop app, `klew investigate` and `klew mcp`.
 
-<p align="center">
-  <a href="https://klew-ui.web.app/videos/klew-extensions.mp4"><img src="docs/assets/klew-extensions.jpg" alt="Watch: link a folder of extensions, test the rules, run them in the terminal" width="720"></a>
-  <br>
-  <sub><a href="https://klew-ui.web.app/videos/klew-extensions.mp4">Watch extensions in 75 seconds</a>: link a folder, test the rules, run them in the terminal.</sub>
-</p>
-
 **Start from [extensions-examples](extensions-examples)**: six commented files (pod hygiene, workload standards, ResourceQuotas, cert-manager, Kyverno, and a cross-namespace rule) with saved objects to try them without a cluster.
 
 ```yaml
