@@ -35,3 +35,6 @@ dist/
 
 # Local preview config (machine-specific paths)
 .claude/launch.json
+
+# Promo video and screenshot tooling (kept local)
+/promo-video/
