@@ -72,7 +72,7 @@ type RuleSpec struct {
 	// Resource is a built-in kind (pods, services, workloads, replicasets,
 	// jobs, events, nodes) or the name of a user collector.
 	Resource string `json:"resource"`
-	// When is a CEL expression over `object` (and `namespace`) that is true
+	// When is a CEL expression over `object` (and `ns`) that is true
 	// when the object has the problem.
 	When     string         `json:"when"`
 	Severity model.Severity `json:"severity,omitempty"`
@@ -322,7 +322,8 @@ type celRule struct {
 }
 
 // NewCELRule compiles spec. Expressions see `object` (one object of
-// spec.Resource, as JSON) and `namespace`.
+// spec.Resource, as JSON) and `ns`, the investigation namespace. CEL reserves
+// the word namespace, so the variable is ns.
 func NewCELRule(name string, spec RuleSpec) (Rule, error) {
 	if spec.Resource == "" || spec.When == "" {
 		return nil, fmt.Errorf("rule %s needs resource and when", name)
@@ -339,7 +340,7 @@ func NewCELRule(name string, spec RuleSpec) (Rule, error) {
 	}
 	env, err := cel.NewEnv(
 		cel.Variable("object", cel.DynType),
-		cel.Variable("namespace", cel.StringType),
+		cel.Variable("ns", cel.StringType),
 		ext.Strings(),
 	)
 	if err != nil {
@@ -348,6 +349,9 @@ func NewCELRule(name string, spec RuleSpec) (Rule, error) {
 	compile := func(expr string, want *cel.Type) (cel.Program, error) {
 		ast, iss := env.Compile(expr)
 		if iss.Err() != nil {
+			if strings.Contains(iss.Err().Error(), "reserved identifier: namespace") {
+				return nil, fmt.Errorf("%w\nnamespace is a reserved word in CEL: use ns for the investigation namespace (object.metadata.namespace still works)", iss.Err())
+			}
 			return nil, iss.Err()
 		}
 		if t := ast.OutputType(); !t.IsExactType(want) && !t.IsExactType(cel.DynType) {
@@ -416,7 +420,7 @@ type RuleCheck struct {
 // check evaluates the rule on one object exactly as an investigation does.
 func (r *celRule) check(obj ruleObject, namespace string) RuleCheck {
 	c := RuleCheck{Object: obj.ref}
-	vars := map[string]any{"object": obj.data, "namespace": namespace}
+	vars := map[string]any{"object": obj.data, "ns": namespace}
 	val, _, err := r.when.Eval(vars)
 	if err != nil {
 		c.Error = err.Error()

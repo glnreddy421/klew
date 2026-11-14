@@ -179,3 +179,39 @@ func TestSnapshotCollectorsWithoutLogs(t *testing.T) {
 		t.Fatal("NoLogs dropped more than the logs collector")
 	}
 }
+
+// A cluster-wide collector sees every namespace; a rule compares objects to
+// the investigation namespace through ns. CEL reserves "namespace", so a rule
+// that uses it is refused with a pointer to ns.
+func TestCELRuleSeesInvestigationNamespace(t *testing.T) {
+	rule, err := NewCELRule("external-dependents", RuleSpec{
+		Resource: "all-services", Severity: model.SeverityInfo, State: "DependsOnThisNamespace",
+		When:  "object.metadata.namespace != ns && has(object.spec.externalName) && object.spec.externalName.contains('.' + ns + '.svc')",
+		Facts: []string{"object.metadata.namespace + '/' + object.metadata.name"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := func(ns, name, external string) map[string]any {
+		spec := map[string]any{"type": "ClusterIP"}
+		if external != "" {
+			spec = map[string]any{"type": "ExternalName", "externalName": external}
+		}
+		return map[string]any{"kind": "Service", "metadata": map[string]any{"name": name, "namespace": ns}, "spec": spec}
+	}
+	b := model.EvidenceBundle{Namespace: "holdout", Resources: map[string][]map[string]any{"all-services": {
+		svc("shop", "billing-proxy", "billing.holdout.svc.cluster.local"),
+		svc("shop", "web", ""),
+		svc("holdout", "alias", "billing.holdout.svc.cluster.local"),
+		svc("shop", "other", "api.payments.svc.cluster.local"),
+	}}}
+	res := rule.Evaluate(b)
+	if len(res.Findings) != 1 || res.Findings[0].Object.Name != "billing-proxy" || res.Findings[0].Facts[0] != "shop/billing-proxy" {
+		t.Fatalf("findings = %+v, warnings = %v", res.Findings, res.Warnings)
+	}
+
+	_, err = NewCELRule("old-name", RuleSpec{Resource: "pods", State: "Test", When: "namespace == 'holdout'"})
+	if err == nil || !strings.Contains(err.Error(), "use ns for the investigation namespace") {
+		t.Fatalf("err = %v, want a pointer to ns", err)
+	}
+}

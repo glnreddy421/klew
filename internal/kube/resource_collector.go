@@ -117,7 +117,7 @@ func errNotServed(err error) bool {
 func (c *resourceCollector) list(ctx context.Context, env *CollectEnv) ([]map[string]any, error) {
 	version := c.spec.Version
 	if version == "" {
-		version = env.preferredVersion(c.spec.Group)
+		version = env.servedVersion(c.spec.Group, c.spec.Resource)
 		if version == "" {
 			return nil, errAPINotServed
 		}
@@ -215,17 +215,67 @@ func (e *CollectEnv) serverGroups() *metav1.APIGroupList {
 	return e.groups
 }
 
-// preferredVersion is the version the cluster prefers for group, or "" when
-// the group is not served.
-func (e *CollectEnv) preferredVersion(group string) string {
+// servedVersion is the version of group that serves resource: the group's
+// preferred version when it does, else the first other version that does, in
+// the order the cluster lists them. A group's preferred version need not serve
+// every resource in it (kyverno.io prefers v2, but ClusterPolicies are v1). It
+// returns "" when the group is not served, or when discovery shows that no
+// version serves the resource. If discovery of every version fails, it falls
+// back to the preferred version and lets the list call decide.
+func (e *CollectEnv) servedVersion(group, resource string) string {
 	groups := e.serverGroups()
 	if groups == nil {
 		return ""
 	}
 	for _, g := range groups.Groups {
-		if g.Name == group {
+		if g.Name != group {
+			continue
+		}
+		versions := []metav1.GroupVersionForDiscovery{g.PreferredVersion}
+		for _, v := range g.Versions {
+			if v.Version != g.PreferredVersion.Version {
+				versions = append(versions, v)
+			}
+		}
+		discovered := false
+		for _, v := range versions {
+			res := e.servedResources(v.GroupVersion)
+			if res == nil {
+				continue
+			}
+			discovered = true
+			if res[resource] {
+				return v.Version
+			}
+		}
+		if !discovered {
 			return g.PreferredVersion.Version
 		}
+		return ""
 	}
 	return ""
+}
+
+// servedResources lists the resources one group version serves, once per
+// collection; nil when discovery fails.
+func (e *CollectEnv) servedResources(groupVersion string) map[string]bool {
+	e.servedMu.Lock()
+	defer e.servedMu.Unlock()
+	if res, ok := e.served[groupVersion]; ok {
+		return res
+	}
+	if e.served == nil {
+		e.served = map[string]map[string]bool{}
+	}
+	var res map[string]bool
+	if e.Client != nil && e.Client.Clientset != nil {
+		if list, err := e.Client.Clientset.Discovery().ServerResourcesForGroupVersion(groupVersion); err == nil && list != nil {
+			res = map[string]bool{}
+			for _, r := range list.APIResources {
+				res[r.Name] = true
+			}
+		}
+	}
+	e.served[groupVersion] = res
+	return res
 }
