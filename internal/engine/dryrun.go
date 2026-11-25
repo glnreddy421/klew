@@ -43,6 +43,17 @@ func (r *Registry) UserRuleNames() []string {
 	return out
 }
 
+// UserRuleSpecs returns each loaded user rule's spec by name.
+func (r *Registry) UserRuleSpecs() map[string]RuleSpec {
+	out := map[string]RuleSpec{}
+	for _, rule := range r.Rules {
+		if cr, ok := rule.(*celRule); ok {
+			out[cr.name] = cr.spec
+		}
+	}
+	return out
+}
+
 func (r *Registry) userRule(name string) (*celRule, error) {
 	for _, rule := range r.Rules {
 		if cr, ok := rule.(*celRule); ok && cr.name == name {

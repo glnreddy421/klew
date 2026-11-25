@@ -66,6 +66,7 @@ func DefaultRules() []Rule {
 		findingRule("deployment-conditions", deploymentConditionFindings),
 		findingRule("service-no-pods", serviceSelectorFindings),
 		findingRule("service-unready", serviceUnreadyFindings),
+		findingRule("errors-while-ready", errorsWhileReadyFindings),
 	}
 	rules = append(rules, workloadRules()...)
 	return append(rules, resourceRules()...)

@@ -9,6 +9,7 @@ cmd/klew-desktop/frontend/dist/
 
 # Dependencies
 cmd/klew-desktop/frontend/node_modules/
+packaging/mcpb/node_modules/
 
 # IDE / OS
 .idea/

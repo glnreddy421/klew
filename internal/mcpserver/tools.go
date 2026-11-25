@@ -394,7 +394,7 @@ func (sh shaper) summarize(id string, st model.InvestigationState) investigateOu
 		out.MatchedObjects = append(out.MatchedObjects, refString(m.Ref))
 	}
 	out.ProblemsTotal = len(st.Problems)
-	out.Problems = mapSlice(capSlice(st.Problems, maxProblems), briefProblem)
+	out.Problems = mapSlice(capSlice(st.Problems, maxProblems), sh.problem)
 	failing := failingPods(st.Snapshot.Pods)
 	out.FailingPodsTotal = len(failing)
 	out.FailingPods = mapSlice(capSlice(failing, 10), sh.pod)

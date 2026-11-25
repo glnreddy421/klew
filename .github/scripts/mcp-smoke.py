@@ -23,6 +23,7 @@ EXPECTED_TOOLS = {
     "klew_investigation_details",
     "klew_event_history",
     "klew_workload_changes",
+    "klew_list_extensions",
 }
 
 
