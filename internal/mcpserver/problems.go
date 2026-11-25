@@ -1,6 +1,10 @@
 package mcpserver
 
-import "github.com/glnreddy421/klew/v2/internal/model"
+import (
+	"strings"
+
+	"github.com/glnreddy421/klew/v2/internal/model"
+)
 
 const maxProblems = 20
 
@@ -21,4 +25,20 @@ func briefProblem(p model.Problem) problemBrief {
 		Object: p.Object, Severity: p.Severity, State: p.State, Facts: mapSlice(p.Facts, clean),
 		Pods: p.Pods, Unready: p.Unready, Restarts: p.Restarts, Rules: p.Rules,
 	}
+}
+
+// problem drops facts that quote a container's log line when log samples are off.
+func (sh shaper) problem(p model.Problem) problemBrief {
+	out := briefProblem(p)
+	if !sh.noLogSamples {
+		return out
+	}
+	kept := out.Facts[:0]
+	for _, f := range out.Facts {
+		if !strings.HasPrefix(f, model.LogExcerptPrefix) {
+			kept = append(kept, f)
+		}
+	}
+	out.Facts = kept
+	return out
 }

@@ -53,6 +53,14 @@ fi
 
 echo "Built ${APP} (${GOARCH})"
 
+# Wails generates Info.plist with LSMinimumSystemVersion 10.13, but Go 1.25+
+# needs macOS 12, so an older Mac would open the app and have it fail to
+# start. Declare 12.0 so macOS refuses it with a clear message instead.
+# Done before signing (sign-app.sh), which seals the plist.
+MIN_MACOS="12.0"
+/usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion ${MIN_MACOS}" "${APP}/Contents/Info.plist"
+echo "Minimum macOS: $(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "${APP}/Contents/Info.plist")"
+
 KUBECTL_DIR="${APP}/Contents/Resources/kubectl"
 mkdir -p "$KUBECTL_DIR"
 chmod +x "$SCRIPT_DIR/fetch-kubectl.sh"

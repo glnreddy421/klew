@@ -74,6 +74,15 @@ func NewResourceCollector(spec ResourceCollectorSpec) (EvidenceCollector, error)
 
 func (c *resourceCollector) Name() string { return c.spec.Name }
 
+// ResourceCollectorSpecOf returns c's spec when c is a generic (user) collector.
+func ResourceCollectorSpecOf(c EvidenceCollector) (ResourceCollectorSpec, bool) {
+	rc, ok := c.(*resourceCollector)
+	if !ok {
+		return ResourceCollectorSpec{}, false
+	}
+	return rc.spec, true
+}
+
 // Access is the list permission the collector needs.
 func (c *resourceCollector) Access() []Access {
 	return []Access{{Group: c.spec.Group, Resource: c.spec.Resource, Verb: "list", ClusterScoped: c.spec.ClusterScoped}}

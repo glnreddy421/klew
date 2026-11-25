@@ -108,6 +108,7 @@ func TestToolsAreReadOnly(t *testing.T) {
 		"klew_list_contexts": true, "klew_investigate": true, "klew_investigation_details": true,
 		"klew_event_history": true, "klew_workload_changes": true,
 		"klew_list_resources": true, "klew_get_resource": true, "klew_pod_logs": true,
+		"klew_list_extensions": true,
 	}
 	if len(res.Tools) != len(want) {
 		t.Fatalf("got %d tools, want %d", len(res.Tools), len(want))
@@ -123,6 +124,39 @@ func TestToolsAreReadOnly(t *testing.T) {
 		if len(tool.Name) > 64 {
 			t.Errorf("%s: name longer than 64 characters", tool.Name)
 		}
+	}
+}
+
+// The Claude Desktop extension's manifest lists the tools users see before
+// installing; it must match what the server serves.
+func TestDesktopExtensionManifestListsEveryTool(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "packaging", "mcpb", "manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest struct {
+		Tools []struct{ Name string } `json:"tools"`
+	}
+	if err := json.Unmarshal(b, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	listed := map[string]bool{}
+	for _, tool := range manifest.Tools {
+		listed[tool.Name] = true
+	}
+	cs := connect(t, testServer(fake.NewSimpleClientset(), nil))
+	res, err := cs.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tool := range res.Tools {
+		if !listed[tool.Name] {
+			t.Errorf("packaging/mcpb/manifest.json does not list %s", tool.Name)
+		}
+		delete(listed, tool.Name)
+	}
+	for name := range listed {
+		t.Errorf("packaging/mcpb/manifest.json lists %s, which the server does not serve", name)
 	}
 }
 

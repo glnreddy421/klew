@@ -41,6 +41,8 @@ Klew's own folder is `~/Library/Application Support/Klew/extensions/` (Windows: 
 
 You can also put files in Klew's folder by hand; restart `klew mcp` (or Reload in the app) after editing.
 
+**With the Claude Desktop extension** (`klew.mcpb`), the same folders apply: put files in Klew's folder, or link folders in the desktop app, and the extension loads them. To use one folder instead, choose it under **Extensions folder** in the extension's settings. Extensions load when the server starts, so after editing a file turn the extension off and on in Claude Desktop's settings. Then ask Claude *"which Klew extensions are loaded?"*: the `klew_list_extensions` tool lists each collector and rule with the file it came from, and every document that was skipped with the reason. Their findings appear in `klew_investigate` results alongside the built-in problems.
+
 A file can hold several documents separated by `---`. A document that fails to load is skipped, and the reason appears in Settings and in the warnings of every investigation (and on stderr for the `klew` command). Names must be unique across all folders, and built-in names cannot be redefined.
 
 ## Collectors

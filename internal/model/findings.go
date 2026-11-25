@@ -12,6 +12,10 @@ type Finding struct {
 	Facts []string `json:"facts,omitempty"`
 }
 
+// LogExcerptPrefix starts a fact that quotes a container's log line. Results
+// that must leave raw log text out (klew mcp -no-log-samples) drop such facts.
+const LogExcerptPrefix = "log: "
+
 // Problem groups the findings about one workload (or one object that no
 // workload owns), so every failing thing in scope is listed once.
 type Problem struct {

@@ -293,6 +293,7 @@ Then ask things like:
 | `klew_list_resources` | Objects of any type the cluster serves, custom resources included, like `kubectl get` |
 | `klew_get_resource` | One object: summary, labels, owners, conditions, container state. Secrets show key names and sizes only |
 | `klew_pod_logs` | Recent log lines of one container, redacted. Not offered with `-no-log-samples` |
+| `klew_list_extensions` | Your own collectors and rules that loaded, and any that were skipped and why |
 | `klew_list_contexts` | Contexts in your kubeconfig |
 
 Every tool is annotated `readOnlyHint: true` and `destructiveHint: false`, and none runs `kubectl` or a shell.

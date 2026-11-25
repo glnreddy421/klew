@@ -120,7 +120,7 @@ func Main(prog string, args []string, stdout, stderr io.Writer) int {
 	engine.SetRegistry(reg)
 	if err := serve(mcpserver.Options{
 		Kubeconfig: *kubeconfig, Context: *contextName, HistoryDir: *historyDir, Version: version.Version,
-		NoLogSamples: *noLogSamples,
+		NoLogSamples: *noLogSamples, ExtensionFolders: extensionFolders(*extensionsDir),
 	}); err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", prog, err)
 		return 1
