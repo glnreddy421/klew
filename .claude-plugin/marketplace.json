@@ -1,0 +1,18 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "klew",
+  "owner": {
+    "name": "glnreddy421",
+    "url": "https://klew.dev"
+  },
+  "description": "Klew's Claude plugin: read-only Kubernetes investigation over MCP.",
+  "plugins": [
+    {
+      "name": "klew",
+      "source": "./packaging/claude-plugin",
+      "description": "Read-only Kubernetes investigation engine for Claude: a verdict on what failed and why, plus logs, event history, rollout diffs and resource lookups, precomputed and compact.",
+      "category": "devops",
+      "homepage": "https://klew.dev"
+    }
+  ]
+}

@@ -14,9 +14,9 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 
 - **Ready pods that keep logging errors** — a new built-in rule, `errors-while-ready`, reports a Ready, running container when at least 5 of its recent log lines, and a fifth of them, are errors and one is among the last 10. Such a pod passes its probes and never restarts, so it looked healthy before; now it is a problem (`ErrorsWhileReady`), high when half the lines are errors, with the count and the most frequent error. With `klew mcp -no-log-samples` the quoted log line is left out.
 
-### MCP and Claude Desktop
+### MCP and Claude
 
-- **Claude Desktop extension** — each release attaches `klew-<version>.mcpb`: open it and Claude Desktop installs Klew with its own signed `klew` binary, no Homebrew or JSON config needed. Settings cover the kubeconfig, default context, extensions folder and leaving out log samples. The bundle is signed with the release's Developer ID and checked in CI.
+- **Claude plugin** — each release attaches `klew-<version>-claude-plugin.zip`: a thin Claude plugin that runs `klew mcp` from `PATH` (install the command with Homebrew or a release binary first). A session-start hook nudges when `klew` is missing. Settings cover the kubeconfig, default context, extensions folder and leaving out log samples. (The earlier `.mcpb` Desktop-extension package is removed; Anthropic's directory no longer accepts MCPB submissions.)
 - **`klew_list_extensions`** — a read-only tool that lists the collectors and rules the server loaded, the file each came from, and documents that were skipped with the reason.
 
 ### Security
