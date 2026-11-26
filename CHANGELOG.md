@@ -4,6 +4,8 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 
 ## [Unreleased]
 
+## [2.1.0] — 2026-11-26
+
 ### Desktop
 
 - **Home → Contexts** — full-width table of kubeconfig contexts (context, cluster, user, namespace, tags, history, status, actions). Search, tag filters, sortable columns, favorites, and launch default. Orbital hero and braille wordmark are gone; MCP setup is a header action.
@@ -531,6 +533,8 @@ Major release: redesigned **Resources** workbench, shell inspector, terminal wor
 
 - Prior desktop and CLI improvements; see git history and GitHub releases.
 
+[2.1.0]: https://github.com/glnreddy421/klew/releases/tag/v2.1.0
+[2.0.0]: https://github.com/glnreddy421/klew/releases/tag/v2.0.0
 [1.1.0]: https://github.com/glnreddy421/klew/releases/tag/v1.1.0
 [1.0.0]: https://github.com/glnreddy421/klew/releases/tag/v1.0.0
 [0.1.10]: https://github.com/glnreddy421/klew/releases/tag/v0.1.10

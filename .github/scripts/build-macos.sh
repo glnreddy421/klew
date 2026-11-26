@@ -61,6 +61,15 @@ MIN_MACOS="12.0"
 /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion ${MIN_MACOS}" "${APP}/Contents/Info.plist"
 echo "Minimum macOS: $(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "${APP}/Contents/Info.plist")"
 
+# The bundle version (Finder's Get Info, About Klew) comes from the release
+# tag like the binary's own version, not from wails.json, so a release never
+# needs a version-bump commit.
+for key in CFBundleShortVersionString CFBundleVersion; do
+  /usr/libexec/PlistBuddy -c "Set :${key} ${VERSION}" "${APP}/Contents/Info.plist" 2>/dev/null ||
+    /usr/libexec/PlistBuddy -c "Add :${key} string ${VERSION}" "${APP}/Contents/Info.plist"
+done
+echo "Bundle version: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${APP}/Contents/Info.plist")"
+
 KUBECTL_DIR="${APP}/Contents/Resources/kubectl"
 mkdir -p "$KUBECTL_DIR"
 chmod +x "$SCRIPT_DIR/fetch-kubectl.sh"

@@ -2,8 +2,8 @@
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "klew",
   "version": "2.1.0",
-  "displayName": "Klew: Read-only Kubernetes Troubleshooting",
-  "description": "Read-only Kubernetes investigation engine for Claude: a verdict on what failed and why, plus logs, event history, rollout diffs and resource lookups, precomputed and compact.",
+  "displayName": "Klew",
+  "description": "Read-only Kubernetes troubleshooting: investigations, logs, events, rollout changes and much more.",
   "author": {
     "name": "glnreddy421",
     "url": "https://klew.dev"
