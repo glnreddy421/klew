@@ -10,7 +10,7 @@
     {
       "name": "klew",
       "source": "./packaging/claude-plugin",
-      "description": "Read-only Kubernetes investigation engine for Claude: a verdict on what failed and why, plus logs, event history, rollout diffs and resource lookups, precomputed and compact.",
+      "description": "Read-only Kubernetes troubleshooting: investigations, logs, events, rollout changes and much more.",
       "category": "devops",
       "homepage": "https://klew.dev"
     }
