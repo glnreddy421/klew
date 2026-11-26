@@ -1,0 +1,56 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "klew",
+  "version": "2.1.0",
+  "displayName": "Klew: Read-only Kubernetes Troubleshooting",
+  "description": "Read-only Kubernetes investigation engine for Claude: a verdict on what failed and why, plus logs, event history, rollout diffs and resource lookups, precomputed and compact.",
+  "author": {
+    "name": "glnreddy421",
+    "url": "https://klew.dev"
+  },
+  "homepage": "https://klew.dev",
+  "repository": "https://github.com/glnreddy421/klew",
+  "license": "Apache-2.0",
+  "keywords": [
+    "kubernetes",
+    "k8s",
+    "incident",
+    "troubleshooting",
+    "root-cause",
+    "logs",
+    "events",
+    "sre",
+    "devops",
+    "read-only"
+  ],
+  "userConfig": {
+    "kubeconfig": {
+      "type": "string",
+      "title": "Kubeconfig",
+      "description": "Path to the kubeconfig file. Leave empty for KUBECONFIG or ~/.kube/config.",
+      "required": false,
+      "default": ""
+    },
+    "context": {
+      "type": "string",
+      "title": "Default kube context",
+      "description": "Context to use when Claude does not name one. Leave empty for the kubeconfig's current context.",
+      "required": false,
+      "default": ""
+    },
+    "no_log_samples": {
+      "type": "boolean",
+      "title": "Leave out log samples",
+      "description": "Keep raw container log text out of results. Log patterns, counts and other evidence are still returned.",
+      "required": false,
+      "default": false
+    },
+    "extensions_dir": {
+      "type": "string",
+      "title": "Extensions folder",
+      "description": "Folder of your own Collector and Rule YAML files. Leave empty for Klew's own extensions folder and the folders linked in the Klew desktop app.",
+      "required": false,
+      "default": ""
+    }
+  }
+}

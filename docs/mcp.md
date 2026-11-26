@@ -61,13 +61,19 @@ claude mcp add --scope user klew -- klew mcp
 
 `--scope user` adds it for every project; without it, the server is only available in the folder you ran the command in. Start a new Claude Code session afterwards, since one already open does not pick up the change. If it says `klew` already exists, `claude mcp get klew` shows which server and scope it uses; remove it with `claude mcp remove klew -s <scope>` and add it again.
 
-**Claude Desktop extension (macOS)**
+**Claude plugin**
 
-Download `klew-<version>.mcpb` from the [latest release](https://github.com/glnreddy421/klew/releases/latest) and open it; Claude Desktop shows what it includes and installs it. The bundle carries its own signed and notarized `klew` binary, so you don't need Homebrew or the desktop app, and the bundle itself is signed with the same Developer ID. In the extension's settings you can pick a kubeconfig, a default context, an extensions folder, and turn on **Leave out log samples** (the same as `-no-log-samples`). Leave them empty to use `KUBECONFIG` or `~/.kube/config` and its current context.
+Install the `klew` command first (Homebrew or a release binary above), then install the [Claude plugin](https://code.claude.com/docs/en/plugins) in Claude Code:
 
-Your own collectors and rules work as they do everywhere else: the extension reads Klew's extensions folder and the folders linked in the desktop app, or the folder you choose in its settings. Turn the extension off and on after editing them, and ask Claude which Klew extensions are loaded to check (see [Extensions](extensions.md#where-extensions-live)).
+```
+/plugin install klew --marketplace glnreddy421/klew
+```
 
-Claude Desktop warns that an extension can access your computer. That is true of every local extension: it runs as you, with your permissions. Klew uses that to read your kubeconfig, your extensions folders and the desktop app's event history, to read `PATH`, `KUBECONFIG`, proxy and cloud CLI variables from your login shell once at start, and to run your kubeconfig's auth plugins. In the cluster it only lists, gets and watches.
+On older Claude Code versions, run `/plugin marketplace add glnreddy421/klew` and then `/plugin install klew@klew`. For Cowork, upload a release's `klew-<version>-claude-plugin.zip`. The plugin runs `klew mcp`, finding the command on your `PATH` or in the usual Homebrew and local install folders, so it also starts when Claude was opened from the Dock. If `klew` is missing, a session-start check prints the Homebrew install line. Optional settings cover kubeconfig, default context, extensions folder, and **Leave out log samples** (the same as `-no-log-samples`). Leave them empty to use `KUBECONFIG` or `~/.kube/config` and its current context.
+
+Your own collectors and rules work as they do everywhere else: the server reads Klew's extensions folder and the folders linked in the desktop app, or the folder you choose in plugin settings. Reload the plugin after editing them, and ask Claude which Klew extensions are loaded to check (see [Extensions](extensions.md#where-extensions-live)).
+
+The plugin runs locally as you. Klew reads your kubeconfig, extensions folders and the desktop app's event history, loads `PATH`, `KUBECONFIG`, proxy and cloud CLI variables from your login shell once at start, and runs your kubeconfig's auth plugins. In the cluster it only lists, gets and watches. A local stdio server reaches Claude Code and on-machine Cowork; it does not reach claude.ai chat.
 
 **Claude Desktop, Cursor and other JSON-configured clients**
 

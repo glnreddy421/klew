@@ -127,36 +127,36 @@ func TestToolsAreReadOnly(t *testing.T) {
 	}
 }
 
-// The Claude Desktop extension's manifest lists the tools users see before
-// installing; it must match what the server serves.
-func TestDesktopExtensionManifestListsEveryTool(t *testing.T) {
-	b, err := os.ReadFile(filepath.Join("..", "..", "packaging", "mcpb", "manifest.json"))
+// The Claude plugin starts klew mcp through its launcher, which finds the
+// separately installed binary even when PATH lacks Homebrew.
+func TestClaudePluginRunsKlewOnPath(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "packaging", "claude-plugin", ".mcp.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	var manifest struct {
-		Tools []struct{ Name string } `json:"tools"`
+	var cfg struct {
+		MCPServers map[string]struct {
+			Command string   `json:"command"`
+			Args    []string `json:"args"`
+		} `json:"mcpServers"`
 	}
-	if err := json.Unmarshal(b, &manifest); err != nil {
+	if err := json.Unmarshal(b, &cfg); err != nil {
 		t.Fatal(err)
 	}
-	listed := map[string]bool{}
-	for _, tool := range manifest.Tools {
-		listed[tool.Name] = true
+	server, ok := cfg.MCPServers["klew"]
+	if !ok {
+		t.Fatal("packaging/claude-plugin/.mcp.json missing mcpServers.klew")
 	}
-	cs := connect(t, testServer(fake.NewSimpleClientset(), nil))
-	res, err := cs.ListTools(context.Background(), nil)
+	const launcher = "${CLAUDE_PLUGIN_ROOT}/bin/klew-mcp.sh"
+	if server.Command != "bash" || len(server.Args) == 0 || server.Args[0] != launcher {
+		t.Errorf("command = %q %v, want bash %s", server.Command, server.Args, launcher)
+	}
+	script, err := os.ReadFile(filepath.Join("..", "..", "packaging", "claude-plugin", "bin", "klew-mcp.sh"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, tool := range res.Tools {
-		if !listed[tool.Name] {
-			t.Errorf("packaging/mcpb/manifest.json does not list %s", tool.Name)
-		}
-		delete(listed, tool.Name)
-	}
-	for name := range listed {
-		t.Errorf("packaging/mcpb/manifest.json lists %s, which the server does not serve", name)
+	if !strings.Contains(string(script), `exec "$klew" mcp "$@"`) {
+		t.Error("bin/klew-mcp.sh must exec klew mcp")
 	}
 }
 

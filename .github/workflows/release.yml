@@ -80,14 +80,9 @@ jobs:
           REQUIRE_SIGNING: "1"
         run: ./.github/scripts/build-cli.sh
 
-      # Packs the signed macOS klew binaries as a universal binary and checks
-      # the bundle the way Claude Desktop runs it.
-      - name: Build the Claude Desktop extension (klew.mcpb)
-        env:
-          REQUIRE_SIGNING: "1"
-          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-        run: ./.github/scripts/build-mcpb.sh
+      # Thin Claude plugin (runs klew from PATH; binary installed separately).
+      - name: Build the Claude plugin
+        run: ./.github/scripts/build-claude-plugin.sh
 
       # One SBOM per front end, each built from what actually ships: Go modules
       # come from the build info embedded in the binaries; the desktop SBOM adds
@@ -119,7 +114,7 @@ jobs:
 
       - name: Checksums
         working-directory: dist
-        run: shasum -a 256 Klew-*.zip Klew-*.dmg klew-cli-*.tar.gz klew-*.mcpb ./*-sbom.spdx.json > "Klew-${VERSION_NUMBER}-SHA256SUMS.txt"
+        run: shasum -a 256 Klew-*.zip Klew-*.dmg klew-cli-*.tar.gz klew-*-claude-plugin.zip ./*-sbom.spdx.json > "Klew-${VERSION_NUMBER}-SHA256SUMS.txt"
 
       - name: Build provenance attestation
         # Lets users run: gh attestation verify <file> --repo glnreddy421/klew
@@ -129,7 +124,7 @@ jobs:
             dist/Klew-*.zip
             dist/Klew-*.dmg
             dist/klew-cli-*.tar.gz
-            dist/klew-*.mcpb
+            dist/klew-*-claude-plugin.zip
 
       - name: SBOM attestation — desktop app
         uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
@@ -144,7 +139,7 @@ jobs:
         with:
           subject-path: |
             dist/klew-cli-*.tar.gz
-            dist/klew-*.mcpb
+            dist/klew-*-claude-plugin.zip
           sbom-path: dist/klew-cli-${{ env.VERSION_NUMBER }}-sbom.spdx.json
 
       - name: Publish GitHub release
@@ -173,7 +168,7 @@ jobs:
             "klew-cli-${VERSION}-linux-arm64.tar.gz" \
             "klew-cli-${VERSION}-linux-amd64.tar.gz" \
             "klew-cli-${VERSION}-sbom.spdx.json" \
-            "klew-${VERSION}.mcpb" \
+            "klew-${VERSION}-claude-plugin.zip" \
             "Klew-${VERSION}-SHA256SUMS.txt"
 
       - name: Update Homebrew tap

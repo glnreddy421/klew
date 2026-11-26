@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "klew": {
+      "command": "bash",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/bin/klew-mcp.sh",
+        "-kubeconfig=${user_config.kubeconfig}",
+        "-context=${user_config.context}",
+        "-no-log-samples=${user_config.no_log_samples}",
+        "-extensions-dir=${user_config.extensions_dir}"
+      ]
+    }
+  }
+}
