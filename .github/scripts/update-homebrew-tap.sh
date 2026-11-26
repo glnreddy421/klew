@@ -76,6 +76,10 @@ cask "klew" do
   desc "Live Kubernetes incident investigation (desktop app)"
   homepage "https://github.com/glnreddy421/klew"
 
+  # Klew updates itself (Settings > About, or the update banner), so Homebrew
+  # leaves upgrades to the app instead of reinstalling over it.
+  auto_updates true
+
   app "Klew.app"
 
   livecheck do

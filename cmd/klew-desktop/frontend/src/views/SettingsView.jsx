@@ -29,6 +29,8 @@ import {
   GetNetworkProxy,
   SetNetworkProxy,
   CheckForUpdate,
+  PrepareUpdate,
+  RestartToUpdate,
 } from '../../wailsjs/go/main/App'
 import { BrowserOpenURL, ClipboardSetText } from '../../wailsjs/runtime/runtime'
 import { useAppInfo } from '../hooks/useAppInfo'
@@ -88,6 +90,8 @@ export function SettingsView({
   const [updateBusy, setUpdateBusy] = useState(false)
   const [updateResult, setUpdateResult] = useState(null)
   const [updateCopied, setUpdateCopied] = useState(false)
+  // '' | 'downloading' | 'restarting' while Update and restart runs.
+  const [installPhase, setInstallPhase] = useState('')
   const appInfo = useAppInfo()
 
   async function checkForUpdate() {
@@ -104,6 +108,32 @@ export function SettingsView({
       })
     } finally {
       setUpdateBusy(false)
+    }
+  }
+
+  async function updateAndRestart() {
+    if (!PrepareUpdate || !RestartToUpdate || installPhase) return
+    setInstallPhase('downloading')
+    try {
+      const st = await PrepareUpdate()
+      if (!st?.ready) {
+        setUpdateResult((prev) => ({
+          ...prev,
+          canSelfUpdate: false,
+          message: st?.message || 'Could not download the update.',
+          error: st?.error || '',
+        }))
+        return
+      }
+      setInstallPhase('restarting')
+      const msg = await RestartToUpdate()
+      if (msg) {
+        setUpdateResult((prev) => ({ ...prev, message: msg, error: '' }))
+      }
+    } catch (err) {
+      setUpdateResult((prev) => ({ ...prev, message: 'Could not install the update.', error: err?.message || String(err) }))
+    } finally {
+      setInstallPhase('')
     }
   }
 
@@ -306,6 +336,9 @@ export function SettingsView({
                 <SettingsMessage>
                   {updateResult.message}
                   {updateResult.error ? ` (${updateResult.error})` : ''}
+                  {updateResult.updateAvailable && !updateResult.canSelfUpdate && updateResult.selfUpdateNote
+                    ? ` Klew can't update itself here: ${updateResult.selfUpdateNote}.`
+                    : ''}
                 </SettingsMessage>
               ) : null}
             >
@@ -318,7 +351,7 @@ export function SettingsView({
               )}
               <SettingRow
                 label="Updates"
-                hint="Compares this build to the latest GitHub release. Klew does not install updates itself."
+                hint="Compares this build to the latest GitHub release. Updates are downloaded from GitHub, checked against the release checksum and Klew's Apple signature, and installed when Klew restarts."
               >
                 <div className="settings-row-actions">
                   <button
@@ -329,7 +362,21 @@ export function SettingsView({
                   >
                     {updateBusy ? 'Checking…' : 'Check for updates'}
                   </button>
-                  {updateResult?.updateAvailable && updateResult?.upgradeCommand && (
+                  {updateResult?.updateAvailable && updateResult?.canSelfUpdate && (
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      disabled={Boolean(installPhase)}
+                      onClick={updateAndRestart}
+                    >
+                      {installPhase === 'downloading'
+                        ? 'Downloading…'
+                        : installPhase === 'restarting'
+                          ? 'Restarting…'
+                          : 'Update and restart'}
+                    </button>
+                  )}
+                  {updateResult?.updateAvailable && !updateResult?.canSelfUpdate && updateResult?.upgradeCommand && (
                     <button
                       type="button"
                       className="btn btn-ghost btn-sm"
@@ -347,7 +394,7 @@ export function SettingsView({
                       Open release
                     </button>
                   )}
-                  {updateResult?.updateAvailable && updateResult?.downloadURL && updateResult?.channel !== 'homebrew' && (
+                  {updateResult?.updateAvailable && !updateResult?.canSelfUpdate && updateResult?.downloadURL && updateResult?.channel !== 'homebrew' && (
                     <button
                       type="button"
                       className="btn btn-ghost btn-sm"

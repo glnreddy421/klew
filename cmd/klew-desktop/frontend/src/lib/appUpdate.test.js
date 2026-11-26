@@ -21,3 +21,20 @@ describe('updatePromptCopy', () => {
     expect(copy.message).toMatch(/Homebrew/)
   })
 })
+
+describe('updatePromptCopy with self-update', () => {
+  const result = { canSelfUpdate: true, latestVersion: '2.2.0', currentVersion: '2.1.0' }
+
+  it('walks through downloading, ready and failed', () => {
+    expect(updatePromptCopy(result, 'downloading').message).toMatch(/Downloading/)
+    const ready = updatePromptCopy(result, 'ready')
+    expect(ready.title).toBe('Klew v2.2.0 is ready')
+    expect(ready.message).toMatch(/Restart Klew/)
+    expect(updatePromptCopy(result, 'failed', 'checksum mismatch').message).toMatch(/checksum mismatch/)
+  })
+
+  it('keeps the Homebrew and download copy when Klew cannot update itself', () => {
+    const copy = updatePromptCopy({ ...result, canSelfUpdate: false })
+    expect(copy.message).toMatch(/Open the release/)
+  })
+})

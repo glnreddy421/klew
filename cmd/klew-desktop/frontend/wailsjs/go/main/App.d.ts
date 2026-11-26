@@ -82,6 +82,8 @@ export function OpenNewWindow(arg1:main.OpenWindowOptions):Promise<void>;
 
 export function PauseLogStream(arg1:string):Promise<void>;
 
+export function PrepareUpdate():Promise<main.UpdateStatus>;
+
 export function RefreshInvestigation():Promise<void>;
 
 export function RefreshResourceCatalog(arg1:main.CatalogOptions):Promise<model.ResourceCatalog>;
@@ -91,6 +93,8 @@ export function ReloadExtensions():Promise<main.ExtensionsView>;
 export function RemoveExtensionFile(arg1:string):Promise<main.ExtensionsView>;
 
 export function ResizeTerminal(arg1:string,arg2:number,arg3:number):Promise<void>;
+
+export function RestartToUpdate():Promise<string>;
 
 export function ResumeLogStream(arg1:string):Promise<void>;
 

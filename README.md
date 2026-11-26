@@ -94,7 +94,7 @@ brew tap glnreddy421/klew
 brew install --cask klew
 ```
 
-Upgrade with `brew update && brew upgrade --cask klew`; remove with `brew uninstall --cask klew`.
+Klew updates itself: when a new release is out it downloads and verifies it, and **Restart to update** installs it. You can also upgrade with `brew update && brew upgrade --cask klew`; remove with `brew uninstall --cask klew`.
 
 <details>
 <summary>Migrating from the old formula</summary>
@@ -345,7 +345,7 @@ Where extensions live, the built-in collectors and rules, and how findings affec
 - **Read-only.** Klew lists, gets, and watches. It has no code path that creates, updates, patches, scales, execs into, or deletes anything, and it never runs the commands it suggests. The desktop app's terminal is an ordinary shell that you drive.
 - **Your RBAC.** Klew sees only what your kubeconfig credentials can. Anything it could not check is reported as not checked, not as healthy.
 - **No Secret values.** Secrets appear as type, key names, and sizes only.
-- **No telemetry and no account.** Klew connects to the Kubernetes API servers in your kubeconfig (through your proxy settings, if any). Other network use is limited to downloading a version-matched `kubectl` from `dl.k8s.io` when your cluster needs one, fetching UI fonts from Google Fonts (cached locally), and the desktop app checking GitHub's releases API for a newer version shortly after launch and from **Check for updates**. That check sends only a `Klew/<version>` user agent, nothing about you or your clusters. `klew mcp` makes none of these calls.
+- **No telemetry and no account.** Klew connects to the Kubernetes API servers in your kubeconfig (through your proxy settings, if any). Other network use is limited to downloading a version-matched `kubectl` from `dl.k8s.io` when your cluster needs one, fetching UI fonts from Google Fonts (cached locally), and the desktop app checking GitHub's releases API for a newer version shortly after launch and from **Check for updates**. That check sends only a `Klew/<version>` user agent, nothing about you or your clusters. When it finds a newer release, the app downloads that release's zip and checksum file from GitHub to update itself. `klew mcp` makes none of these calls.
 - **Local history.** Recorded event history stays on your Mac in `~/Library/Application Support/Klew/history/` and is never uploaded. Turn it off or clear it in **Settings → Investigation**.
 
 The full security model, supply-chain details, and how to report a vulnerability are in [SECURITY.md](SECURITY.md).

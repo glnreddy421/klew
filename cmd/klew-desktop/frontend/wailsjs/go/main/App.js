@@ -146,6 +146,10 @@ export function PauseLogStream(arg1) {
   return window['go']['main']['App']['PauseLogStream'](arg1);
 }
 
+export function PrepareUpdate() {
+  return window['go']['main']['App']['PrepareUpdate']();
+}
+
 export function RefreshInvestigation() {
   return window['go']['main']['App']['RefreshInvestigation']();
 }
@@ -164,6 +168,10 @@ export function RemoveExtensionFile(arg1) {
 
 export function ResizeTerminal(arg1, arg2, arg3) {
   return window['go']['main']['App']['ResizeTerminal'](arg1, arg2, arg3);
+}
+
+export function RestartToUpdate() {
+  return window['go']['main']['App']['RestartToUpdate']();
 }
 
 export function ResumeLogStream(arg1) {
