@@ -1559,6 +1559,24 @@ export namespace main {
 	        this.path = source["path"];
 	    }
 	}
+	export class UpdateStatus {
+	    ready: boolean;
+	    version?: string;
+	    message: string;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new UpdateStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ready = source["ready"];
+	        this.version = source["version"];
+	        this.message = source["message"];
+	        this.error = source["error"];
+	    }
+	}
 
 }
 
@@ -4352,6 +4370,9 @@ export namespace update {
 	    upgradeCommand?: string;
 	    releaseURL: string;
 	    downloadURL?: string;
+	    checksumsURL?: string;
+	    canSelfUpdate: boolean;
+	    selfUpdateNote?: string;
 	    message: string;
 	    error?: string;
 	
@@ -4368,6 +4389,9 @@ export namespace update {
 	        this.upgradeCommand = source["upgradeCommand"];
 	        this.releaseURL = source["releaseURL"];
 	        this.downloadURL = source["downloadURL"];
+	        this.checksumsURL = source["checksumsURL"];
+	        this.canSelfUpdate = source["canSelfUpdate"];
+	        this.selfUpdateNote = source["selfUpdateNote"];
 	        this.message = source["message"];
 	        this.error = source["error"];
 	    }

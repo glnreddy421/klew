@@ -69,6 +69,8 @@ type App struct {
 	logStreamContexts map[string]string
 	logStreamSeq      int
 	logStreamClient   *kube.Client
+
+	updates updater
 }
 
 func NewApp(boot bootOptions) *App { return &App{boot: boot} }

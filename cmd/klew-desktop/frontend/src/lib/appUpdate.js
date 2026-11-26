@@ -7,9 +7,31 @@ export function shouldPromptUpdate(result, dismissedVersion = '') {
   return latest !== String(dismissedVersion || '').trim()
 }
 
-export function updatePromptCopy(result) {
+/**
+ * Banner copy. phase applies when Klew can update itself:
+ * 'downloading' | 'ready' | 'failed'.
+ */
+export function updatePromptCopy(result, phase = '', error = '') {
   const latest = result?.latestVersion ? `v${result.latestVersion}` : 'a new version'
   const current = result?.currentVersion ? `v${result.currentVersion}` : 'this build'
+  if (result?.canSelfUpdate) {
+    if (phase === 'ready') {
+      return {
+        title: `Klew ${latest} is ready`,
+        message: `Restart Klew to install it. You're on ${current}.`,
+      }
+    }
+    if (phase === 'failed') {
+      return {
+        title: `Klew ${latest} is available`,
+        message: `The update could not be downloaded${error ? ` (${error})` : ''}. Download it from the release page instead.`,
+      }
+    }
+    return {
+      title: `Klew ${latest} is available`,
+      message: 'Downloading and verifying the update…',
+    }
+  }
   if (result?.channel === 'homebrew') {
     return {
       title: `Klew ${latest} is available`,

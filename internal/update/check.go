@@ -1,5 +1,6 @@
-// Package update checks GitHub Releases for a newer Klew desktop build.
-// It never downloads or installs; callers decide how to prompt the user.
+// Package update checks GitHub Releases for a newer Klew desktop build and,
+// when the app can replace itself, downloads, verifies and installs it
+// (install.go). Check itself never downloads or installs.
 package update
 
 import (
@@ -38,8 +39,14 @@ type Result struct {
 	UpgradeCommand  string `json:"upgradeCommand,omitempty"`
 	ReleaseURL      string `json:"releaseURL"`
 	DownloadURL     string `json:"downloadURL,omitempty"`
-	Message         string `json:"message"`
-	Error           string `json:"error,omitempty"`
+	// ChecksumsURL is the release's SHA256SUMS file, used to verify DownloadURL.
+	ChecksumsURL string `json:"checksumsURL,omitempty"`
+	// CanSelfUpdate reports whether this copy of Klew can download the update
+	// and restart into it; SelfUpdateNote says why not when it cannot.
+	CanSelfUpdate  bool   `json:"canSelfUpdate"`
+	SelfUpdateNote string `json:"selfUpdateNote,omitempty"`
+	Message        string `json:"message"`
+	Error          string `json:"error,omitempty"`
 }
 
 type githubRelease struct {
@@ -89,9 +96,21 @@ func Check(ctx context.Context, currentVersion, goos, goarch string) Result {
 		res.ReleaseURL = rel.HTMLURL
 	}
 	res.DownloadURL = pickDownloadURL(rel, goos, goarch)
+	res.ChecksumsURL = pickChecksumsURL(rel)
 	res.UpdateAvailable = Compare(latest, res.CurrentVersion) > 0
+	if res.UpdateAvailable {
+		if res.DownloadURL == "" || res.ChecksumsURL == "" {
+			res.SelfUpdateNote = "this release has no verified download for this Mac"
+		} else if _, err := selfUpdateTarget(); err != nil {
+			res.SelfUpdateNote = err.Error()
+		} else {
+			res.CanSelfUpdate = true
+		}
+	}
 
 	switch {
+	case res.CanSelfUpdate:
+		res.Message = fmt.Sprintf("Klew %s is available (you have %s).", latest, res.CurrentVersion)
 	case res.UpdateAvailable && channel == ChannelHomebrew:
 		res.Message = fmt.Sprintf("Klew %s is available (you have %s). Upgrade with Homebrew.", latest, res.CurrentVersion)
 	case res.UpdateAvailable:
@@ -144,6 +163,17 @@ func pickDownloadURL(rel githubRelease, goos, goarch string) string {
 	for _, a := range rel.Assets {
 		name := strings.ToLower(a.Name)
 		if strings.Contains(name, want) && strings.HasSuffix(name, ".zip") {
+			return a.BrowserDownloadURL
+		}
+	}
+	return ""
+}
+
+// pickChecksumsURL returns the release's SHA256SUMS asset, e.g.
+// Klew-2.1.0-SHA256SUMS.txt.
+func pickChecksumsURL(rel githubRelease) string {
+	for _, a := range rel.Assets {
+		if strings.HasSuffix(strings.ToLower(a.Name), "-sha256sums.txt") {
 			return a.BrowserDownloadURL
 		}
 	}

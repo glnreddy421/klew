@@ -4,6 +4,11 @@ All notable changes to Klew are documented here. Version tags follow [SemVer](ht
 
 ## [Unreleased]
 
+### Desktop
+
+- **Restart to update** — when a newer release is out, Klew downloads it in the background and the update banner offers **Restart to update**; Settings → About and Help → Check for Updates offer **Update and restart**. Before anything is replaced, Klew checks the download against the release's SHA-256 checksums, checks that the new app is signed by the same Apple Developer ID team as the installed one and passes Gatekeeper's notarization check, and checks its version. A helper then swaps the app once Klew quits and opens the new version, putting the old one back if the swap fails. Klew run from a disk image, from a folder it cannot write to, or from an unsigned build keeps the download and release links instead. The first release with the updater still has to be installed by hand.
+- **Homebrew** — the `klew` cask now declares `auto_updates true`, so Homebrew leaves upgrades to the app.
+
 ## [2.1.0] — 2026-11-26
 
 ### Desktop
