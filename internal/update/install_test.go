@@ -50,7 +50,7 @@ func TestParseSums(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sums["Klew-2.2.0-macos-arm64.zip"] != a || sums["klew-cli-2.2.0-sbom.spdx.json"] != strings.ToLower(b) {
+	if sums["Klew-2.2.0-macos-arm64.zip"] != a || !strings.EqualFold(sums["klew-cli-2.2.0-sbom.spdx.json"], b) {
 		t.Fatalf("sums = %v", sums)
 	}
 	if len(sums) != 2 {

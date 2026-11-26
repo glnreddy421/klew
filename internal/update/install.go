@@ -86,13 +86,13 @@ func appBundleFromExecutable(exe string) (string, error) {
 	contents := filepath.Dir(macos)
 	app := filepath.Dir(contents)
 	if filepath.Base(macos) != "MacOS" || filepath.Base(contents) != "Contents" || !strings.HasSuffix(app, ".app") {
-		return "", errors.New("Klew is not running from an app bundle")
+		return "", errors.New("not running from an app bundle")
 	}
 	if strings.Contains(app, "/AppTranslocation/") {
 		return "", errors.New("macOS is running Klew from a temporary location; move Klew to Applications to update it in place")
 	}
 	if strings.HasPrefix(app, "/Volumes/") {
-		return "", errors.New("Klew is running from a disk image; copy it to Applications to update it in place")
+		return "", errors.New("running from a disk image; copy Klew to Applications to update it in place")
 	}
 	if err := checkWritable(filepath.Dir(app)); err != nil {
 		return "", fmt.Errorf("cannot replace Klew in %s: %w", filepath.Dir(app), err)
@@ -280,7 +280,7 @@ func get(ctx context.Context, url string) (io.ReadCloser, error) {
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 	return resp.Body, nil
@@ -296,7 +296,8 @@ func Install(s Staged, pid int) error {
 		return errors.New("no update has been prepared")
 	}
 	script := filepath.Join(s.dir, "install.sh")
-	if err := os.WriteFile(script, []byte(installScript), 0o700); err != nil {
+	// Run through /bin/sh below, so it needs no execute bit.
+	if err := os.WriteFile(script, []byte(installScript), 0o600); err != nil {
 		return err
 	}
 	backup := filepath.Join(s.dir, "previous-"+appBundleName)
